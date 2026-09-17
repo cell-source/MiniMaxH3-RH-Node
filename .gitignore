@@ -11,3 +11,6 @@ experiment/selftest/
 
 # ===== 部署打包产物（publish-to-server.ps1 会自动调用 prepare-web-package.ps1 重新生成）=====
 dist/
+
+# ===== 本地历史备份（已于 2026-09-17 精简，历史版本保留在 git 提交 f826ac4 中）=====
+backup/
