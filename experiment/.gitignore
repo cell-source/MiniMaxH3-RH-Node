@@ -1,0 +1,4 @@
+apikey.txt
+out/
+__pycache__/
+selftest/

@@ -1,0 +1,13 @@
+# ===== 密钥（绝不入库）=====
+apikey.txt
+
+# ===== Python 产物 =====
+__pycache__/
+*.py[cod]
+
+# ===== 实验产物（selftest.py / run_experiment.py 生成，可重建）=====
+experiment/out/
+experiment/selftest/
+
+# ===== 部署打包产物（publish-to-server.ps1 会自动调用 prepare-web-package.ps1 重新生成）=====
+dist/

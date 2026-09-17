@@ -1,0 +1,10 @@
+# 文本文件按行尾自动规范化
+* text=auto
+
+# Windows PowerShell 脚本保持 CRLF
+*.ps1 text eol=crlf
+
+# 二进制文件
+*.png binary
+*.mp4 binary
+*.wav binary
