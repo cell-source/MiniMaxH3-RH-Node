@@ -2,15 +2,11 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "🚀 部署到服务器（打包+备份+上传+校验）",
+            "label": "� 打包 RunningHub 发布包（重建引擎+zip+sha256）",
             "type": "shell",
-            "command": "powershell",
+            "command": "python",
             "args": [
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "${workspaceFolder}\\deploy\\publish-to-server.ps1"
+                "scripts/package_runninghub.py"
             ],
             "group": { "kind": "build", "isDefault": true },
             "presentation": {
@@ -23,16 +19,16 @@
             "problemMatcher": []
         },
         {
-            "label": "📦 仅生成部署包（不上传）",
+            "label": "🧪 提示词节点单元测试",
             "type": "shell",
-            "command": "powershell",
+            "command": "python",
             "args": [
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "${workspaceFolder}\\deploy\\prepare-web-package.ps1"
+                "-m",
+                "pytest",
+                "tests/test_prompt_node.py",
+                "-q"
             ],
+            "group": "test",
             "presentation": {
                 "echo": false,
                 "reveal": "always",
@@ -43,15 +39,11 @@
             "problemMatcher": []
         },
         {
-            "label": "↩️ 从服务器备份回滚",
+            "label": "🌐 HTML 规则回归测试（需 Node）",
             "type": "shell",
-            "command": "powershell",
+            "command": "node",
             "args": [
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "${workspaceFolder}\\deploy\\rollback-from-server.ps1"
+                "tests/language-globalization.cjs"
             ],
             "presentation": {
                 "echo": false,

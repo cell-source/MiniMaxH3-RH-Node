@@ -51,6 +51,35 @@ python analyze.py
 | V4 | 全量仿 A |
 | A | 豆包原版（阳性对照） |
 
+## 字幕 A/B 实验（默认烧字幕问题，2026-09-20 新增）
+
+背景：H3 对「带对白的画面」有很强的烧字幕先验；"不要字幕 / No subtitles" 否定声明无效，其 token 本身可能反而是触发词。已核查 v2 `video_generation` 已知负载（model/content/resolution/duration/ratio）与官方 skill 引用的开关参数（如 `generate_audio`），均无字幕相关字段——提示词侧是唯一控制点。
+
+与爆破音实验共用 `apikey.txt` 与 `ref.png`（同一场景同一参考图，唯一变量是提示词策略，可与 V 系结果横向对照）。
+
+```powershell
+# 推荐最小组合：S0/S2/S3 各 5 条（15 条），然后自动分析
+python subtitle_experiment.py 5 S0,S2,S3
+python subtitle_analyze.py
+
+# 全部 5 个变体，各 3 条
+python subtitle_experiment.py 3
+```
+
+| 变体 | 策略 | 与 S1 的差异 |
+|---|---|---|
+| S0 | 基线-否定声明 | 官方 `<d>` 格式 + detailed_description 末尾追加 "No subtitles..." 否定句（模拟用户现状） |
+| S1 | 删否定声明 | 官方格式，完全不含字幕字眼 |
+| S2 | 正向约束句 | S1 + 工具「🔤 无字幕约束」注入的同款正向句（放在 [Shot 1] 之后） |
+| S3 | 电影感锚定 | S2 + 真人院线电影风格锚定句 |
+| S4 | 无对白对照 | S1 的画面但无对白（测无语音时的字幕基线，隔离"对白触发"假设） |
+
+- 判定：`subtitle_analyze.py` 优先用 OCR（`pip install rapidocr-onnxruntime`）自动检测画面下部字幕带（高度 70%~97%、宽度 12%~88%）文字；无 OCR 时导出 `out_subtitle/frames/` 裁剪图人工核对。"底部/中部边缘密度比"（suspect）仅作粗筛定位，不作结论。
+- 命中口径：字幕带出现与台词对应的文字才算；场景内实体文字（标牌、霓虹灯）不算。
+- 成本：每条 5s 768P；5 变体 × 5 条 = 25 条；幂等可断点续跑。
+- 结论回灌：胜出句式改写根 HTML 的 `NO_SUBTITLES_CONSTRAINT` 常量，并**同步** `subtitle_experiment.py` 中 S2/S3 使用的同款句子。
+- 产物：`out_subtitle/<variant>_<trial>.mp4`、`out_subtitle/results.json`、`out_subtitle/report.json`（均不入库）。
+
 ## 爆破音判定
 
 `analyze.py` 的自动判定口径：开头 0~0.3s 内出现 40~250ms 的孤立高能脉冲、其后与正文声音之间有 ≥80ms 低能间隙。判定结果仅作参考，最终以 `wave_<variant>.png` 波形图人工复核为准。

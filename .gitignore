@@ -4,12 +4,14 @@ apikey.txt
 # ===== Python 产物 =====
 __pycache__/
 *.py[cod]
+.pytest_cache/
+*.log
 
 # ===== 实验产物（selftest.py / run_experiment.py 生成，可重建）=====
 experiment/out/
 experiment/selftest/
 
-# ===== 部署打包产物（publish-to-server.ps1 会自动调用 prepare-web-package.ps1 重新生成）=====
+# ===== dist/ 打包产物（scripts/package_runninghub.py 生成；旧网页部署流程已移除）=====
 dist/
 
 # ===== 本地历史备份（已于 2026-09-17 精简，历史版本保留在 git 提交 f826ac4 中）=====
