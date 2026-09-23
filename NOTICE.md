@@ -2,7 +2,7 @@
 
 本包的视频集成代码基于用户提供的 `MiniMaxH3-Integration-GHX` 工作树（2026-09-23）。
 该参考项目是 goohai/Goohai-MiniMax-H3_Integration 的定制版本，包含 T8 风格的
-H3 条件构建、双时钟采样及音视频解码实现。原说明完整保留于 UPSTREAM-GHX-README.md，
+H3 条件构建、双时钟采样及音视频解码实现。原说明完整保留于 docs/UPSTREAM-GHX-README.md，
 原版权声明和 GPL-3.0-or-later 许可证保留于 LICENSE。
 
 本次修改：新增服务端提示词生成器；节点 ID 改用 RH 后缀；前端扩展名和优化器路由隔离；

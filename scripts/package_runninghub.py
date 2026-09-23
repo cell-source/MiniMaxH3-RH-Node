@@ -7,14 +7,15 @@ ROOT = Path(__file__).resolve().parents[1]
 FILES = ["__init__.py", "prompt_runtime.py", "llm_client.py", "video_nodes.py",
          "core.py", "conditioning.py", "audio_ops.py", "sampling.py", "tiled_sampler.py", "latent_upscaler.py",
          "latent_upscaler_core.py", "prompt_optimizer.py", "prompt_tags.py", "requirements.txt", "LICENSE",
-         "README.md", "NOTICE.md", "UPSTREAM-GHX-README.md", "RELEASE-TO-RUNNINGHUB.md"]
+         "README.md", "NOTICE.md"]
+DOC_FILES = ["docs/RELEASE-TO-RUNNINGHUB.md", "docs/UPSTREAM-GHX-README.md"]
 FOLDERS = ["prompt_engine", "web", "locales", "examples"]
 
 
 def package():
     from build_prompt_engine import build
     build()
-    paths = [ROOT / name for name in FILES]
+    paths = [ROOT / name for name in FILES + DOC_FILES]
     for name in FOLDERS:
         paths.extend(p for p in (ROOT / name).rglob("*") if p.is_file() and "__pycache__" not in p.parts)
     dist = ROOT / "dist"

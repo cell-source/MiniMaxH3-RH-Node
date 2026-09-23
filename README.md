@@ -4,7 +4,8 @@
 `MiniMaxH3IntegrationRH`（All-in-One）内置提示词生成（AI / 离线包装 / 整理已有）、条件构建、
 双时钟采样与音视频解码。支持 T2VA、I2VA、FL2VA、L2VA、Ref2VA；中文、英文、英文正文加原文对白；
 受限扩写、自动时间轴、固定镜头、画面稳定、无字幕、音景、配乐和抗残音开关。
-分块采样器与潜空间放大器的实现保留在包内（暂未注册为节点，供后续扩展），细节见 UPSTREAM-GHX-README.md。
+分块采样器与潜空间放大器的实现保留在包内（暂未注册为节点，供后续扩展），细节见 `docs/UPSTREAM-GHX-README.md`。
+工具使用手册与维护文档见 `docs/使用说明.md`、`docs/技术文档.md`；发布流程见 `docs/RELEASE-TO-RUNNINGHUB.md`。
 
 ## 安装
 
@@ -79,7 +80,7 @@ AI 生成保留原工具的语言和 FL2VA 时间轴纠正，每类最多两次�
 
 扩散模型放在 `models/diffusion_models`，文本编码器放在 `models/text_encoders`，
 视频和音频 VAE 放在 `models/vae`。默认模型文件名沿用参考项目，实际选择取决于安装环境。
-包内还包含分块采样器和潜空间放大器的实现（暂未注册为节点，供后续扩展）；细节见 UPSTREAM-GHX-README.md。
+包内还包含分块采样器和潜空间放大器的实现（暂未注册为节点，供后续扩展）；细节见 `docs/UPSTREAM-GHX-README.md`。
 本包不会自动下载大模型。真实生成需要兼容模型、足够显存和平台节点安装权限。
 
 ## 开发与打包
@@ -97,4 +98,4 @@ python scripts/package_runninghub.py
 输出 `dist/MiniMaxH3-RH-Node.zip` 和 SHA-256 文件。打包使用白名单，排除原 HTML、
 实验、部署配置及本地凭据。提示词规则应修改原 HTML 后重新提取，不直接修改生成的 rules.js。
 
-授权与上游来源见 LICENSE、NOTICE.md。
+授权与上游来源见 LICENSE、NOTICE.md；文档索引见 `docs/`。
