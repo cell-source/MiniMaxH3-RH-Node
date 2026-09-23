@@ -1,0 +1,155 @@
+{
+  "MiniMaxH3IntegrationRH": {
+    "display_name": "MiniMax H3 一体化生成 (RH)",
+    "inputs": {
+      "clip_name": {
+        "name": "CLIP模型"
+      },
+      "video_vae_name": {
+        "name": "视频 VAE"
+      },
+      "audio_vae_name": {
+        "name": "音频 VAE"
+      },
+      "aspect": {
+        "name": "宽高比例",
+        "options": {
+          "adaptive": "自适应",
+          "16:9": "16:9",
+          "9:16": "9:16",
+          "3:2": "3:2",
+          "2:3": "2:3",
+          "4:3": "4:3",
+          "3:4": "3:4",
+          "1:1": "1:1",
+          "21:9": "21:9"
+        }
+      },
+      "megapixels": {
+        "name": "百万像素"
+      },
+      "prompt_override": {
+        "name": "提示词"
+      },
+      "duration_seconds": {
+        "name": "时长（秒）"
+      },
+      "model": {
+        "name": "扩散模型"
+      },
+      "steps": {
+        "name": "采样步数"
+      },
+      "shift_video": {
+        "name": "视频 Shift"
+      },
+      "shift_audio": {
+        "name": "音频 Shift"
+      },
+      "sampler_name": {
+        "name": "采样器"
+      },
+      "scheduler": {
+        "name": "调度器"
+      },
+      "noise_seed": {
+        "name": "随机种子"
+      },
+      "prompt_source": {
+        "name": "提示词来源",
+        "options": {
+          "panel": "提示词编辑器（默认）",
+          "ai": "AI 在线生成",
+          "offline": "离线原文包装",
+          "format": "整理完整提示词"
+        }
+      },
+      "ai_text": {
+        "name": "创意 / 待整理提示词"
+      },
+      "ai_language": {
+        "name": "输出语言",
+        "options": {
+          "zh": "中文",
+          "mixed": "English 正文 + 对白原文（官方）",
+          "en": "English"
+        }
+      },
+      "ai_mode": {
+        "name": "H3 模式",
+        "options": {
+          "auto": "自动（随主模式）",
+          "t2va": "文生视频",
+          "i2va": "首帧",
+          "fl2va": "首尾帧",
+          "l2va": "尾帧",
+          "ref2va": "全参考"
+        }
+      },
+      "ai_enrich": {
+        "name": "AI 扩写（受限）"
+      },
+      "ai_soundscape": {
+        "name": "生成音景"
+      },
+      "ai_music": {
+        "name": "生成配乐"
+      },
+      "ai_auto_timestamps": {
+        "name": "自动时间戳"
+      },
+      "ai_fixed_camera": {
+        "name": "固定镜头"
+      },
+      "ai_visual_stability": {
+        "name": "画面稳定约束"
+      },
+      "ai_no_subtitles": {
+        "name": "无字幕约束"
+      },
+      "ai_anti_pop": {
+        "name": "抗残音内联对白"
+      },
+      "ai_strict_validation": {
+        "name": "严格校验"
+      },
+      "ai_provider": {
+        "name": "AI 提供方",
+        "options": {
+          "deepseek": "DeepSeek",
+          "glm": "GLM",
+          "custom": "自定义"
+        }
+      },
+      "ai_api_key": {
+        "name": "API Key（建议留空用服务端环境变量）"
+      },
+      "ai_endpoint": {
+        "name": "自定义服务地址"
+      },
+      "ai_model": {
+        "name": "自定义模型名"
+      },
+      "ai_timeout": {
+        "name": "AI 总超时（秒）"
+      },
+      "frames": {
+        "name": "视频帧"
+      },
+      "audio": {
+        "name": "音频（按模式自动选择）"
+      },
+      "video_latent": {
+        "name": "视频潜空间"
+      },
+      "report": {
+        "name": "生成报告"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": ">"
+      }
+    }
+  }
+}

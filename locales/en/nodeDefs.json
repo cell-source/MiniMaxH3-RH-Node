@@ -1,0 +1,155 @@
+{
+  "MiniMaxH3IntegrationRH": {
+    "display_name": "MiniMax H3 All-in-One (RH)",
+    "inputs": {
+      "clip_name": {
+        "name": "CLIP model"
+      },
+      "video_vae_name": {
+        "name": "video VAE"
+      },
+      "audio_vae_name": {
+        "name": "audio VAE"
+      },
+      "aspect": {
+        "name": "aspect ratio",
+        "options": {
+          "adaptive": "adaptive",
+          "16:9": "16:9",
+          "9:16": "9:16",
+          "3:2": "3:2",
+          "2:3": "2:3",
+          "4:3": "4:3",
+          "3:4": "3:4",
+          "1:1": "1:1",
+          "21:9": "21:9"
+        }
+      },
+      "megapixels": {
+        "name": "megapixels"
+      },
+      "prompt_override": {
+        "name": "prompt"
+      },
+      "duration_seconds": {
+        "name": "duration (seconds)"
+      },
+      "model": {
+        "name": "Diffusion Model"
+      },
+      "steps": {
+        "name": "Steps"
+      },
+      "shift_video": {
+        "name": "Video Shift"
+      },
+      "shift_audio": {
+        "name": "Audio Shift"
+      },
+      "sampler_name": {
+        "name": "Sampler"
+      },
+      "scheduler": {
+        "name": "Scheduler"
+      },
+      "noise_seed": {
+        "name": "Seed"
+      },
+      "prompt_source": {
+        "name": "Prompt Source",
+        "options": {
+          "panel": "Prompt editor (default)",
+          "ai": "AI online generation",
+          "offline": "Offline wrap",
+          "format": "Format existing prompt"
+        }
+      },
+      "ai_text": {
+        "name": "Idea / prompt to process"
+      },
+      "ai_language": {
+        "name": "Output Language",
+        "options": {
+          "zh": "Chinese",
+          "mixed": "English body + original dialogue (official)",
+          "en": "English"
+        }
+      },
+      "ai_mode": {
+        "name": "H3 Mode",
+        "options": {
+          "auto": "Auto (follow main mode)",
+          "t2va": "Text to Video",
+          "i2va": "First Frame",
+          "fl2va": "First & Last Frame",
+          "l2va": "Last Frame",
+          "ref2va": "All Reference"
+        }
+      },
+      "ai_enrich": {
+        "name": "Bounded AI Enrichment"
+      },
+      "ai_soundscape": {
+        "name": "Generate Soundscape"
+      },
+      "ai_music": {
+        "name": "Generate Music"
+      },
+      "ai_auto_timestamps": {
+        "name": "Auto Timestamps"
+      },
+      "ai_fixed_camera": {
+        "name": "Fixed Camera"
+      },
+      "ai_visual_stability": {
+        "name": "Visual Stability"
+      },
+      "ai_no_subtitles": {
+        "name": "No Subtitles"
+      },
+      "ai_anti_pop": {
+        "name": "Anti-Pop Inline Dialogue"
+      },
+      "ai_strict_validation": {
+        "name": "Strict Validation"
+      },
+      "ai_provider": {
+        "name": "AI Provider",
+        "options": {
+          "deepseek": "DeepSeek",
+          "glm": "GLM",
+          "custom": "Custom"
+        }
+      },
+      "ai_api_key": {
+        "name": "API Key (prefer server env var)"
+      },
+      "ai_endpoint": {
+        "name": "Custom Endpoint"
+      },
+      "ai_model": {
+        "name": "Custom Model"
+      },
+      "ai_timeout": {
+        "name": "AI Timeout (s)"
+      },
+      "frames": {
+        "name": "Frames"
+      },
+      "audio": {
+        "name": "Audio (auto-selected by mode)"
+      },
+      "video_latent": {
+        "name": "Video Latent"
+      },
+      "report": {
+        "name": "Report"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": ">"
+      }
+    }
+  }
+}
