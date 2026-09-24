@@ -27,8 +27,7 @@ check(hiddenNames.length === 18, 'hidden list size = 18 (prompt_source + 17 ai_*
 
 /* 2. 面板区块为每个隐藏 widget 建立了控件绑定 */
 for (const name of hiddenNames) {
-    check(js.includes(`addAi("${name}"`) || js.includes(`aiSelect("${name}"`) || js.includes(`aiCheck("${name}"`)
-        || new RegExp(`setWidget\\(node, "${name}"`).test(js) || new RegExp(`"${name}"`).test(js),
+    check(js.includes(`addAi("${name}",`),
         'panel binds ' + name);
 }
 
@@ -57,5 +56,55 @@ check(!/position:absolute;left:8px;right:8px;bottom:6px/.test(js), 'no absolute 
 /* 6. 旧折叠实现已移除 */
 check(!js.includes('installAiGroupFold'), 'old fold impl removed');
 check(!js.includes('_h3OrigSizeFn'), 'old size cache removed');
+
+/* 7. DOM 中文覆盖与节点选项保持一致；英文仍使用原文。 */
+const vm = require('node:vm');
+const translations = js.slice(js.indexOf('const DOM_TRANSLATIONS'), js.indexOf('function currentLocale'));
+const translate = js.match(/function t\(text\) \{[^\n]+\}/)[0];
+const context = vm.createContext({ chinese: true });
+vm.runInContext(translations + '\nfunction isChineseLocale() { return chinese; }\n' + translate, context);
+for (const match of js.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)) {
+    const label = JSON.parse('"' + match[1] + '"');
+    context.label = label;
+    check(vm.runInContext('Object.hasOwn(DOM_TRANSLATIONS, label)', context), 'translated DOM label: ' + label);
+}
+for (const match of js.matchAll(/(?:addAi|addAdvanced)\("[^"]+", "([^"]+)"|(?:row|checkboxRow|timeBox)\("([^"]+)"/g)) {
+    context.label = match[1] || match[2];
+    check(vm.runInContext('Object.hasOwn(DOM_TRANSLATIONS, label)', context), 'translated indirect label: ' + context.label);
+}
+const nodeDefs = JSON.parse(fs.readFileSync(path.join(root, 'locales/zh/nodeDefs.json'), 'utf8'));
+const definition = Object.values(nodeDefs).find(d => d.inputs?.prompt_source);
+check(!!definition, 'localized integration node found');
+for (const name of ['prompt_source', 'ai_language', 'ai_mode', 'ai_provider']) {
+    for (const [value, label] of Object.entries(definition.inputs[name].options)) {
+        context.label = value;
+        check(vm.runInContext('t(label)', context) === label, name + ' localized option: ' + value);
+        context.chinese = false;
+        check(vm.runInContext('t(label)', context) === value, name + ' English option preserved: ' + value);
+        context.chinese = true;
+    }
+}
+
+/* 工作流恢复后必须显示恢复值，并重新计算来源联动。 */
+const restoredControls = {
+    prompt_source: { type: 'select-one', value: 'panel' },
+    ai_text: { type: 'textarea', value: '' },
+    ai_enrich: { type: 'checkbox', checked: true },
+    ai_timeout: { type: 'number', value: '180' },
+};
+const restoredValues = { prompt_source: 'ai', ai_text: 'restored idea', ai_enrich: false, ai_timeout: 300 };
+let resynced = 0;
+const restoreContext = vm.createContext({
+    aiRows: new Map(Object.entries(restoredControls).map(([name, control]) => [name, { querySelector: () => control }])),
+    node: {}, widget: (_, name) => ({ value: restoredValues[name] }), syncAiRows: () => resynced++,
+});
+const restoreFunction = js.match(/const syncAiControls = \(\) => \{[\s\S]*?\n    \};/);
+check(!!restoreFunction, 'AI restore synchronization exists');
+vm.runInContext(restoreFunction[0] + '\nsyncAiControls();', restoreContext);
+check(restoredControls.prompt_source.value === 'ai', 'restored source visible');
+check(restoredControls.ai_text.value === 'restored idea', 'restored idea visible');
+check(restoredControls.ai_enrich.checked === false, 'restored false toggle visible');
+check(restoredControls.ai_timeout.value === '300', 'restored timeout visible');
+check(resynced === 1, 'restored source visibility refreshed');
 
 console.log(`PASS: ${assertions} assertions (panel AI section consistency)`);
