@@ -1413,21 +1413,6 @@ function nodeColorToCss(value) {
     addAi("ai_anti_pop", "Anti-pop inline dialogue", aiCheck("ai_anti_pop"));
     addAi("ai_strict_validation", "Strict validation", aiCheck("ai_strict_validation"));
     addAi("ai_timeout", "AI timeout (seconds)", number("ai_timeout", "1", "15", "600"));
-    /* ===== 生成凭据：平台/Key/端点/模型 收进一行摘要 + 弹窗（与优化器设置互不重复）===== */
-    const aiCredRow = make("div"); aiCredRow.className = "mxv-advanced-row"; aiCredRow.style.display = "none";
-    const aiCredLabel = make("label", {}, t("Generation credentials"));
-    const aiCredSummary = make("span", { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right", color: "#b3b1ac" });
-    const aiCredButton = make("button", { border: "1px solid #383e46", borderRadius: "4px", background: "#22262c", color: "#e8a33d", padding: "4px 10px", cursor: "pointer", font: "12px Arial,sans-serif", justifySelf: "end" }, t("Configure"));
-    aiCredButton.type = "button";
-    const aiCredWrap = make("div", { display: "flex", alignItems: "center", gap: "6px", minWidth: "0", justifyContent: "flex-end" });
-    aiCredWrap.append(aiCredSummary, aiCredButton);
-    aiCredRow.append(aiCredLabel, aiCredWrap);
-    aiBody.appendChild(aiCredRow);
-    // 统一入口：优化/生成模型都在「LLM 提示词优化配置」弹窗配置（openOptimizerSettings
-    // 为 createPanel 内的函数声明，运行时提升可用）。
-    aiCredButton.onclick = () => openOptimizerSettings();
-    const AI_CRED_ROWS = ["ai_provider", "ai_api_key", "ai_endpoint", "ai_model"];
-    const providerLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
     /* 共享钥匙串：与优化器配置共用同一份 per-provider API Key（一处填写，两处可用）。 */
     const sharedKeychain = () => {
         const keys = optimizerSettings?.api_keys;
@@ -1440,15 +1425,8 @@ function nodeColorToCss(value) {
         if (optimizerSettings.provider === provider) optimizerSettings.api_key = key;
         persistState();
     };
-    const refreshAiCredSummary = () => {
-        const provider = String(aiProvider.value || "deepseek");
-        const hasKey = String(widget(node, "ai_api_key")?.value || "").trim().length > 0
-            || getSharedKey(provider).length > 0;
-        const model = String(widget(node, "ai_model")?.value || "").trim();
-        aiCredSummary.textContent = `${providerLabels[provider] || provider} · ${hasKey ? t("Key saved") : t("Key missing")}${model ? ` · ${model}` : ""}`;
-    };
     /* 来源联动：panel 时 ai_text 及全部生成参数仅保留来源可见（隐藏其余行）；
-       ai 来源时凭据 4 行收进摘要行；custom 覆盖项在弹窗内编辑。 */
+       凭据（平台/Key/模型）统一在「LLM 提示词优化配置」弹窗配置。 */
     const aiPanelRows = ["ai_text", "ai_language", "ai_mode", "ai_provider", "ai_api_key",
         "ai_endpoint", "ai_model", "ai_timeout", "ai_enrich", "ai_soundscape", "ai_music",
         "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability",
@@ -1471,8 +1449,6 @@ function nodeColorToCss(value) {
             }
             row.style.display = show ? "" : "none";
         }
-        aiCredRow.style.display = source === "ai" ? "" : "none";
-        if (source === "ai") refreshAiCredSummary();
         aiSummary.textContent = `${t("AI generation")} — ${t("Source")}: ${t(source)}`;
         // syncLayout/measureContentHeight 定义在面板装配后期；此函数在装配早期
         // 就会被首次调用（TDZ 限制），故延迟到下一帧执行。
@@ -2470,7 +2446,6 @@ function nodeColorToCss(value) {
                     aiKey.value = genKey;
                 }
                 setSharedKey(genProviderValue, genKey);
-                refreshAiCredSummary();
                 refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
             document.body.append(overlay);
