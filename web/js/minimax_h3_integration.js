@@ -11,6 +11,7 @@ const OPTIMIZER_ROUTE = "/rh/minimax-h3/prompt-optimizer";
 const WIDTH = 500;
 const PANEL_WIDTH = 476;
 const INITIAL_NODE_HEIGHT = 700; // 面板按完全展开内容高度设计，节点高度自适应内容
+const BOTTOM_DECOR_HEIGHT = 20; // ComfyUI dom-widget 容器渲染高度恒比 (nodeH - widgetY) 少 20px（节点底部装饰保留区）
 const MAX_RESTORED_NODE_HEIGHT = INITIAL_NODE_HEIGHT * 4;
 const MIN_NODE_HEIGHT = 0;
 const ASPECTS = {
@@ -1750,15 +1751,16 @@ function nodeColorToCss(value) {
         if (layoutLock) return;
         layoutLock = true;
         try {
-            // 面板按"完全展开"设计：节点高度 = 面板内容自然高度 + 面板顶部占位。
-            // 顶部占位用 domWidget.y（LiteGraph 布局坐标：标题栏 + 面板上方的
-            // 原生 widget 行），它不受画布 transform 缩放影响，比"节点高-容器高"
-            // 的 DOM 读数差值稳定（后者会被 canvas scale 污染）。
+            // 面板按"完全展开"设计：节点高度 = 面板内容自然高度 + 面板顶部占位
+            // （domWidget.y：标题栏 + 面板上方的原生 widget 行）+ 底部装饰补偿。
+            // 实测 ComfyUI 给 dom-widget 容器的实际渲染高度恒定比 (nodeH - widgetY)
+            // 少 20px（节点底部边框/缩放手柄保留区），这 20px 里放的面板内容会被
+            // 画布容器裁掉——因此 nodeH 必须多补 20px。
             const panelTop = Number(domWidget?.y);
             const content = measureContentHeight();
             const nextHeight = Number.isFinite(panelTop) && panelTop > 0
-                ? Math.ceil(panelTop + content)
-                : content;
+                ? Math.ceil(panelTop + content) + BOTTOM_DECOR_HEIGHT
+                : content + BOTTOM_DECOR_HEIGHT;
             userHeight = nextHeight;
             // 面板根的高度 = 容器将得到的高度（=内容高），提示词的 1fr 由此撑满。
             root.style.height = `${content}px`;
