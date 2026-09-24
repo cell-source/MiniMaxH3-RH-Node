@@ -54,7 +54,8 @@ check(js.includes('advanced.open = true;') && js.includes('aiDetails.open = true
     'accordions default to fully expanded');
 check(js.includes('.mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23'),
     'details cards use mxv warm-charcoal baseline');
-check(js.includes('border-left:3px solid #e8a33d'), 'prompt editor has amber accent bar');
+check(js.includes('.mxv-prompt-wrap.focused{border-color:#e8a33d'), 'prompt editor shows amber focus border');
+check(!js.includes('border-left:3px solid #e8a33d'), 'old constant accent bar removed');
 check(js.includes('.mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px'),
     'mode switcher is pill segmented style');
 check(js.includes('.mxv-advanced>summary:before,.mxv-ai>summary:before'), 'accordion summaries have CSS ::before arrow');
