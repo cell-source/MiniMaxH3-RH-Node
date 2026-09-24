@@ -250,6 +250,10 @@ const DOM_TRANSLATIONS = {
     "Up to 3 audios": "最多3个音频",
     "Optimize": "优化", "LLM Prompt Optimization Configuration": "LLM提示词优化配置",
     "Provider": "平台", "API key": "API Key", "Read visual references": "读取视觉素材",
+    "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
+    "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
+    "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
+    "Configure": "配置",
     "Save": "保存", "Cancel": "取消", "Custom": "自定义",
     "API URL": "API 地址", "Model": "模型", "Protocol": "协议",
     "Prompt is connected to an upstream node; the internal prompt is disabled!": "提示词已连接上游节点，内部提示词已禁用！",
@@ -519,12 +523,12 @@ function createPanel(node) {
     });
     const style = make("style");
     style.textContent = `
-      .mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid #383e46;border-radius:16px;margin:3px 0 6px;background:#14171b}
+      .mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid #383e46;border-radius:16px;margin:0;background:#14171b}
       .mxv-mode{height:26px;border:0;border-radius:12px;background:transparent;color:#b3b1ac;font-size:13px;cursor:pointer;transition:background .12s,color .12s}.mxv-mode.active{background:#e8a33d;color:#221a0c;font-weight:700;box-shadow:0 1px 6px rgba(232,163,61,.35)}
-      .mxv-box{border:1px solid #383e46;border-radius:6px;padding:7px;margin:0 0 6px;background:#1b1e23;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.mxv-title{font-size:12px;color:#efede8;margin-bottom:3px}.mxv-hint{font-size:10px;color:#8c8983;line-height:1.3}
+      .mxv-box{border:1px solid #383e46;border-radius:6px;padding:7px;margin:0;background:#1b1e23;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.mxv-title{font-size:12px;color:#efede8;margin-bottom:3px}.mxv-hint{font-size:10px;color:#8c8983;line-height:1.3}
       .mxv-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.mxv-drop{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#b3b1ac;cursor:pointer;border:1px dashed #383e46;border-radius:6px;background:#1b1e23;padding:4px;box-sizing:border-box}.mxv-drop:hover{border-style:solid;border-color:#e8a33d;background:rgba(232,163,61,.08);color:#e8e6e1}.mxv-reference-empty{grid-column:1/-1;width:100%;aspect-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.mxv-reference-empty .mxv-drop-icon{font-size:14px;margin:0 7px 0 0}.mxv-reference-empty .mxv-drop-title{font-size:12px}.mxv-reference-empty .mxv-drop-subtitle{font-size:9px;margin-top:8px}.mxv-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#e8a33d;font-family:Arial,sans-serif}.mxv-drop-title{font-size:10px;line-height:1.2;color:#e2e0db}.mxv-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.mxv-optional{color:#8a6d33;font-size:.82em;line-height:1.2;position:relative;top:-1px}.mxv-audio-drop .mxv-optional{top:-2px}.mxv-drop-subtitle{font-size:8px;line-height:1.25;color:#8c8983;margin-top:3px}.mxv-limit{grid-column:1/-1;color:#d47d8b;font-size:9px;padding:2px 3px 0;text-align:left}
       .mxv-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.mxv-keygrid .mxv-drop{aspect-ratio:16/9}.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-subtitle{font-size:7px;color:#7d7a74}.mxv-keygrid .mxv-audio-card,.mxv-keygrid .mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:3px}
-      .mxv-card{min-width:0;aspect-ratio:1;border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.mxv-card.mxv-reorder-source{opacity:.68;cursor:grabbing}.mxv-card.mxv-reorder-target{border-color:#e8a33d;box-shadow:0 0 0 2px rgba(232,163,61,.45) inset}.mxv-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(20,22,26,.78);color:#f4e8d0;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(232,163,61,.6)}.mxv-card.mxv-reorder-source .mxv-reorder-indicator{display:flex}.mxv-card img,.mxv-card video{display:block;width:100%;height:100%;object-fit:cover;background:#14171b}.mxv-card:hover img,.mxv-card:hover video{object-fit:contain}.mxv-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(16,17,20,.68);font-size:7px;line-height:1.15}.mxv-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d5d2cc;cursor:pointer;font-size:11px;z-index:3}.mxv-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.mxv-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(46,50,56,.6)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.mxv-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.mxv-media-time{margin-left:auto}.mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.mxv-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.mxv-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1b1e23;color:#e8e6e1;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#2e3238 transparent}.mxv-prompt::placeholder{color:#4a5058;opacity:1}.mxv-prompt::-webkit-scrollbar{width:5px}.mxv-prompt::-webkit-scrollbar-track{background:transparent}.mxv-prompt::-webkit-scrollbar-thumb{background:#2e3238;border-radius:3px}.mxv-prompt::-webkit-scrollbar-thumb:hover{background:#383e46}.mxv-advanced{position:relative;margin:0 0 6px;box-sizing:border-box;user-select:none;background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:8px;list-style:none;min-height:28px;color:#b3b1ac;font-size:12px}.mxv-advanced>summary::-webkit-details-marker{display:none}.mxv-advanced>summary:before{content:"▸ ";color:#8a6d33}.mxv-advanced[open]>summary:before{content:"▾ "}.mxv-advanced .mxv-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.mxv-advanced[open]{background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-size{color:#d9992f;font-size:12px;padding:2px 0 4px}
+      .mxv-card{min-width:0;aspect-ratio:1;border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.mxv-card.mxv-reorder-source{opacity:.68;cursor:grabbing}.mxv-card.mxv-reorder-target{border-color:#e8a33d;box-shadow:0 0 0 2px rgba(232,163,61,.45) inset}.mxv-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(20,22,26,.78);color:#f4e8d0;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(232,163,61,.6)}.mxv-card.mxv-reorder-source .mxv-reorder-indicator{display:flex}.mxv-card img,.mxv-card video{display:block;width:100%;height:100%;object-fit:cover;background:#14171b}.mxv-card:hover img,.mxv-card:hover video{object-fit:contain}.mxv-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(16,17,20,.68);font-size:7px;line-height:1.15}.mxv-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d5d2cc;cursor:pointer;font-size:11px;z-index:3}.mxv-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.mxv-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(46,50,56,.6)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.mxv-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.mxv-media-time{margin-left:auto}.mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.mxv-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.mxv-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1b1e23;color:#e8e6e1;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#2e3238 transparent}.mxv-prompt::placeholder{color:#4a5058;opacity:1}.mxv-prompt::-webkit-scrollbar{width:5px}.mxv-prompt::-webkit-scrollbar-track{background:transparent}.mxv-prompt::-webkit-scrollbar-thumb{background:#2e3238;border-radius:3px}.mxv-prompt::-webkit-scrollbar-thumb:hover{background:#383e46}.mxv-advanced{position:relative;margin:0;box-sizing:border-box;user-select:none;background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:8px;list-style:none;min-height:28px;color:#b3b1ac;font-size:12px}.mxv-advanced>summary::-webkit-details-marker{display:none}.mxv-advanced>summary:before{content:"▸ ";color:#8a6d33}.mxv-advanced[open]>summary:before{content:"▾ "}.mxv-advanced .mxv-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.mxv-advanced[open]{background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-size{color:#d9992f;font-size:12px;padding:2px 0 4px}
       .mxv-size{display:flex;justify-content:space-between;align-items:center;color:#d9992f;font-size:12px;padding:2px 3px 5px}.mxv-task{white-space:nowrap}.mxv-dimensions{white-space:nowrap;text-align:right}.mxv-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);align-items:center;gap:8px;min-height:30px}.mxv-advanced-row>label{text-align:left;color:#b3b1ac}.mxv-control{width:220px;justify-self:end;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:5px}.mxv-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.mxv-number button{border:1px solid #383e46;background:#1b1e23;color:#e8e6e1;font-size:10px;padding:0;cursor:pointer}.mxv-number button:first-child{border-radius:4px 0 0 4px}.mxv-number button:last-child{border-radius:0 4px 4px 0}.mxv-number input{width:100%;min-width:0;border:1px solid #383e46;border-left:0;border-right:0;border-radius:0;background:#1b1e23;color:#e8e6e1;padding:5px;box-sizing:border-box}.mxv-number input::-webkit-inner-spin-button,.mxv-number input::-webkit-outer-spin-button{appearance:none;margin:0}.mxv-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.mxv-toggle input{opacity:0;width:0;height:0}.mxv-toggle span{position:absolute;inset:0;border-radius:12px;background:#2e3238;border:1px solid #4a5058;transition:.15s}.mxv-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#d5d2cc;transition:.15s}.mxv-toggle input:checked+span{background:#e8a33d;border-color:#e8a33d}.mxv-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
       .mxv-drop-title-row .mxv-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
       .mxv-audio-drop .mxv-drop-icon{font-size:14px;line-height:1;height:1.2em}
@@ -1401,23 +1405,93 @@ function nodeColorToCss(value) {
     addAi("ai_anti_pop", "Anti-pop inline dialogue", aiCheck("ai_anti_pop"));
     addAi("ai_strict_validation", "Strict validation", aiCheck("ai_strict_validation"));
     addAi("ai_timeout", "AI timeout (seconds)", number("ai_timeout", "1", "15", "600"));
+    /* ===== 生成凭据：平台/Key/端点/模型 收进一行摘要 + 弹窗（与优化器设置互不重复）===== */
+    const aiCredRow = make("div"); aiCredRow.className = "mxv-advanced-row"; aiCredRow.style.display = "none";
+    const aiCredLabel = make("label", {}, t("Generation credentials"));
+    const aiCredSummary = make("span", { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right", color: "#b3b1ac" });
+    const aiCredButton = make("button", { border: "1px solid #383e46", borderRadius: "4px", background: "#22262c", color: "#e8a33d", padding: "4px 10px", cursor: "pointer", font: "12px Arial,sans-serif", justifySelf: "end" }, t("Configure"));
+    aiCredButton.type = "button";
+    const aiCredWrap = make("div", { display: "flex", alignItems: "center", gap: "6px", minWidth: "0", justifyContent: "flex-end" });
+    aiCredWrap.append(aiCredSummary, aiCredButton);
+    aiCredRow.append(aiCredLabel, aiCredWrap);
+    aiBody.appendChild(aiCredRow);
+    const AI_CRED_ROWS = ["ai_provider", "ai_api_key", "ai_endpoint", "ai_model"];
+    const providerLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
+    const refreshAiCredSummary = () => {
+        const provider = String(aiProvider.value || "deepseek");
+        const hasKey = String(widget(node, "ai_api_key")?.value || "").trim().length > 0;
+        const model = String(widget(node, "ai_model")?.value || "").trim();
+        aiCredSummary.textContent = `${providerLabels[provider] || provider} · ${hasKey ? t("Key saved") : t("Key missing")}${model ? ` · ${model}` : ""}`;
+    };
+    const openAiCredentialDialog = () => {
+        const overlay = make("div"); overlay.className = "mxv-opt-overlay";
+        const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
+        dialog.appendChild(make("div", {}, t("Generation credentials"))).className = "mxv-opt-title";
+        const row = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
+        const providerSelect = document.createElement("select"); providerSelect.className = "mxv-control";
+        providerSelect.replaceChildren(...AI_PROVIDERS.map(v => new Option(t(v), v)));
+        providerSelect.value = String(aiProvider.value || "deepseek");
+        row("Provider", providerSelect);
+        const keyInput = document.createElement("input"); keyInput.type = "password"; keyInput.className = "mxv-control";
+        keyInput.style.width = "100%"; keyInput.style.boxSizing = "border-box";
+        keyInput.placeholder = t("API key (cleared when sharing the workflow)");
+        keyInput.value = String(widget(node, "ai_api_key")?.value ?? "");
+        row("API key", keyInput);
+        const endpointInput = document.createElement("input"); endpointInput.type = "text"; endpointInput.className = "mxv-control";
+        endpointInput.style.width = "100%"; endpointInput.style.boxSizing = "border-box";
+        endpointInput.placeholder = t("endpoint override");
+        endpointInput.value = String(widget(node, "ai_endpoint")?.value ?? "");
+        const endpointRow = row("Endpoint override", endpointInput);
+        const modelInput = document.createElement("input"); modelInput.type = "text"; modelInput.className = "mxv-control";
+        modelInput.style.width = "100%"; modelInput.style.boxSizing = "border-box";
+        modelInput.placeholder = t("model override");
+        modelInput.value = String(widget(node, "ai_model")?.value ?? "");
+        const modelRow = row("Model override", modelInput);
+        const syncCustom = () => {
+            const custom = providerSelect.value === "custom";
+            endpointRow.closest("label").classList.toggle("mxv-opt-hidden", !custom);
+            modelRow.closest("label").classList.toggle("mxv-opt-hidden", !custom);
+        };
+        syncCustom();
+        providerSelect.onchange = syncCustom;
+        const actions = make("div"); actions.className = "mxv-opt-actions";
+        const cancelBtn = make("button", {}, t("Cancel")); cancelBtn.type = "button";
+        const saveBtn = make("button", {}, t("Save")); saveBtn.type = "button";
+        actions.append(cancelBtn, saveBtn); dialog.append(actions);
+        cancelBtn.onclick = () => overlay.remove();
+        overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+        saveBtn.onclick = () => {
+            setWidget(node, "ai_provider", providerSelect.value);
+            aiProvider.value = providerSelect.value;
+            setWidget(node, "ai_api_key", keyInput.value.trim());
+            aiKey.value = keyInput.value.trim();
+            setWidget(node, "ai_endpoint", endpointInput.value.trim());
+            aiEndpoint.value = endpointInput.value.trim();
+            setWidget(node, "ai_model", modelInput.value.trim());
+            aiModel.value = modelInput.value.trim();
+            refreshAiCredSummary();
+            persistState();
+            overlay.remove();
+        };
+        document.body.append(overlay);
+    };
+    aiCredButton.onclick = openAiCredentialDialog;
     /* 来源联动：panel 时 ai_text 及全部生成参数仅保留来源可见（隐藏其余行）；
-       custom 供应商才显示端点/模型覆盖；Key 行仅在 ai 来源显示。 */
+       ai 来源时凭据 4 行收进摘要行；custom 覆盖项在弹窗内编辑。 */
     const aiPanelRows = ["ai_text", "ai_language", "ai_mode", "ai_provider", "ai_api_key",
         "ai_endpoint", "ai_model", "ai_timeout", "ai_enrich", "ai_soundscape", "ai_music",
         "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability",
         "ai_no_subtitles", "ai_anti_pop", "ai_strict_validation"];
     const syncAiRows = () => {
         const source = String(aiSource.value || "panel");
-        const custom = source === "ai" && aiProvider.value === "custom";
         for (const name of aiPanelRows) {
             const row = aiRows.get(name);
             if (!row) continue;
             let show;
             if (source === "panel") {
                 show = false; // panel：使用提示词编辑器内容，AI 参数整组收起
-            } else if (name === "ai_endpoint" || name === "ai_model") {
-                show = custom; // 端点/模型覆盖仅自定义供应商需要
+            } else if (name === "ai_provider" || name === "ai_api_key" || name === "ai_endpoint" || name === "ai_model") {
+                show = false; // 凭据 4 行收进「生成凭据」摘要行（弹窗内编辑，避免与优化器设置观感重复）
             } else if (source === "ai") {
                 show = true;
             } else {
@@ -1426,6 +1500,8 @@ function nodeColorToCss(value) {
             }
             row.style.display = show ? "" : "none";
         }
+        aiCredRow.style.display = source === "ai" ? "" : "none";
+        if (source === "ai") refreshAiCredSummary();
         aiSummary.textContent = `${t("AI generation")} — ${t("Source")}: ${t(source)}`;
         // syncLayout/measureContentHeight 定义在面板装配后期；此函数在装配早期
         // 就会被首次调用（TDZ 限制），故延迟到下一帧执行。
@@ -1649,14 +1725,23 @@ function nodeColorToCss(value) {
         // 绝不能返回坍缩值，否则 node.setSize 会被锁死在最小高度上。
         const visible = root.offsetHeight > 0;
         if (!visible) return userHeight;
-        // 直接采用渲染态 scrollHeight：它天然包含全部子元素、gap 与最新内容
-        // （render/updateAdvancedVisibility 更新 DOM 后的值），避免了"测量时点
-        // 早于内容更新"导致的 27px 级误差。提示词 flex:1 吸收富余时
-        // scrollHeight==分配高度，读数等于当前值——不会自我增长（无正反馈）；
-        // 代价是内容减少后节点不自动回落（保持宽松），可接受。
-        const content = root.scrollHeight;
+        // 逐项求和（不用 root.scrollHeight）：面板高度曾经被撑大后，scrollHeight
+        // 在无溢出时等于分配高度（富余被 flex/grid 吸收），读数被污染导致高度
+        // 永不回落（截图中高级选项下方的大片空白）。编辑器已改为文档流，
+        // 每个子元素的 offsetHeight 都是其真实内容高度，逐项相加即可。
+        let content = 0;
+        let count = 0;
+        for (const child of root.children) {
+            if (child.tagName === "STYLE") continue;
+            const style = getComputedStyle(child);
+            content += child.offsetHeight
+                + parseFloat(style.marginTop || 0)
+                + parseFloat(style.marginBottom || 0);
+            count += 1;
+        }
         if (content <= 0) return userHeight;
-        return Math.max(MIN_NODE_HEIGHT + 120, Math.ceil(content) + 2);
+        if (count > 1) content += (count - 1) * 6; // flex gap 6px
+        return Math.max(MIN_NODE_HEIGHT + 120, Math.ceil(content) + 4);
     };
     function syncLayout(height = userHeight, writeNode = false) {
         if (layoutLock) return;
