@@ -412,6 +412,62 @@ function hideWidget(w) {
     w.hidden = true; w.options = w.options || {}; w.options.hidden = true;
     w.computeSize = () => [0, -4]; w.serialize = true;
 }
+/* AI 生成参数组（prompt_source + ai_*）：panel 模式下整组折叠为一行标题，
+   非 panel 时展开显示。折叠只是视觉收纳（computeSize 压 0），序列化不受影响。 */
+const AI_GROUP_WIDGETS = [
+    "ai_text", "ai_language", "ai_mode", "ai_enrich", "ai_soundscape", "ai_music",
+    "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability", "ai_no_subtitles",
+    "ai_anti_pop", "ai_strict_validation", "ai_provider", "ai_api_key",
+    "ai_endpoint", "ai_model", "ai_timeout",
+];
+function installAiGroupFold(node) {
+    const source = widget(node, "prompt_source");
+    const members = AI_GROUP_WIDGETS.map(name => widget(node, name)).filter(Boolean);
+    let header = null;
+    let expanded = null; // null=尚未交互，跟随 source 状态
+    // 首次收集时保存每个成员的原始 computeSize，之后折叠/展开只在这两者间切换，
+    // 避免把压扁后的 () => [0, -4] 误存为原始尺寸。
+    for (const w of members) w._h3OrigSizeFn = w.computeSize.bind(w);
+    function refresh() {
+        const showAi = source && source.value !== "panel";
+        const open = expanded === null ? showAi : expanded;
+        for (const w of members) w.computeSize = open ? w._h3OrigSizeFn : () => [0, -4];
+        if (header === null) {
+            header = make("div", {
+                width: "100%", height: "18px", lineHeight: "18px", fontSize: "11px",
+                color: "var(--descrip-text, #8899aa)", cursor: "pointer",
+                userSelect: "none", whiteSpace: "nowrap", overflow: "hidden",
+            });
+            header.addEventListener("click", () => {
+                expanded = !(expanded === null ? showAi : expanded);
+                refresh();
+            });
+            const firstWidget = source || members[0];
+            if (firstWidget) {
+                const index = node.widgets.indexOf(firstWidget);
+                node.widgets.splice(index, 0, header);
+            } else {
+                node.widgets.push(header);
+            }
+        }
+        const sourceLabel = source ? String(source.value) : "panel";
+        header.textContent = open
+            ? `▾ AI 生成设置（来源：${sourceLabel}；点击收起）`
+            : `▸ AI 生成设置（已收起；来源：${sourceLabel}）`;
+        node.setDirtyCanvas?.(true, true);
+        node.graph?.setDirtyCanvas?.(true, true);
+    }
+    if (source) {
+        source._h3OrigCallback = source.callback;
+        source.callback = function () {
+            source._h3OrigCallback?.apply(this, arguments);
+            // 来源切换后重置手动折叠状态：跟随新来源的默认行为（panel 折叠、其余展开）
+            expanded = null;
+            refresh();
+        };
+    }
+    refresh();
+}
 function make(tag, css = {}, text = "") {
     const el = document.createElement(tag); Object.assign(el.style, css);
     if (text) el.textContent = text; return el;
@@ -551,6 +607,7 @@ function createPanel(node) {
         "ref_image_size", "strict_prompt_tags", "gh_state_json",
         "no_subtitle", "soundscape", "music",
     ]) hideWidget(widget(node, name));
+    installAiGroupFold(node);
     // Old graphs may contain the literal string "(none)" in this hidden Int
     // input. Clean it before ComfyUI serializes/submits the prompt.
     sanitizeHiddenInputs(node);
