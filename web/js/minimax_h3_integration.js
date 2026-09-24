@@ -549,6 +549,9 @@ function createPanel(node) {
       .mxv-advanced>summary,.mxv-ai>summary{list-style:none;background:#22262c}
       .mxv-advanced>summary::-webkit-details-marker,.mxv-ai>summary::-webkit-details-marker{display:none}
       .mxv-advanced>summary:hover,.mxv-ai>summary:hover{background:#2a2f36}
+      .mxv-advanced:not([open])>.mxv-advanced-body,.mxv-ai:not([open])>.mxv-advanced-body{display:none!important}
+      .mxv-advanced[open]>.mxv-advanced-body,.mxv-ai[open]>.mxv-advanced-body{display:grid}
+
       .mxv-advanced[open]>summary,.mxv-ai[open]>summary{border-bottom:1px solid #383e46}
       .mxv-advanced>summary:before,.mxv-ai>summary:before{content:"";position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
       .mxv-advanced[open]>summary:before,.mxv-ai[open]>summary:before{transform:translateY(-50%) rotate(90deg)}
