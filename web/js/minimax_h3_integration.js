@@ -252,6 +252,7 @@ const DOM_TRANSLATIONS = {
     "Optimize": "优化", "LLM Prompt Optimization Configuration": "LLM提示词优化配置",
     "Provider": "平台", "API key": "API Key", "Read visual references": "读取视觉素材",
     "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
+    "Key shared with prompt optimizer": "与提示词优化器共享",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
@@ -1421,9 +1422,22 @@ function nodeColorToCss(value) {
     aiBody.appendChild(aiCredRow);
     const AI_CRED_ROWS = ["ai_provider", "ai_api_key", "ai_endpoint", "ai_model"];
     const providerLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
+    /* 共享钥匙串：与优化器配置共用同一份 per-provider API Key（一处填写，两处可用）。 */
+    const sharedKeychain = () => {
+        const keys = optimizerSettings?.api_keys;
+        return keys && typeof keys === "object" ? keys : {};
+    };
+    const getSharedKey = provider => String(sharedKeychain()[provider] || "").trim();
+    const setSharedKey = (provider, key) => {
+        if (!optimizerSettings) return;
+        optimizerSettings.api_keys = { ...(optimizerSettings.api_keys || {}), [provider]: key };
+        if (optimizerSettings.provider === provider) optimizerSettings.api_key = key;
+        persistState();
+    };
     const refreshAiCredSummary = () => {
         const provider = String(aiProvider.value || "deepseek");
-        const hasKey = String(widget(node, "ai_api_key")?.value || "").trim().length > 0;
+        const hasKey = String(widget(node, "ai_api_key")?.value || "").trim().length > 0
+            || getSharedKey(provider).length > 0;
         const model = String(widget(node, "ai_model")?.value || "").trim();
         aiCredSummary.textContent = `${providerLabels[provider] || provider} · ${hasKey ? t("Key saved") : t("Key missing")}${model ? ` · ${model}` : ""}`;
     };
@@ -1439,7 +1453,8 @@ function nodeColorToCss(value) {
         const keyInput = document.createElement("input"); keyInput.type = "password"; keyInput.className = "mxv-control";
         keyInput.style.width = "100%"; keyInput.style.boxSizing = "border-box";
         keyInput.placeholder = t("API key (cleared when sharing the workflow)");
-        keyInput.value = String(widget(node, "ai_api_key")?.value ?? "");
+        // Key 与优化器配置共享钥匙串：本平台已配过则直接带出，无需重复填写。
+        keyInput.value = String(widget(node, "ai_api_key")?.value ?? "").trim() || getSharedKey(providerSelect.value);
         row("API key", keyInput);
         const endpointInput = document.createElement("input"); endpointInput.type = "text"; endpointInput.className = "mxv-control";
         endpointInput.style.width = "100%"; endpointInput.style.boxSizing = "border-box";
@@ -1457,7 +1472,11 @@ function nodeColorToCss(value) {
             modelRow.closest("label").classList.toggle("mxv-opt-hidden", !custom);
         };
         syncCustom();
-        providerSelect.onchange = syncCustom;
+        providerSelect.onchange = () => {
+            syncCustom();
+            // 平台切换时跟随共享钥匙串：已配过的平台自动带出 Key。
+            keyInput.value = getSharedKey(providerSelect.value);
+        };
         const actions = make("div"); actions.className = "mxv-opt-actions";
         const cancelBtn = make("button", {}, t("Cancel")); cancelBtn.type = "button";
         const saveBtn = make("button", {}, t("Save")); saveBtn.type = "button";
@@ -1465,14 +1484,18 @@ function nodeColorToCss(value) {
         cancelBtn.onclick = () => overlay.remove();
         overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
         saveBtn.onclick = () => {
-            setWidget(node, "ai_provider", providerSelect.value);
-            aiProvider.value = providerSelect.value;
-            setWidget(node, "ai_api_key", keyInput.value.trim());
-            aiKey.value = keyInput.value.trim();
+            const provider = providerSelect.value;
+            const key = keyInput.value.trim();
+            setWidget(node, "ai_provider", provider);
+            aiProvider.value = provider;
+            setWidget(node, "ai_api_key", key);
+            aiKey.value = key;
             setWidget(node, "ai_endpoint", endpointInput.value.trim());
             aiEndpoint.value = endpointInput.value.trim();
             setWidget(node, "ai_model", modelInput.value.trim());
             aiModel.value = modelInput.value.trim();
+            // 写回共享钥匙串：优化器在同平台下无需再次填 Key。
+            setSharedKey(provider, key);
             refreshAiCredSummary();
             persistState();
             overlay.remove();
@@ -2456,7 +2479,17 @@ function nodeColorToCss(value) {
                 const body = { mode: mode.value, provider: provider.value, api_url: provider.value === "custom" ? url.value : preset?.url || url.value, model: selectedModel, protocol: provider.value === "custom" ? protocol.value : preset?.protocol || protocol.value, read_media: readMedia.checked, output_language: outputLanguage, local_model: localModel.value, local_mmproj: localMmproj.value, local_device: localDevice.value, max_tokens: Number(maxTokens.value), auto_optimize: autoOptimize.checked, api_keys: { ...providerApiKeys }, provider_models: { ...providerModels } };
                 body.api_key = key.value;
                 body.has_api_key = !!key.value;
-                optimizerSettings = body; refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
+                optimizerSettings = body;
+                // 共享钥匙串反向同步：优化器平台与 AI 生成平台一致时，Key 直接供生成使用，
+                // 用户只需在一处填写。ai_api_key 为空时才写入（不覆盖生成侧已填的专用 Key）。
+                if (providerApiKeys[provider.value]
+                    && String(widget(node, "ai_provider")?.value || "") === provider.value
+                    && !String(widget(node, "ai_api_key")?.value || "").trim()) {
+                    setWidget(node, "ai_api_key", providerApiKeys[provider.value]);
+                    aiKey.value = providerApiKeys[provider.value];
+                    refreshAiCredSummary();
+                }
+                refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
             document.body.append(overlay);
         }).catch(error => alert(error.message));
