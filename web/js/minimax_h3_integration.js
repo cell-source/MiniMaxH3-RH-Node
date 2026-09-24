@@ -11,7 +11,7 @@ const OPTIMIZER_ROUTE = "/rh/minimax-h3/prompt-optimizer";
 const WIDTH = 500;
 const PANEL_WIDTH = 476;
 const INITIAL_NODE_HEIGHT = 700; // 面板按完全展开内容高度设计，节点高度自适应内容
-const BOTTOM_DECOR_HEIGHT = 20; // ComfyUI dom-widget 容器渲染高度恒比 (nodeH - widgetY) 少 20px（节点底部装饰保留区）
+const BOTTOM_DECOR_HEIGHT = 20; // ComfyUI DOM widget 默认上下 margin 各 10px
 const MAX_RESTORED_NODE_HEIGHT = INITIAL_NODE_HEIGHT * 4;
 const MIN_NODE_HEIGHT = 0;
 const ASPECTS = {
@@ -1723,12 +1723,13 @@ function nodeColorToCss(value) {
         event.preventDefault();
         event.stopImmediatePropagation();
     }, true);
+    let measuredContentHeight = null;
     const measureContentHeight = () => {
         // 完全展开的自然内容高度。注意：ComfyUI 会在节点滚出视口时给 dom-widget
         // 容器设 display:none，此时所有测量值全为 0——必须保留上次已知高度，
         // 绝不能返回坍缩值，否则 node.setSize 会被锁死在最小高度上。
         const visible = root.offsetHeight > 0;
-        if (!visible) return userHeight;
+        if (!visible) return measuredContentHeight;
         // 逐项求和（不用 root.scrollHeight）：面板高度曾经被撑大后，scrollHeight
         // 在无溢出时等于分配高度（富余被 flex/grid 吸收），读数被污染导致高度
         // 永不回落（截图中高级选项下方的大片空白）。编辑器已改为文档流，
@@ -1738,14 +1739,19 @@ function nodeColorToCss(value) {
         for (const child of root.children) {
             if (child.tagName === "STYLE") continue;
             const style = getComputedStyle(child);
+            if (style.display === "none") continue;
             content += child.offsetHeight
                 + parseFloat(style.marginTop || 0)
                 + parseFloat(style.marginBottom || 0);
             count += 1;
         }
-        if (content <= 0) return userHeight;
-        if (count > 1) content += (count - 1) * 6; // flex gap 6px
-        return Math.max(MIN_NODE_HEIGHT + 120, Math.ceil(content) + 4);
+        if (content <= 0) return measuredContentHeight;
+        const rootStyle = getComputedStyle(root);
+        if (count > 1) content += (count - 1) * (parseFloat(rootStyle.rowGap) || 0);
+        content += parseFloat(rootStyle.paddingTop) || 0;
+        content += parseFloat(rootStyle.paddingBottom) || 0;
+        measuredContentHeight = Math.max(MIN_NODE_HEIGHT + 120, Math.ceil(content));
+        return measuredContentHeight;
     };
     function syncLayout(height = userHeight, writeNode = false) {
         if (layoutLock) return;
@@ -1753,28 +1759,42 @@ function nodeColorToCss(value) {
         try {
             // 面板按"完全展开"设计：节点高度 = 面板内容自然高度 + 面板顶部占位
             // （domWidget.y：标题栏 + 面板上方的原生 widget 行）+ 底部装饰补偿。
-            // 实测 ComfyUI 给 dom-widget 容器的实际渲染高度恒定比 (nodeH - widgetY)
-            // 少 20px（节点底部边框/缩放手柄保留区），这 20px 里放的面板内容会被
-            // 画布容器裁掉——因此 nodeH 必须多补 20px。
+            // ComfyUI updateWidgets 使用 computedHeight - margin * 2 分配容器，
+            // 默认 margin 为 10px；computedHeight 本身尚未扣除这 20px。
             const panelTop = Number(domWidget?.y);
             const content = measureContentHeight();
+            // Before the DOM widget is mounted there is no usable measurement.
+            // Keep the node size until the observer sees visible content.
+            if (content == null) return;
             const nextHeight = Number.isFinite(panelTop) && panelTop > 0
                 ? Math.ceil(panelTop + content) + BOTTOM_DECOR_HEIGHT
                 : content + BOTTOM_DECOR_HEIGHT;
             userHeight = nextHeight;
-            // 面板根的高度 = 容器将得到的高度（=内容高），提示词的 1fr 由此撑满。
+            // 根高度与内容高度一致，避免旧的固定高度裁掉最后一张卡片。
             root.style.height = `${content}px`;
             if ((writeNode || node.size?.[1] !== nextHeight) && (node.size?.[0] !== WIDTH || node.size?.[1] !== nextHeight)) {
                 node.setSize([WIDTH, nextHeight]);
             }
-            // The rich editor is absolutely bounded by promptWrap. Keeping an
-            // inline 100% height here would add the 22px toolbar once again and
-            // lets Nodes 2.0 include text content in the widget's measured size.
+            // The rich editor stays in normal flow so its content can grow.
             prompt.style.removeProperty("height");
             node.setDirtyCanvas(true, true);
         } finally {
             layoutLock = false;
         }
+    }
+    // Text edits, fonts and AI controls can change height after render().
+    // Observe the content, not just the fixed-height root; batch writes into
+    // the next frame to avoid ResizeObserver feedback during node resizing.
+    let layoutFrame = null;
+    const panelResizeObserver = new ResizeObserver(() => {
+        if (layoutFrame != null) return;
+        layoutFrame = requestAnimationFrame(() => {
+            layoutFrame = null;
+            syncLayout(false, true);
+        });
+    });
+    for (const element of [root, size, modes, promptWrap, aiDetails, advanced]) {
+        panelResizeObserver.observe(element);
     }
     const previousOnResize = node.onResize;
     node.onResize = function(...args) {
@@ -3646,6 +3666,8 @@ function nodeColorToCss(value) {
         closeActiveTrimEditor?.();
         decodedAudioCache.clear();
         promptHighlightResizeObserver.disconnect();
+        panelResizeObserver.disconnect();
+        if (layoutFrame != null) cancelAnimationFrame(layoutFrame);
         window.removeEventListener("dragenter", captureMaterialDrop, true);
         window.removeEventListener("dragover", captureMaterialDrop, true);
         window.removeEventListener("drop", captureMaterialDrop, true);
