@@ -253,6 +253,9 @@ const DOM_TRANSLATIONS = {
     "Provider": "平台", "API key": "API Key", "Read visual references": "读取视觉素材",
     "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
     "Key shared with prompt optimizer": "与提示词优化器共享",
+    "Generation provider": "生成平台", "Generation model": "生成模型", "Generation endpoint": "生成端点",
+    "Default: provider preset model": "留空使用平台预设模型",
+    "One place for both: optimize model powers \u2726 prompt polishing; generation model powers AI prompt generation at run time.": "一个入口配两个用途：优化模型供 \u2726 提示词润色；生成模型供运行时 AI 提示词生成。",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
@@ -2129,8 +2132,13 @@ function nodeColorToCss(value) {
         openrouter: { label: "OpenRouter", url: "https://openrouter.ai/api/v1", model: "google/gemini-2.5-flash", protocol: "openai" },
         dashscope: { label: "阿里云百炼", url: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-vl-max", protocol: "openai" },
         siliconflow: { label: "SiliconFlow", url: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-VL-72B-Instruct", protocol: "openai" },
+        deepseek: { label: "DeepSeek", url: "https://api.deepseek.com/chat/completions", model: "deepseek-flash", protocol: "openai" },
+        glm: { label: "GLM 智谱", url: "https://open.bigmodel.cn/api/paas/v4/chat/completions", model: "glm-5.3-flash", protocol: "openai" },
         custom: { label: t("Custom"), url: "", model: "", protocol: "openai" },
     };
+    // 生成模型（提示词生成/离线包装/整理）支持的文本平台：与 llm_client.PROVIDERS 对齐。
+    const generationProviders = ["custom", "dashscope", "deepseek", "glm", "openai", "openrouter", "siliconflow"];
+    const generationProviderLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
     const migrateProviderApiKeys = settings => {
         if (!settings) return settings;
         const provider = String(settings.provider || "runninghub").toLowerCase();
@@ -2243,10 +2251,37 @@ function nodeColorToCss(value) {
             const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
             const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
             const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
+            const purpose = make("div"); purpose.className = "mxv-opt-purpose";
+            purpose.textContent = t("One place for both: optimize model powers \u2726 prompt polishing; generation model powers AI prompt generation at run time.");
+            dialog.append(purpose);
             const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
             const provider = row("Provider", make("select"));
             for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
             provider.value = current.provider || "runninghub";
+            // 生成侧（工作流执行）：独立平台与模型，Key 与优化器共享钥匙串。
+            const genProvider = row("Generation provider", make("select"));
+            for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
+            const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
+            genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
+            const genModel = row("Generation model", make("input"), genProvider.value === "custom");
+            genModel.placeholder = t("model override");
+            genModel.value = String(widget(node, "ai_model")?.value ?? "");
+            const genEndpoint = row("Generation endpoint", make("input"), genProvider.value !== "custom");
+            genEndpoint.placeholder = t("endpoint override");
+            genEndpoint.value = String(widget(node, "ai_endpoint")?.value ?? "");
+            const syncGenRows = () => {
+                const custom = genProvider.value === "custom";
+                genModel.closest("label").classList.toggle("mxv-opt-custom", custom);
+                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
+                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
+                genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
+            };
+            syncGenRows();
+            genProvider.onchange = () => {
+                syncGenRows();
+                // 平台切换：Key 跟随共享钥匙串（与优化器同源）。
+                key.value = providerApiKeys[genProvider.value] || getSharedKey(genProvider.value) || key.value;
+            };
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
             const providerModels = { ...(current.provider_models || {}) };
@@ -2480,15 +2515,21 @@ function nodeColorToCss(value) {
                 body.api_key = key.value;
                 body.has_api_key = !!key.value;
                 optimizerSettings = body;
-                // 共享钥匙串反向同步：优化器平台与 AI 生成平台一致时，Key 直接供生成使用，
-                // 用户只需在一处填写。ai_api_key 为空时才写入（不覆盖生成侧已填的专用 Key）。
-                if (providerApiKeys[provider.value]
-                    && String(widget(node, "ai_provider")?.value || "") === provider.value
-                    && !String(widget(node, "ai_api_key")?.value || "").trim()) {
-                    setWidget(node, "ai_api_key", providerApiKeys[provider.value]);
-                    aiKey.value = providerApiKeys[provider.value];
-                    refreshAiCredSummary();
+                // ===== 生成侧写回：一个弹窗配好两个用途 =====
+                const genProviderValue = genProvider.value;
+                const genKey = key.value;
+                setWidget(node, "ai_provider", genProviderValue);
+                aiProvider.value = genProviderValue;
+                setWidget(node, "ai_model", genModel.value.trim());
+                aiModel.value = genModel.value.trim();
+                setWidget(node, "ai_endpoint", genEndpoint.value.trim());
+                aiEndpoint.value = genEndpoint.value.trim();
+                if (genKey) {
+                    setWidget(node, "ai_api_key", genKey);
+                    aiKey.value = genKey;
                 }
+                setSharedKey(genProviderValue, genKey);
+                refreshAiCredSummary();
                 refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
             document.body.append(overlay);
