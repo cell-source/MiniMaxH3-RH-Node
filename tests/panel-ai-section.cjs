@@ -54,7 +54,10 @@ check(js.includes('.mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:
 check(js.includes('border-left:3px solid #e8a33d'), 'prompt editor has amber accent bar');
 check(js.includes('.mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px'),
     'mode switcher is pill segmented style');
-check(js.includes('mxv-disclose'), 'accordion summaries have disclose arrow');
+check(js.includes('.mxv-advanced>summary:before,.mxv-ai>summary:before'), 'accordion summaries have CSS ::before arrow');
+check(!js.includes('mxv-disclose'), 'JS-injected arrow span removed (wiped by textContent updates)');
+check(js.includes('flex-shrink:0}'), 'accordion and panel children protected from flex shrinking');
+check(js.includes('root.className = "mxv-root"'), 'panel root has mxv-root class');
 check(!/position:absolute;left:8px;right:8px;bottom:6px/.test(js), 'no absolute overlay for advanced');
 
 /* 5b. 与 GHX 参考项目的指纹分离：不允许出现旧前缀与旧蓝系配色 */

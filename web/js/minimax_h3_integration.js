@@ -508,6 +508,7 @@ function createPanel(node) {
     // retained after the node returned to 500px, leaving the panel compressed
     // until a browser refresh or node rebuild.
     const root = make("div", { position: "relative", width: `${PANEL_WIDTH}px`, minWidth: `${PANEL_WIDTH}px`, boxSizing: "border-box", color: "#e8e6e1", fontFamily: "Arial,sans-serif", fontSize: "12px", userSelect: "none", padding: "3px 0 2px", overflow: "visible" });
+    root.className = "mxv-root";
     Object.assign(root.style, {
         display: "flex",
         flexFlow: "column",
@@ -541,15 +542,14 @@ function createPanel(node) {
       .mxv-details>summary::-webkit-details-marker{display:none}
       .mxv-details>summary:hover{background:#2a2f36}
       .mxv-details[open]>summary{border-bottom-color:#383e46}
-      .mxv-disclose{position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%) rotate(0);transition:transform .12s}
-      .mxv-details[open]>.mxv-disclose,.mxv-details[open]>summary .mxv-disclose{transform:translateY(-50%) rotate(90deg)}
+      .mxv-root>.mxv-size,.mxv-root>.mxv-modes,.mxv-root>.mxv-box,.mxv-root>.mxv-prompt-wrap,.mxv-advanced,.mxv-ai{flex-shrink:0}
       .mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
       .mxv-advanced>summary,.mxv-ai>summary{list-style:none;background:#22262c}
       .mxv-advanced>summary::-webkit-details-marker,.mxv-ai>summary::-webkit-details-marker{display:none}
       .mxv-advanced>summary:hover,.mxv-ai>summary:hover{background:#2a2f36}
       .mxv-advanced[open]>summary,.mxv-ai[open]>summary{border-bottom:1px solid #383e46}
-      .mxv-advanced>summary .mxv-disclose,.mxv-ai>summary .mxv-disclose{position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
-      .mxv-advanced[open]>summary .mxv-disclose,.mxv-ai[open]>summary .mxv-disclose{transform:translateY(-50%) rotate(90deg)}
+      .mxv-advanced>summary:before,.mxv-ai>summary:before{content:"";position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
+      .mxv-advanced[open]>summary:before,.mxv-ai[open]>summary:before{transform:translateY(-50%) rotate(90deg)}
     `;
     // Shared control states also apply to dialogs mounted outside the panel.
     style.textContent += `
@@ -1068,7 +1068,6 @@ function createPanel(node) {
     let wheelBoundaryReleased = false;
     const advanced = make("details"); advanced.className = "mxv-advanced";
     const advancedSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 8px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("Advanced options"));
-    advancedSummary.insertAdjacentHTML("afterbegin", '<span class="mxv-disclose" aria-hidden="true"></span>');
     advanced.appendChild(advancedSummary);
     const advancedBody = make("div", { display: "grid", gap: "5px", padding: "5px 16px 8px" }); advancedBody.className = "mxv-advanced-body";
     advanced.appendChild(advancedBody);
@@ -1340,7 +1339,6 @@ function nodeColorToCss(value) {
     /* ===== AI 生成区块：接管隐藏的 prompt_source/ai_* widget（与隐藏列表一一对应）===== */
     const aiDetails = make("details"); aiDetails.className = "mxv-advanced mxv-ai";
     const aiSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 7px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("AI generation"));
-    aiSummary.insertAdjacentHTML("afterbegin", '<span class="mxv-disclose" aria-hidden="true"></span>');
     aiDetails.appendChild(aiSummary);
     const aiBody = make("div", { display: "grid", gap: "5px", padding: "5px 12px 8px" }); aiBody.className = "mxv-advanced-body";
     aiDetails.appendChild(aiBody);
