@@ -412,66 +412,18 @@ function hideWidget(w) {
     w.hidden = true; w.options = w.options || {}; w.options.hidden = true;
     w.computeSize = () => [0, -4]; w.serialize = true;
 }
-/* AI 生成参数组（prompt_source + ai_*）：panel 模式下整组折叠为一行标题，
-   非 panel 时展开显示。折叠只是视觉收纳（computeSize 压 0），序列化不受影响。 */
+/* AI 生成参数组（prompt_source + ai_*）：不渲染为节点体原生 widget（新版前端的
+   widget 渲染不走 computeSize，折叠不可靠），全部隐藏并由 DOM 面板内的
+   「AI 生成」区块接管 UI；控件值仍由这些 widget 承载并随工作流序列化。 */
 const AI_GROUP_WIDGETS = [
+    "prompt_source",
     "ai_text", "ai_language", "ai_mode", "ai_enrich", "ai_soundscape", "ai_music",
     "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability", "ai_no_subtitles",
     "ai_anti_pop", "ai_strict_validation", "ai_provider", "ai_api_key",
     "ai_endpoint", "ai_model", "ai_timeout",
 ];
-function installAiGroupFold(node) {
-    const source = widget(node, "prompt_source");
-    const members = AI_GROUP_WIDGETS.map(name => widget(node, name)).filter(Boolean);
-    let header = null;
-    let expanded = null; // null=尚未交互，跟随 source 状态
-    // 首次收集时保存每个成员的原始 computeSize，之后折叠/展开只在这两者间切换，
-    // 避免把压扁后的 () => [0, -4] 误存为原始尺寸。
-    // 某些被前端转换过的 widget（如 combo→DOM）没有 computeSize，跳过即可。
-    for (const w of members) {
-        if (typeof w.computeSize === "function") w._h3OrigSizeFn = w.computeSize.bind(w);
-    }
-    function refresh() {
-        const showAi = source && source.value !== "panel";
-        const open = expanded === null ? showAi : expanded;
-        for (const w of members) {
-            if (w._h3OrigSizeFn) w.computeSize = open ? w._h3OrigSizeFn : () => [0, -4];
-        }
-        if (header === null) {
-            header = make("div", {
-                width: "100%", height: "18px", lineHeight: "18px", fontSize: "11px",
-                color: "var(--descrip-text, #8899aa)", cursor: "pointer",
-                userSelect: "none", whiteSpace: "nowrap", overflow: "hidden",
-            });
-            header.addEventListener("click", () => {
-                expanded = !(expanded === null ? showAi : expanded);
-                refresh();
-            });
-            const firstWidget = source || members[0];
-            if (firstWidget) {
-                const index = node.widgets.indexOf(firstWidget);
-                node.widgets.splice(index, 0, header);
-            } else {
-                node.widgets.push(header);
-            }
-        }
-        const sourceLabel = source ? String(source.value) : "panel";
-        header.textContent = open
-            ? `▾ AI 生成设置（来源：${sourceLabel}；点击收起）`
-            : `▸ AI 生成设置（已收起；来源：${sourceLabel}）`;
-        node.setDirtyCanvas?.(true, true);
-        node.graph?.setDirtyCanvas?.(true, true);
-    }
-    if (source) {
-        source._h3OrigCallback = source.callback;
-        source.callback = function () {
-            source._h3OrigCallback?.apply(this, arguments);
-            // 来源切换后重置手动折叠状态：跟随新来源的默认行为（panel 折叠、其余展开）
-            expanded = null;
-            refresh();
-        };
-    }
-    refresh();
+function hideAiGroupWidgets(node) {
+    for (const name of AI_GROUP_WIDGETS) hideWidget(widget(node, name));
 }
 function make(tag, css = {}, text = "") {
     const el = document.createElement(tag); Object.assign(el.style, css);
@@ -522,7 +474,7 @@ function createPanel(node) {
       .ghh3-box{border:1px solid #334a5d;border-radius:8px;padding:7px;margin:0 0 6px;background:#111c27}.ghh3-title{font-size:12px;color:#edf5fb;margin-bottom:3px}.ghh3-hint{font-size:10px;color:#8697a7;line-height:1.3}
       .ghh3-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.ghh3-drop{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#08b4ed;cursor:pointer;border:1px dashed #2c5368;border-radius:6px;background:#101b26;padding:4px;box-sizing:border-box}.ghh3-drop:hover{border-color:#0aa4d6;background:#142633}.ghh3-reference-empty{grid-column:1/-1;width:100%;aspect-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.ghh3-reference-empty .ghh3-drop-icon{font-size:14px;margin:0 7px 0 0}.ghh3-reference-empty .ghh3-drop-title{font-size:12px}.ghh3-reference-empty .ghh3-drop-subtitle{font-size:9px;margin-top:8px}.ghh3-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#08b4ed;font-family:Arial,sans-serif}.ghh3-drop-title{font-size:10px;line-height:1.2;color:#d9e8f2}.ghh3-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.ghh3-optional{color:#416d86;font-size:.82em;line-height:1.2;position:relative;top:-1px}.ghh3-audio-drop .ghh3-optional{top:-2px}.ghh3-drop-subtitle{font-size:8px;line-height:1.25;color:#8697a7;margin-top:3px}.ghh3-limit{grid-column:1/-1;color:#d47d8b;font-size:9px;padding:2px 3px 0;text-align:left}
       .ghh3-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.ghh3-keygrid .ghh3-drop{aspect-ratio:16/9}.ghh3-keygrid .ghh3-drop:not(.ghh3-audio-drop) .ghh3-drop-subtitle{font-size:7px;color:#667887}.ghh3-keygrid .ghh3-audio-card,.ghh3-keygrid .ghh3-audio-drop{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:3px}
-      .ghh3-card{min-width:0;aspect-ratio:1;border:1px solid #30485c;border-radius:6px;background:#1a2938;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.ghh3-card.ghh3-reorder-source{opacity:.68;cursor:grabbing}.ghh3-card.ghh3-reorder-target{border-color:#18bdd3;box-shadow:0 0 0 2px rgba(24,189,211,.48) inset}.ghh3-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(11,27,35,.72);color:#d8f4f6;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(117,209,218,.6)}.ghh3-card.ghh3-reorder-source .ghh3-reorder-indicator{display:flex}.ghh3-card img,.ghh3-card video{display:block;width:100%;height:100%;object-fit:cover;background:#071018}.ghh3-card:hover img,.ghh3-card:hover video{object-fit:contain}.ghh3-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(10,20,30,.6);font-size:7px;line-height:1.15}.ghh3-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d3e0ea;cursor:pointer;font-size:11px;z-index:3}.ghh3-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.ghh3-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(34,52,65,.52)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.ghh3-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.ghh3-media-time{margin-left:auto}.ghh3-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.ghh3-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.ghh3-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1d2731;color:#e1e9ef;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#1f3540 transparent}.ghh3-prompt::placeholder{color:#52616d;opacity:1}.ghh3-prompt::-webkit-scrollbar{width:5px}.ghh3-prompt::-webkit-scrollbar-track{background:transparent}.ghh3-prompt::-webkit-scrollbar-thumb{background:#1f3540;border-radius:3px}.ghh3-prompt::-webkit-scrollbar-thumb:hover{background:#294955}.ghh3-advanced{position:absolute;left:8px;right:8px;bottom:6px;z-index:50;display:flex;flex-direction:column-reverse;height:auto;min-height:0;margin:0;padding:0;box-sizing:border-box;user-select:none;overflow:visible;background:transparent;border:1px solid #2d4255;border-radius:9px;box-shadow:0 2px 10px rgba(4,12,18,.42)}.ghh3-advanced>summary{background:rgba(20,32,44,.92)!important;padding-left:12px;padding-right:12px;border-radius:8px 8px 0 0;list-style:none}.ghh3-advanced>summary::-webkit-details-marker{display:none}.ghh3-advanced>summary:before{content:"▸ ";color:#5d7688}.ghh3-advanced[open]>summary:before{content:"▾ "}.ghh3-advanced .ghh3-advanced-body{background:rgba(20,32,44,.94)!important;padding-left:12px;padding-right:12px;border-radius:0 0 8px 8px}.ghh3-advanced[open]{background:transparent;border:1px solid #2d4255;border-radius:9px;box-sizing:border-box;box-shadow:0 2px 10px rgba(4,12,18,.42)}.ghh3-size{color:#0db5e8;font-size:12px;padding:2px 0 4px}
+      .ghh3-card{min-width:0;aspect-ratio:1;border:1px solid #30485c;border-radius:6px;background:#1a2938;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.ghh3-card.ghh3-reorder-source{opacity:.68;cursor:grabbing}.ghh3-card.ghh3-reorder-target{border-color:#18bdd3;box-shadow:0 0 0 2px rgba(24,189,211,.48) inset}.ghh3-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(11,27,35,.72);color:#d8f4f6;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(117,209,218,.6)}.ghh3-card.ghh3-reorder-source .ghh3-reorder-indicator{display:flex}.ghh3-card img,.ghh3-card video{display:block;width:100%;height:100%;object-fit:cover;background:#071018}.ghh3-card:hover img,.ghh3-card:hover video{object-fit:contain}.ghh3-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(10,20,30,.6);font-size:7px;line-height:1.15}.ghh3-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d3e0ea;cursor:pointer;font-size:11px;z-index:3}.ghh3-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.ghh3-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(34,52,65,.52)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.ghh3-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.ghh3-media-time{margin-left:auto}.ghh3-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.ghh3-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.ghh3-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1d2731;color:#e1e9ef;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#1f3540 transparent}.ghh3-prompt::placeholder{color:#52616d;opacity:1}.ghh3-prompt::-webkit-scrollbar{width:5px}.ghh3-prompt::-webkit-scrollbar-track{background:transparent}.ghh3-prompt::-webkit-scrollbar-thumb{background:#1f3540;border-radius:3px}.ghh3-prompt::-webkit-scrollbar-thumb:hover{background:#294955}.ghh3-advanced{position:relative;left:auto;right:auto;top:auto;bottom:auto;z-index:auto;display:flex;flex-direction:column;height:auto;min-height:0;margin:6px 4px 2px;padding:0;box-sizing:border-box;user-select:none;overflow:visible;background:rgba(20,32,44,.55);border:1px solid #2d4255;border-radius:9px;box-shadow:none}.ghh3-advanced>summary{background:transparent!important;padding-left:12px;padding-right:12px;border-radius:8px;list-style:none;min-height:26px}.ghh3-advanced>summary::-webkit-details-marker{display:none}.ghh3-advanced>summary:before{content:"▸ ";color:#5d7688}.ghh3-advanced[open]>summary:before{content:"▾ "}.ghh3-advanced .ghh3-advanced-body{background:transparent!important;padding-left:12px;padding-right:12px;border-radius:0 0 8px 8px}.ghh3-advanced[open]{background:rgba(20,32,44,.55);border:1px solid #2d4255;border-radius:9px;box-sizing:border-box;box-shadow:none}.ghh3-size{color:#0db5e8;font-size:12px;padding:2px 0 4px}
       .ghh3-size{display:flex;justify-content:space-between;align-items:center;color:#0db5e8;font-size:12px;padding:2px 3px 5px}.ghh3-task{white-space:nowrap}.ghh3-dimensions{white-space:nowrap;text-align:right}.ghh3-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) 220px;align-items:center;gap:8px;min-height:30px}.ghh3-advanced-row>label{text-align:left;color:#aebdca}.ghh3-control{width:220px;justify-self:end;box-sizing:border-box;background:#182633;color:#dbe8f1;border:1px solid #354b5d;border-radius:4px;padding:5px}.ghh3-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.ghh3-number button{border:1px solid #354b5d;background:#182633;color:#c7d8e4;font-size:10px;padding:0;cursor:pointer}.ghh3-number button:first-child{border-radius:4px 0 0 4px}.ghh3-number button:last-child{border-radius:0 4px 4px 0}.ghh3-number input{width:100%;min-width:0;border:1px solid #354b5d;border-left:0;border-right:0;border-radius:0;background:#182633;color:#dbe8f1;padding:5px;box-sizing:border-box}.ghh3-number input::-webkit-inner-spin-button,.ghh3-number input::-webkit-outer-spin-button{appearance:none;margin:0}.ghh3-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.ghh3-toggle input{opacity:0;width:0;height:0}.ghh3-toggle span{position:absolute;inset:0;border-radius:12px;background:#39434d;border:1px solid #52616d;transition:.15s}.ghh3-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#c3cbd1;transition:.15s}.ghh3-toggle input:checked+span{background:#0aa4d6;border-color:#0aa4d6}.ghh3-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
       .ghh3-drop-title-row .ghh3-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
       .ghh3-audio-drop .ghh3-drop-icon{font-size:14px;line-height:1;height:1.2em}
@@ -611,8 +563,8 @@ function createPanel(node) {
         "drive_audio_ordinal",
         "ref_image_size", "strict_prompt_tags", "gh_state_json",
         "no_subtitle", "soundscape", "music",
+        ...AI_GROUP_WIDGETS,
     ]) hideWidget(widget(node, name));
-    installAiGroupFold(node);
     // Old graphs may contain the literal string "(none)" in this hidden Int
     // input. Clean it before ComfyUI serializes/submits the prompt.
     sanitizeHiddenInputs(node);
@@ -1069,9 +1021,6 @@ function nodeColorToCss(value) {
         if (!force && color === root.dataset.ghh3NodeBg) return;
         root.dataset.ghh3NodeBg = color;
         root.style.setProperty("--ghh3-node-bg", color);
-        advanced.style.setProperty("background-color", color, "important");
-        advancedSummary.style.setProperty("background-color", color, "important");
-        advancedBody.style.setProperty("background-color", color, "important");
     }
     syncAdvancedBackground(true);
     const advancedLabels = new Map();
@@ -1284,7 +1233,105 @@ function nodeColorToCss(value) {
     // the UI after a real settings change, but no periodic polling is needed.
     window.addEventListener("storage", applyLocale);
     advanced.addEventListener("toggle", () => { persistState(); });
-    root.appendChild(promptWrap); root.appendChild(advanced);
+    root.appendChild(promptWrap);
+    /* ===== AI 生成区块：接管隐藏的 prompt_source/ai_* widget（与隐藏列表一一对应）===== */
+    const aiDetails = make("details"); aiDetails.className = "ghh3-advanced ghh3-ai";
+    const aiSummary = make("summary", { cursor: "pointer", color: "#a9bac8", padding: "7px 12px 7px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box" }, t("AI generation"));
+    aiDetails.appendChild(aiSummary);
+    const aiBody = make("div", { display: "grid", gap: "5px", padding: "5px 12px 8px" }); aiBody.className = "ghh3-advanced-body";
+    aiDetails.appendChild(aiBody);
+    const aiRows = new Map();
+    const addAi = (name, label, control) => {
+        const row = make("div"); row.className = "ghh3-advanced-row";
+        const labelEl = make("label", {}, label); labelEl.dataset.ghh3Translation = label;
+        row.appendChild(labelEl); row.appendChild(control);
+        aiBody.appendChild(row); aiRows.set(name, row);
+    };
+    const aiSelect = (name, values) => {
+        const s = document.createElement("select"); s.className = "ghh3-control";
+        s.replaceChildren(...values.map(v => new Option(t(v), v)));
+        s.value = String(widget(node, name)?.value ?? values[0]);
+        s.onchange = () => setWidget(node, name, s.value);
+        return s;
+    };
+    const aiCheck = (name) => {
+        const label = make("label"); label.className = "ghh3-toggle";
+        const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value;
+        const track = make("span"); c.onchange = () => setWidget(node, name, c.checked);
+        label.append(c, track); return label;
+    };
+    const aiText = document.createElement("textarea"); aiText.className = "ghh3-control";
+    aiText.rows = 3; aiText.placeholder = t("Idea / prompt to rewrite");
+    aiText.style.width = "100%"; aiText.style.boxSizing = "border-box"; aiText.style.resize = "vertical";
+    aiText.value = String(widget(node, "ai_text")?.value ?? "");
+    aiText.oninput = () => setWidget(node, "ai_text", aiText.value);
+    const aiKey = document.createElement("input"); aiKey.className = "ghh3-control"; aiKey.type = "password";
+    aiKey.style.width = "100%"; aiKey.style.boxSizing = "border-box";
+    aiKey.placeholder = t("API key (cleared when sharing the workflow)");
+    aiKey.value = String(widget(node, "ai_api_key")?.value ?? "");
+    aiKey.oninput = () => setWidget(node, "ai_api_key", aiKey.value);
+    const aiSource = aiSelect("prompt_source", ["panel", "ai", "offline", "format"]);
+    const AI_PROVIDERS = ["custom", "dashscope", "deepseek", "glm", "openai", "openrouter", "siliconflow"]; // keep in sync with llm_client.PROVIDERS
+    const aiProvider = aiSelect("ai_provider", AI_PROVIDERS);
+    const aiLanguage = aiSelect("ai_language", ["zh", "mixed", "en"]);
+    const aiMode = aiSelect("ai_mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]);
+    const aiEndpoint = document.createElement("input"); aiEndpoint.className = "ghh3-control"; aiEndpoint.type = "text";
+    aiEndpoint.style.width = "100%"; aiEndpoint.style.boxSizing = "border-box";
+    aiEndpoint.placeholder = t("endpoint override");
+    aiEndpoint.value = String(widget(node, "ai_endpoint")?.value ?? "");
+    aiEndpoint.oninput = () => setWidget(node, "ai_endpoint", aiEndpoint.value);
+    const aiModel = document.createElement("input"); aiModel.className = "ghh3-control"; aiModel.type = "text";
+    aiModel.style.width = "100%"; aiModel.style.boxSizing = "border-box";
+    aiModel.placeholder = t("model override");
+    aiModel.value = String(widget(node, "ai_model")?.value ?? "");
+    aiModel.oninput = () => setWidget(node, "ai_model", aiModel.value);
+    addAi("prompt_source", t("Source"), aiSource);
+    addAi("ai_text", t("Idea / prompt to rewrite"), aiText);
+    addAi("ai_language", t("Output language"), aiLanguage);
+    addAi("ai_mode", t("H3 mode"), aiMode);
+    addAi("ai_provider", t("Provider"), aiProvider);
+    addAi("ai_api_key", t("API key"), aiKey);
+    const aiEndpointRow = make("div"); aiEndpointRow.className = "ghh3-advanced-row";
+    aiEndpointRow.appendChild(make("label", {}, t("Endpoint override")));
+    aiEndpointRow.appendChild(aiEndpoint); aiBody.appendChild(aiEndpointRow);
+    const aiModelRow = make("div"); aiModelRow.className = "ghh3-advanced-row";
+    aiModelRow.appendChild(make("label", {}, t("Model override")));
+    aiModelRow.appendChild(aiModel); aiBody.appendChild(aiModelRow);
+    addAi("ai_enrich", t("Bounded enrichment"), aiCheck("ai_enrich"));
+    addAi("ai_soundscape", t("Soundscape"), aiCheck("ai_soundscape"));
+    addAi("ai_music", t("Music"), aiCheck("ai_music"));
+    addAi("ai_auto_timestamps", t("Auto timestamps"), aiCheck("ai_auto_timestamps"));
+    addAi("ai_fixed_camera", t("Fixed camera"), aiCheck("ai_fixed_camera"));
+    addAi("ai_visual_stability", t("Visual stability"), aiCheck("ai_visual_stability"));
+    addAi("ai_no_subtitles", t("No-subtitle constraint"), aiCheck("ai_no_subtitles"));
+    addAi("ai_anti_pop", t("Anti-pop inline dialogue"), aiCheck("ai_anti_pop"));
+    addAi("ai_strict_validation", t("Strict validation"), aiCheck("ai_strict_validation"));
+    /* 来源联动：panel 时 ai_text 及全部生成参数仅保留来源可见（隐藏其余行）；
+       custom 供应商才显示端点/模型覆盖；Key 行仅在 ai 来源显示。 */
+    const aiPanelRows = ["ai_text", "ai_language", "ai_mode", "ai_provider", "ai_api_key",
+        "ai_endpoint", "ai_model", "ai_enrich", "ai_soundscape", "ai_music",
+        "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability",
+        "ai_no_subtitles", "ai_anti_pop", "ai_strict_validation"];
+    const syncAiRows = () => {
+        const source = String(aiSource.value || "panel");
+        for (const name of aiPanelRows) {
+            const row = aiRows.get(name);
+            if (!row) continue;
+            let show = source !== "panel";
+            if (name === "ai_api_key" || name === "ai_endpoint" || name === "ai_model") {
+                show = source === "ai" && (name !== "ai_api_key" || aiProvider.value === "custom" ? true : name === "ai_api_key");
+                if (name === "ai_endpoint" || name === "ai_model") show = source === "ai" && aiProvider.value === "custom";
+            }
+            row.style.display = show ? "" : "none";
+        }
+        // 面板提示词编辑器与 AI 输入的分工提示
+        aiSummary.textContent = `${t("AI generation")} — ${t("Source")}: ${t(source)}`;
+    };
+    aiSource.onchange = () => { setWidget(node, "prompt_source", aiSource.value); syncAiRows(); };
+    aiProvider.onchange = () => { setWidget(node, "ai_provider", aiProvider.value); syncAiRows(); };
+    syncAiRows();
+    root.appendChild(aiDetails);
+    root.appendChild(advanced);
     const commitPromptEditorInput = () => {
         const keepFocus = document.activeElement === prompt || prompt.dataset.ghh3Editing === "1";
         promptPlainText = editorText();
