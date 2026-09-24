@@ -63,11 +63,11 @@ let promptKeyShieldInstalled = false;
 function promptEditorFromEvent(event) {
     const path = event?.composedPath?.() || [];
     for (const item of path) {
-        if (item?.classList?.contains?.("ghh3-prompt") && livePromptEditors.has(item)) return item;
+        if (item?.classList?.contains?.("mxv-prompt") && livePromptEditors.has(item)) return item;
     }
     const active = document.activeElement;
     if (active && livePromptEditors.has(active)) return active;
-    const closest = active?.closest?.(".ghh3-prompt");
+    const closest = active?.closest?.(".mxv-prompt");
     if (closest && livePromptEditors.has(closest)) return closest;
     // If focus intentionally moved to another form control (for example by
     // Tab), do not pull it back into the prompt. The RH workaround is only
@@ -78,15 +78,15 @@ function promptEditorFromEvent(event) {
         if (editable) return null;
     }
     for (const editor of livePromptEditors) {
-        if (editor.dataset.ghh3Editing === "1") return editor;
+        if (editor.dataset.mxvEditing === "1") return editor;
     }
     return null;
 }
 
 function markPromptEditor(editor, editing) {
     if (!editor) return;
-    if (editing) editor.dataset.ghh3Editing = "1";
-    else delete editor.dataset.ghh3Editing;
+    if (editing) editor.dataset.mxvEditing = "1";
+    else delete editor.dataset.mxvEditing;
 }
 
 function applyStolenPromptKey(editor, event) {
@@ -111,10 +111,10 @@ function applyStolenPromptKey(editor, event) {
 
 function patchLiteGraphPromptProcessKey() {
     const proto = globalThis.LGraphCanvas?.prototype;
-    if (!proto || proto.__ghh3PromptKeyPatched || typeof proto.processKey !== "function") return;
-    proto.__ghh3PromptKeyPatched = true;
+    if (!proto || proto.__mxvPromptKeyPatched || typeof proto.processKey !== "function") return;
+    proto.__mxvPromptKeyPatched = true;
     const original = proto.processKey;
-    proto.processKey = function processKeyGhh3PromptShield(event) {
+    proto.processKey = function processKeyMxvShield(event) {
         if (promptEditorFromEvent(event)) return;
         return original.apply(this, arguments);
     };
@@ -158,7 +158,7 @@ function registerPromptEditor(editor) {
 function unregisterPromptEditor(editor) {
     if (!editor) return;
     livePromptEditors.delete(editor);
-    delete editor.dataset.ghh3Editing;
+    delete editor.dataset.mxvEditing;
 }
 
 const DOM_TRANSLATIONS = {
@@ -353,11 +353,11 @@ function normalizeAspectWidget(node) {
     const normalized = aspectInternalValue(control.value);
     if (!ASPECT_INTERNAL_VALUES.includes(normalized)) return;
     if (control.value !== normalized) control.value = normalized;
-    control._ghH3AspectInternalValue = normalized;
+    control._mxvAspectInternal = normalized;
 }
 function installAspectDisplay(node) {
     const control = widget(node, "aspect");
-    if (!control || control._ghH3AspectDisplayWrapped || typeof control.draw !== "function") return;
+    if (!control || control._mxvAspectWrapped || typeof control.draw !== "function") return;
     const originalDraw = control.draw;
     control.draw = function(ctx, nodeRef, width, y, height) {
         const savedValue = this.value;
@@ -374,12 +374,12 @@ function installAspectDisplay(node) {
             if (this.options && Array.isArray(savedValues)) this.options.values = savedValues;
         }
     };
-    control._ghH3AspectDisplayWrapped = true;
+    control._mxvAspectWrapped = true;
 }
 function drawAspectDisplayOverlay(node, ctx) {
     if (!isChineseLocale()) return;
     const control = widget(node, "aspect");
-    if (!control || control.value !== "adaptive" || control === node.__ghH3ActiveWidget) return;
+    if (!control || control.value !== "adaptive" || control === node.__mxvActiveWidget) return;
     const y = Number(control.y);
     const height = Number(control.height) || 30;
     const width = Number(node.size?.[0]) || 0;
@@ -387,9 +387,9 @@ function drawAspectDisplayOverlay(node, ctx) {
     const left = 34;
     const right = width - 34;
     ctx.save();
-    ctx.fillStyle = node.bgcolor || "#252a34";
+    ctx.fillStyle = node.bgcolor || "#1b1e23";
     ctx.fillRect(left, y + 2, Math.max(0, right - left), Math.max(0, height - 4));
-    ctx.fillStyle = "#e4e8ed";
+    ctx.fillStyle = "#e8e6e1";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.font = `${Math.max(12, Math.round(height * 0.55))}px Arial,sans-serif`;
@@ -507,7 +507,7 @@ function createPanel(node) {
     // briefly report a narrower DOM-widget wrapper. That transient width was
     // retained after the node returned to 500px, leaving the panel compressed
     // until a browser refresh or node rebuild.
-    const root = make("div", { position: "relative", width: `${PANEL_WIDTH}px`, minWidth: `${PANEL_WIDTH}px`, boxSizing: "border-box", color: "#d7e3ef", fontFamily: "Arial,sans-serif", fontSize: "12px", userSelect: "none", padding: "3px 0 2px", overflow: "visible" });
+    const root = make("div", { position: "relative", width: `${PANEL_WIDTH}px`, minWidth: `${PANEL_WIDTH}px`, boxSizing: "border-box", color: "#e8e6e1", fontFamily: "Arial,sans-serif", fontSize: "12px", userSelect: "none", padding: "3px 0 2px", overflow: "visible" });
     Object.assign(root.style, {
         display: "flex",
         flexFlow: "column",
@@ -520,53 +520,67 @@ function createPanel(node) {
     });
     const style = make("style");
     style.textContent = `
-      .ghh3-modes{display:grid;grid-template-columns:1fr 1fr;border:1px solid #334a5d;border-radius:9px;overflow:hidden;margin:3px 0 6px}
-      .ghh3-mode{height:30px;border:0;background:#111c27;color:#e1e9ef;font-size:13px;cursor:pointer}.ghh3-mode.active{background:#0aa4d6;color:#06131b;font-weight:600}
-      .ghh3-box{border:1px solid #334a5d;border-radius:8px;padding:7px;margin:0 0 6px;background:#111c27}.ghh3-title{font-size:12px;color:#edf5fb;margin-bottom:3px}.ghh3-hint{font-size:10px;color:#8697a7;line-height:1.3}
-      .ghh3-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.ghh3-drop{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#aebdca;cursor:pointer;border:1px dashed #334a5d;border-radius:6px;background:#111c27;padding:4px;box-sizing:border-box}.ghh3-drop:hover{border-color:#0aa4d6;background:#24384a}.ghh3-reference-empty{grid-column:1/-1;width:100%;aspect-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.ghh3-reference-empty .ghh3-drop-icon{font-size:14px;margin:0 7px 0 0}.ghh3-reference-empty .ghh3-drop-title{font-size:12px}.ghh3-reference-empty .ghh3-drop-subtitle{font-size:9px;margin-top:8px}.ghh3-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#08b4ed;font-family:Arial,sans-serif}.ghh3-drop-title{font-size:10px;line-height:1.2;color:#d9e8f2}.ghh3-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.ghh3-optional{color:#416d86;font-size:.82em;line-height:1.2;position:relative;top:-1px}.ghh3-audio-drop .ghh3-optional{top:-2px}.ghh3-drop-subtitle{font-size:8px;line-height:1.25;color:#8697a7;margin-top:3px}.ghh3-limit{grid-column:1/-1;color:#d47d8b;font-size:9px;padding:2px 3px 0;text-align:left}
-      .ghh3-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.ghh3-keygrid .ghh3-drop{aspect-ratio:16/9}.ghh3-keygrid .ghh3-drop:not(.ghh3-audio-drop) .ghh3-drop-subtitle{font-size:7px;color:#667887}.ghh3-keygrid .ghh3-audio-card,.ghh3-keygrid .ghh3-audio-drop{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:3px}
-      .ghh3-card{min-width:0;aspect-ratio:1;border:1px solid #334a5d;border-radius:6px;background:#111c27;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.ghh3-card.ghh3-reorder-source{opacity:.68;cursor:grabbing}.ghh3-card.ghh3-reorder-target{border-color:#18bdd3;box-shadow:0 0 0 2px rgba(24,189,211,.48) inset}.ghh3-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(11,27,35,.72);color:#d8f4f6;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(117,209,218,.6)}.ghh3-card.ghh3-reorder-source .ghh3-reorder-indicator{display:flex}.ghh3-card img,.ghh3-card video{display:block;width:100%;height:100%;object-fit:cover;background:#071018}.ghh3-card:hover img,.ghh3-card:hover video{object-fit:contain}.ghh3-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(10,20,30,.6);font-size:7px;line-height:1.15}.ghh3-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d3e0ea;cursor:pointer;font-size:11px;z-index:3}.ghh3-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.ghh3-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(34,52,65,.52)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.ghh3-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.ghh3-media-time{margin-left:auto}.ghh3-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.ghh3-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.ghh3-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#111c27;color:#e1e9ef;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#24384a transparent}.ghh3-prompt::placeholder{color:#52616d;opacity:1}.ghh3-prompt::-webkit-scrollbar{width:5px}.ghh3-prompt::-webkit-scrollbar-track{background:transparent}.ghh3-prompt::-webkit-scrollbar-thumb{background:#24384a;border-radius:3px}.ghh3-prompt::-webkit-scrollbar-thumb:hover{background:#334a5d}.ghh3-advanced{position:relative;margin:0 0 6px;box-sizing:border-box;user-select:none;background:#111c27;border:1px solid #334a5d;border-radius:8px}.ghh3-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:8px;list-style:none;min-height:28px;color:#aebdca;font-size:12px}.ghh3-advanced>summary::-webkit-details-marker{display:none}.ghh3-advanced>summary:before{content:"▸ ";color:#5d7688}.ghh3-advanced[open]>summary:before{content:"▾ "}.ghh3-advanced .ghh3-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.ghh3-advanced[open]{background:#111c27;border:1px solid #334a5d;border-radius:8px}.ghh3-size{color:#0db5e8;font-size:12px;padding:2px 0 4px}
-      .ghh3-size{display:flex;justify-content:space-between;align-items:center;color:#0db5e8;font-size:12px;padding:2px 3px 5px}.ghh3-task{white-space:nowrap}.ghh3-dimensions{white-space:nowrap;text-align:right}.ghh3-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);align-items:center;gap:8px;min-height:30px}.ghh3-advanced-row>label{text-align:left;color:#aebdca}.ghh3-control{width:220px;justify-self:end;box-sizing:border-box;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:4px;padding:5px}.ghh3-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.ghh3-number button{border:1px solid #334a5d;background:#111c27;color:#e1e9ef;font-size:10px;padding:0;cursor:pointer}.ghh3-number button:first-child{border-radius:4px 0 0 4px}.ghh3-number button:last-child{border-radius:0 4px 4px 0}.ghh3-number input{width:100%;min-width:0;border:1px solid #334a5d;border-left:0;border-right:0;border-radius:0;background:#111c27;color:#e1e9ef;padding:5px;box-sizing:border-box}.ghh3-number input::-webkit-inner-spin-button,.ghh3-number input::-webkit-outer-spin-button{appearance:none;margin:0}.ghh3-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.ghh3-toggle input{opacity:0;width:0;height:0}.ghh3-toggle span{position:absolute;inset:0;border-radius:12px;background:#24384a;border:1px solid #52616d;transition:.15s}.ghh3-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#c3cbd1;transition:.15s}.ghh3-toggle input:checked+span{background:#0aa4d6;border-color:#0aa4d6}.ghh3-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
-      .ghh3-drop-title-row .ghh3-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
-      .ghh3-audio-drop .ghh3-drop-icon{font-size:14px;line-height:1;height:1.2em}
-      .ghh3-drop-title-row .ghh3-optional{position:static;display:inline-flex;align-items:center;height:1.2em;line-height:1.2}
-      .ghh3-keygrid .ghh3-drop:not(.ghh3-audio-drop) .ghh3-drop-icon,.ghh3-keygrid .ghh3-drop:not(.ghh3-audio-drop) .ghh3-optional{transform:translateY(-1px)}
-       .ghh3-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,1fr);width:100%;min-height:190px;background:#111c27;border-radius:6px;overflow:hidden}.ghh3-prompt-wrap .ghh3-prompt{grid-row:2;border-radius:0 0 6px 6px}.ghh3-prompt-wrap.external .ghh3-prompt{opacity:.42;cursor:not-allowed}.ghh3-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#111c27;z-index:4}.ghh3-prompt-elapsed{display:none;margin-right:auto;color:#617684;font:9px/17px Arial,sans-serif}.ghh3-prompt-elapsed.visible{display:inline-block}.ghh3-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(96,116,130,.6);font:8px/17px Arial,sans-serif;margin-left:auto;margin-right:17px}.ghh3-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:3px;background:#111c27;color:#6f8291;font:11px/17px Arial,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.ghh3-optimize-tool{font-size:13px}.ghh3-prompt-tool:hover{color:#9aabb8;background:#24384a}.ghh3-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.ghh3-prompt-reset{display:none;font-size:12px;line-height:15px}.ghh3-prompt-reset.visible{display:inline-block}.ghh3-prompt-loading{color:#0aa4d6!important;opacity:1!important;animation:ghh3-spin 1.6s linear infinite}@keyframes ghh3-spin{to{transform:rotate(360deg)}}.ghh3-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:4px;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;font:10px/1.2 Arial,sans-serif;pointer-events:none;white-space:nowrap}.ghh3-opt-check{justify-self:end;width:auto!important}.ghh3-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.ghh3-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.ghh3-opt-language label:first-child{justify-self:start}.ghh3-opt-language label:last-child{justify-self:end}.ghh3-opt-language input{width:auto}
-       .ghh3-prompt-wrap{grid-template-columns:minmax(0,1fr)}.ghh3-prompt-wrap .ghh3-prompt-rich{position:absolute;grid-row:auto;left:0;right:0;top:22px;bottom:0;width:100%;height:auto;min-height:0;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#111c27;color:#e1e9ef;-webkit-text-fill-color:currentColor;caret-color:#e1e9ef;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.ghh3-prompt-rich.ghh3-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#52616d;white-space:pre-wrap;pointer-events:none}.ghh3-prompt-highlight{display:none}.ghh3-prompt-rich mark{padding:0;color:#27d9e5;-webkit-text-fill-color:#27d9e5;background:transparent;font:inherit}.ghh3-prompt-section{padding:0;color:#168b99;-webkit-text-fill-color:#168b99;background:transparent;font:inherit}.ghh3-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:5px;background:#3b3b3b;color:#cdcdcd;-webkit-text-fill-color:#cdcdcd;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.ghh3-prompt-tag-video{background:#493f59}.ghh3-prompt-tag-picture{background:#31515a}.ghh3-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.ghh3-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(91,124,143,.72);border-radius:5px;background:#14222d;object-fit:cover;color:#77a5b7;display:inline-flex;align-items:center;justify-content:center;font:14px/26px Arial,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.ghh3-prompt-media-preview.ghh3-prompt-audio-preview{border-radius:50%}.ghh3-prompt-media-preview.ghh3-prompt-audio-preview:before{content:"♫";font-size:13px}.ghh3-prompt-wrap.external .ghh3-prompt-rich{opacity:.42}
-        .ghh3-opt-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.ghh3-opt-dialog{width:min(470px,calc(100vw - 30px));background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:14px}.ghh3-opt-title{font-size:12px;margin-bottom:12px;white-space:nowrap}.ghh3-opt-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:8px;min-height:38px;margin:0}.ghh3-opt-row>span{white-space:nowrap}.ghh3-opt-row input,.ghh3-opt-row select{width:100%;box-sizing:border-box;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:4px;padding:6px;font:inherit}.ghh3-opt-hidden{display:none!important}.ghh3-opt-model-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0}.ghh3-opt-model-native{display:none}.ghh3-opt-model-picker{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:4px;padding:6px 24px 6px 7px;cursor:pointer;position:relative;font:inherit}.ghh3-opt-model-picker:after{content:"⌄";position:absolute;right:7px}.ghh3-opt-model-menu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:10070;box-sizing:border-box;width:max-content;min-width:100%;max-width:calc(100vw - 30px);padding:5px;background:#111c27;border:1px solid #334a5d;border-radius:5px;box-shadow:0 8px 22px rgba(0,0,0,.45)}.ghh3-opt-model-menu.open{display:block}.ghh3-opt-model-search{display:block;width:100%;min-width:100%;margin-bottom:5px;font:inherit}.ghh3-opt-model-results{max-height:285px;overflow:auto}.ghh3-opt-model-option{display:block;width:max-content;min-width:100%;border:0;background:transparent;color:#e1e9ef;text-align:left;padding:6px;border-radius:3px;white-space:nowrap;cursor:pointer;font:inherit}.ghh3-opt-model-option:hover,.ghh3-opt-model-option.selected{background:#24384a}.ghh3-opt-model-empty{padding:7px;color:#aebdca;font-size:12px}.ghh3-opt-refresh{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:4px;padding:0;cursor:pointer;font-size:16px;line-height:1;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}.ghh3-opt-refresh:hover{background:#24384a;border-color:#0aa4d6;color:#e1e9ef}.ghh3-opt-refresh:active{background:#0aa4d6;border-color:#0aa4d6;color:#06131b}.ghh3-opt-refresh.loading{background:#0aa4d6;border-color:#0aa4d6;color:#06131b;cursor:wait}.ghh3-opt-refresh.loading svg{animation:ghh3-spin 1.2s linear infinite}.ghh3-opt-refresh:disabled{opacity:.85}.ghh3-opt-dependencies{margin:6px 0;color:#d98d97;font-size:12px;line-height:1.35}.ghh3-opt-checks{margin:0}.ghh3-opt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:28px}.ghh3-opt-actions button{border:1px solid #334a5d;border-radius:4px;background:#111c27;color:#e1e9ef;padding:5px 12px;cursor:pointer}.ghh3-opt-actions button:last-child{background:#0aa4d6;border-color:#0aa4d6;color:#06131b}.ghh3-opt-custom{display:none}.ghh3-opt-dialog.custom .ghh3-opt-custom{display:grid}
-        .ghh3-audio-trim-button,.ghh3-sound{position:absolute;z-index:6;width:14px;height:14px;padding:0;border:0;border-radius:50%;background:rgba(34,52,65,.52)!important;color:#fff;font:9px/14px Arial,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}.ghh3-audio-trim-button{right:3px;top:3px}.ghh3-audio-card .ghh3-audio-trim-button{right:40px;top:4px}.ghh3-sound{right:2px;top:2px}.ghh3-card:hover .ghh3-audio-trim-button,.ghh3-card:hover .ghh3-sound,.ghh3-audio-trim-button:focus-visible,.ghh3-sound:focus-visible{opacity:1;pointer-events:auto}.ghh3-audio-trim-button:hover,.ghh3-sound:hover{color:#fff;background:rgba(45,75,88,.66)!important}
-        .ghh3-trim-overlay{position:fixed;inset:0;z-index:10200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.ghh3-trim-dialog{width:min(720px,calc(100vw - 30px));box-sizing:border-box;padding:14px;background:#111c27;color:#e1e9ef;border:1px solid #334a5d;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5)}.ghh3-trim-title{font-size:13px;margin-bottom:12px}.ghh3-trim-wave-wrap{position:relative;width:100%;height:190px;overflow:hidden;border:1px solid #334a5d;border-radius:6px;background:#0d1720;cursor:crosshair;touch-action:none}.ghh3-trim-wave-wrap.ghh3-trim-panning{cursor:grabbing}.ghh3-trim-wave{display:block;width:100%;height:100%}.ghh3-trim-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#aebdca;background:#0d1720}.ghh3-trim-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.ghh3-trim-time{position:relative;padding:7px 9px;border-radius:5px;background:#111c27;color:#aebdca}.ghh3-trim-time strong{display:block;margin-top:3px;color:#e1e9ef;font-size:13px;font-weight:500}.ghh3-trim-sync{position:absolute;right:6px;top:5px;border:1px solid #334a5d;border-radius:4px;background:#24384a;color:#e1e9ef;padding:2px 7px;font:12px/16px Arial,sans-serif;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.04)}.ghh3-trim-sync:hover{background:#24384a;border-color:#0aa4d6;color:#e1e9ef}.ghh3-trim-controls{display:flex;align-items:center;gap:8px;margin-top:12px}.ghh3-trim-preview{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid #334a5d;border-radius:4px;background:#111c27;color:#e1e9ef;padding:0;cursor:pointer}.ghh3-trim-preview svg{width:12px;height:12px}.ghh3-trim-hint{color:#aebdca;font-size:10px}.ghh3-trim-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.ghh3-trim-actions button{border:1px solid #334a5d;border-radius:4px;background:#111c27;color:#e1e9ef;padding:6px 14px;cursor:pointer}.ghh3-trim-actions button:last-child{background:#0aa4d6;border-color:#0aa4d6;color:#06131b}.ghh3-trim-actions button:disabled,.ghh3-trim-preview:disabled{opacity:.45;cursor:not-allowed}
+      .mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid #383e46;border-radius:16px;margin:3px 0 6px;background:#14171b}
+      .mxv-mode{height:26px;border:0;border-radius:12px;background:transparent;color:#b3b1ac;font-size:13px;cursor:pointer;transition:background .12s,color .12s}.mxv-mode.active{background:#e8a33d;color:#221a0c;font-weight:700;box-shadow:0 1px 6px rgba(232,163,61,.35)}
+      .mxv-box{border:1px solid #383e46;border-radius:6px;padding:7px;margin:0 0 6px;background:#1b1e23;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.mxv-title{font-size:12px;color:#efede8;margin-bottom:3px}.mxv-hint{font-size:10px;color:#8c8983;line-height:1.3}
+      .mxv-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.mxv-drop{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#b3b1ac;cursor:pointer;border:1px dashed #383e46;border-radius:6px;background:#1b1e23;padding:4px;box-sizing:border-box}.mxv-drop:hover{border-style:solid;border-color:#e8a33d;background:rgba(232,163,61,.08);color:#e8e6e1}.mxv-reference-empty{grid-column:1/-1;width:100%;aspect-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.mxv-reference-empty .mxv-drop-icon{font-size:14px;margin:0 7px 0 0}.mxv-reference-empty .mxv-drop-title{font-size:12px}.mxv-reference-empty .mxv-drop-subtitle{font-size:9px;margin-top:8px}.mxv-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#e8a33d;font-family:Arial,sans-serif}.mxv-drop-title{font-size:10px;line-height:1.2;color:#e2e0db}.mxv-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.mxv-optional{color:#8a6d33;font-size:.82em;line-height:1.2;position:relative;top:-1px}.mxv-audio-drop .mxv-optional{top:-2px}.mxv-drop-subtitle{font-size:8px;line-height:1.25;color:#8c8983;margin-top:3px}.mxv-limit{grid-column:1/-1;color:#d47d8b;font-size:9px;padding:2px 3px 0;text-align:left}
+      .mxv-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.mxv-keygrid .mxv-drop{aspect-ratio:16/9}.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-subtitle{font-size:7px;color:#7d7a74}.mxv-keygrid .mxv-audio-card,.mxv-keygrid .mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:3px}
+      .mxv-card{min-width:0;aspect-ratio:1;border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.mxv-card.mxv-reorder-source{opacity:.68;cursor:grabbing}.mxv-card.mxv-reorder-target{border-color:#e8a33d;box-shadow:0 0 0 2px rgba(232,163,61,.45) inset}.mxv-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(20,22,26,.78);color:#f4e8d0;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(232,163,61,.6)}.mxv-card.mxv-reorder-source .mxv-reorder-indicator{display:flex}.mxv-card img,.mxv-card video{display:block;width:100%;height:100%;object-fit:cover;background:#14171b}.mxv-card:hover img,.mxv-card:hover video{object-fit:contain}.mxv-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(16,17,20,.68);font-size:7px;line-height:1.15}.mxv-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d5d2cc;cursor:pointer;font-size:11px;z-index:3}.mxv-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.mxv-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(46,50,56,.6)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.mxv-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.mxv-media-time{margin-left:auto}.mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.mxv-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.mxv-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1b1e23;color:#e8e6e1;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#2e3238 transparent}.mxv-prompt::placeholder{color:#4a5058;opacity:1}.mxv-prompt::-webkit-scrollbar{width:5px}.mxv-prompt::-webkit-scrollbar-track{background:transparent}.mxv-prompt::-webkit-scrollbar-thumb{background:#2e3238;border-radius:3px}.mxv-prompt::-webkit-scrollbar-thumb:hover{background:#383e46}.mxv-advanced{position:relative;margin:0 0 6px;box-sizing:border-box;user-select:none;background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:8px;list-style:none;min-height:28px;color:#b3b1ac;font-size:12px}.mxv-advanced>summary::-webkit-details-marker{display:none}.mxv-advanced>summary:before{content:"▸ ";color:#8a6d33}.mxv-advanced[open]>summary:before{content:"▾ "}.mxv-advanced .mxv-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.mxv-advanced[open]{background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-size{color:#d9992f;font-size:12px;padding:2px 0 4px}
+      .mxv-size{display:flex;justify-content:space-between;align-items:center;color:#d9992f;font-size:12px;padding:2px 3px 5px}.mxv-task{white-space:nowrap}.mxv-dimensions{white-space:nowrap;text-align:right}.mxv-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);align-items:center;gap:8px;min-height:30px}.mxv-advanced-row>label{text-align:left;color:#b3b1ac}.mxv-control{width:220px;justify-self:end;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:5px}.mxv-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.mxv-number button{border:1px solid #383e46;background:#1b1e23;color:#e8e6e1;font-size:10px;padding:0;cursor:pointer}.mxv-number button:first-child{border-radius:4px 0 0 4px}.mxv-number button:last-child{border-radius:0 4px 4px 0}.mxv-number input{width:100%;min-width:0;border:1px solid #383e46;border-left:0;border-right:0;border-radius:0;background:#1b1e23;color:#e8e6e1;padding:5px;box-sizing:border-box}.mxv-number input::-webkit-inner-spin-button,.mxv-number input::-webkit-outer-spin-button{appearance:none;margin:0}.mxv-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.mxv-toggle input{opacity:0;width:0;height:0}.mxv-toggle span{position:absolute;inset:0;border-radius:12px;background:#2e3238;border:1px solid #4a5058;transition:.15s}.mxv-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#d5d2cc;transition:.15s}.mxv-toggle input:checked+span{background:#e8a33d;border-color:#e8a33d}.mxv-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
+      .mxv-drop-title-row .mxv-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
+      .mxv-audio-drop .mxv-drop-icon{font-size:14px;line-height:1;height:1.2em}
+      .mxv-drop-title-row .mxv-optional{position:static;display:inline-flex;align-items:center;height:1.2em;line-height:1.2}
+      .mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-icon,.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-optional{transform:translateY(-1px)}
+       .mxv-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,1fr);width:100%;min-height:190px;background:#1b1e23;border-radius:6px;overflow:hidden;border-left:3px solid #e8a33d}.mxv-prompt-wrap .mxv-prompt{grid-row:2;border-radius:0 0 6px 6px}.mxv-prompt-wrap.external .mxv-prompt{opacity:.42;cursor:not-allowed}.mxv-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#1b1e23;z-index:4}.mxv-prompt-elapsed{display:none;margin-right:auto;color:#75726c;font:9px/17px Arial,sans-serif}.mxv-prompt-elapsed.visible{display:inline-block}.mxv-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(140,137,131,.6);font:8px/17px Arial,sans-serif;margin-left:auto;margin-right:17px}.mxv-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:3px;background:#1b1e23;color:#7d7a74;font:11px/17px Arial,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.mxv-optimize-tool{font-size:13px}.mxv-prompt-tool:hover{color:#b3b1ac;background:#2e3238}.mxv-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.mxv-prompt-reset{display:none;font-size:12px;line-height:15px}.mxv-prompt-reset.visible{display:inline-block}.mxv-prompt-loading{color:#e8a33d!important;opacity:1!important;animation:mxv-spin 1.6s linear infinite}@keyframes mxv-spin{to{transform:rotate(360deg)}}.mxv-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:4px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;font:10px/1.2 Arial,sans-serif;pointer-events:none;white-space:nowrap}.mxv-opt-check{justify-self:end;width:auto!important}.mxv-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.mxv-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.mxv-opt-language label:first-child{justify-self:start}.mxv-opt-language label:last-child{justify-self:end}.mxv-opt-language input{width:auto}
+       .mxv-prompt-wrap{grid-template-columns:minmax(0,1fr)}.mxv-prompt-wrap .mxv-prompt-rich{position:absolute;grid-row:auto;left:0;right:0;top:22px;bottom:0;width:100%;height:auto;min-height:0;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#1b1e23;color:#e8e6e1;-webkit-text-fill-color:currentColor;caret-color:#e8e6e1;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.mxv-prompt-rich.mxv-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#4a5058;white-space:pre-wrap;pointer-events:none}.mxv-prompt-highlight{display:none}.mxv-prompt-rich mark{padding:0;color:#e8a33d;-webkit-text-fill-color:#e8a33d;background:transparent;font:inherit}.mxv-prompt-section{padding:0;color:#9a7734;-webkit-text-fill-color:#9a7734;background:transparent;font:inherit}.mxv-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:5px;background:#3a3d42;color:#cdcdcd;-webkit-text-fill-color:#cdcdcd;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.mxv-prompt-tag-video{background:#443c4a}.mxv-prompt-tag-picture{background:#3d3a2e}.mxv-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.mxv-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(148,120,62,.7);border-radius:5px;background:#22262c;object-fit:cover;color:#c2a05c;display:inline-flex;align-items:center;justify-content:center;font:14px/26px Arial,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.mxv-prompt-media-preview.mxv-prompt-audio-preview{border-radius:50%}.mxv-prompt-media-preview.mxv-prompt-audio-preview:before{content:"♫";font-size:13px}.mxv-prompt-wrap.external .mxv-prompt-rich{opacity:.42}
+        .mxv-opt-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-opt-dialog{width:min(470px,calc(100vw - 30px));background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:14px}.mxv-opt-title{font-size:12px;margin-bottom:12px;white-space:nowrap}.mxv-opt-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:8px;min-height:38px;margin:0}.mxv-opt-row>span{white-space:nowrap}.mxv-opt-row input,.mxv-opt-row select{width:100%;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px;font:inherit}.mxv-opt-hidden{display:none!important}.mxv-opt-model-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0}.mxv-opt-model-native{display:none}.mxv-opt-model-picker{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px 24px 6px 7px;cursor:pointer;position:relative;font:inherit}.mxv-opt-model-picker:after{content:"⌄";position:absolute;right:7px}.mxv-opt-model-menu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:10070;box-sizing:border-box;width:max-content;min-width:100%;max-width:calc(100vw - 30px);padding:5px;background:#1b1e23;border:1px solid #383e46;border-radius:5px;box-shadow:0 8px 22px rgba(0,0,0,.45)}.mxv-opt-model-menu.open{display:block}.mxv-opt-model-search{display:block;width:100%;min-width:100%;margin-bottom:5px;font:inherit}.mxv-opt-model-results{max-height:285px;overflow:auto}.mxv-opt-model-option{display:block;width:max-content;min-width:100%;border:0;background:transparent;color:#e8e6e1;text-align:left;padding:6px;border-radius:3px;white-space:nowrap;cursor:pointer;font:inherit}.mxv-opt-model-option:hover,.mxv-opt-model-option.selected{background:#2e3238}.mxv-opt-model-empty{padding:7px;color:#b3b1ac;font-size:12px}.mxv-opt-refresh{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:0;cursor:pointer;font-size:16px;line-height:1;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}.mxv-opt-refresh:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-opt-refresh:active{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-refresh.loading{background:#e8a33d;border-color:#e8a33d;color:#221a0c;cursor:wait}.mxv-opt-refresh.loading svg{animation:mxv-spin 1.2s linear infinite}.mxv-opt-refresh:disabled{opacity:.85}.mxv-opt-dependencies{margin:6px 0;color:#d98d97;font-size:12px;line-height:1.35}.mxv-opt-checks{margin:0}.mxv-opt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:28px}.mxv-opt-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:5px 12px;cursor:pointer}.mxv-opt-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-custom{display:none}.mxv-opt-dialog.custom .mxv-opt-custom{display:grid}
+        .mxv-audio-trim-button,.mxv-sound{position:absolute;z-index:6;width:14px;height:14px;padding:0;border:0;border-radius:50%;background:rgba(46,50,56,.6)!important;color:#fff;font:9px/14px Arial,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}.mxv-audio-trim-button{right:3px;top:3px}.mxv-audio-card .mxv-audio-trim-button{right:40px;top:4px}.mxv-sound{right:2px;top:2px}.mxv-card:hover .mxv-audio-trim-button,.mxv-card:hover .mxv-sound,.mxv-audio-trim-button:focus-visible,.mxv-sound:focus-visible{opacity:1;pointer-events:auto}.mxv-audio-trim-button:hover,.mxv-sound:hover{color:#fff;background:rgba(74,80,88,.72)!important}
+        .mxv-trim-overlay{position:fixed;inset:0;z-index:10200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-trim-dialog{width:min(720px,calc(100vw - 30px));box-sizing:border-box;padding:14px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5)}.mxv-trim-title{font-size:13px;margin-bottom:12px}.mxv-trim-wave-wrap{position:relative;width:100%;height:190px;overflow:hidden;border:1px solid #383e46;border-radius:6px;background:#14171b;cursor:crosshair;touch-action:none}.mxv-trim-wave-wrap.mxv-trim-panning{cursor:grabbing}.mxv-trim-wave{display:block;width:100%;height:100%}.mxv-trim-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b3b1ac;background:#14171b}.mxv-trim-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.mxv-trim-time{position:relative;padding:7px 9px;border-radius:5px;background:#1b1e23;color:#b3b1ac}.mxv-trim-time strong{display:block;margin-top:3px;color:#e8e6e1;font-size:13px;font-weight:500}.mxv-trim-sync{position:absolute;right:6px;top:5px;border:1px solid #383e46;border-radius:4px;background:#2e3238;color:#e8e6e1;padding:2px 7px;font:12px/16px Arial,sans-serif;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.04)}.mxv-trim-sync:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-trim-controls{display:flex;align-items:center;gap:8px;margin-top:12px}.mxv-trim-preview{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:0;cursor:pointer}.mxv-trim-preview svg{width:12px;height:12px}.mxv-trim-hint{color:#b3b1ac;font-size:10px}.mxv-trim-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.mxv-trim-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:6px 14px;cursor:pointer}.mxv-trim-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-trim-actions button:disabled,.mxv-trim-preview:disabled{opacity:.45;cursor:not-allowed}
+      .mxv-details{border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+      .mxv-details>summary{list-style:none;background:#22262c;border-bottom:1px solid transparent;transition:background .12s}
+      .mxv-details>summary::-webkit-details-marker{display:none}
+      .mxv-details>summary:hover{background:#2a2f36}
+      .mxv-details[open]>summary{border-bottom-color:#383e46}
+      .mxv-disclose{position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%) rotate(0);transition:transform .12s}
+      .mxv-details[open]>.mxv-disclose,.mxv-details[open]>summary .mxv-disclose{transform:translateY(-50%) rotate(90deg)}
+      .mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+      .mxv-advanced>summary,.mxv-ai>summary{list-style:none;background:#22262c}
+      .mxv-advanced>summary::-webkit-details-marker,.mxv-ai>summary::-webkit-details-marker{display:none}
+      .mxv-advanced>summary:hover,.mxv-ai>summary:hover{background:#2a2f36}
+      .mxv-advanced[open]>summary,.mxv-ai[open]>summary{border-bottom:1px solid #383e46}
+      .mxv-advanced>summary .mxv-disclose,.mxv-ai>summary .mxv-disclose{position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
+      .mxv-advanced[open]>summary .mxv-disclose,.mxv-ai[open]>summary .mxv-disclose{transform:translateY(-50%) rotate(90deg)}
     `;
     // Shared control states also apply to dialogs mounted outside the panel.
     style.textContent += `
-      .ghh3-control,.ghh3-number input,.ghh3-opt-dialog,.ghh3-trim-dialog{color-scheme:dark;font-family:Arial,sans-serif;font-size:12px}
-      .ghh3-opt-dialog{box-sizing:border-box}
-      .ghh3-opt-row>span{color:#aebdca}
-      .ghh3-opt-title,.ghh3-trim-title{font-size:12px;color:#e1e9ef}
-      .ghh3-opt-actions,.ghh3-trim-actions{gap:8px;margin-top:14px}
-      .ghh3-opt-actions button,.ghh3-trim-actions button{min-height:30px;padding:5px 12px;font:12px Arial,sans-serif}
-      .ghh3-opt-actions button:last-child,.ghh3-trim-actions button:last-child{font-weight:600}
-      .ghh3-opt-row input[type=checkbox],.ghh3-opt-row input[type=radio]{accent-color:#0aa4d6}
-      .ghh3-control:focus-visible,.ghh3-number input:focus-visible,.ghh3-opt-dialog input:focus-visible,.ghh3-opt-dialog select:focus-visible,.ghh3-opt-dialog button:focus-visible,.ghh3-trim-dialog button:focus-visible{outline:2px solid #0aa4d6;outline-offset:2px}
-      .ghh3-toggle input:focus-visible+span{outline:2px solid #0aa4d6;outline-offset:2px}
-      .ghh3-opt-actions button:not(:last-child):hover:not(:disabled),.ghh3-trim-actions button:not(:last-child):hover:not(:disabled),.ghh3-trim-preview:hover:not(:disabled){background:#24384a;border-color:#0aa4d6}
-      .ghh3-opt-model-results{scrollbar-width:thin;scrollbar-color:#24384a transparent}
+      .mxv-control,.mxv-number input,.mxv-opt-dialog,.mxv-trim-dialog{color-scheme:dark;font-family:Arial,sans-serif;font-size:12px}
+      .mxv-opt-dialog{box-sizing:border-box}
+      .mxv-opt-row>span{color:#b3b1ac}
+      .mxv-opt-title,.mxv-trim-title{font-size:12px;color:#e8e6e1}
+      .mxv-opt-actions,.mxv-trim-actions{gap:8px;margin-top:14px}
+      .mxv-opt-actions button,.mxv-trim-actions button{min-height:30px;padding:5px 12px;font:12px Arial,sans-serif}
+      .mxv-opt-actions button:last-child,.mxv-trim-actions button:last-child{font-weight:600}
+      .mxv-opt-row input[type=checkbox],.mxv-opt-row input[type=radio]{accent-color:#e8a33d}
+      .mxv-control:focus-visible,.mxv-number input:focus-visible,.mxv-opt-dialog input:focus-visible,.mxv-opt-dialog select:focus-visible,.mxv-opt-dialog button:focus-visible,.mxv-trim-dialog button:focus-visible{outline:2px solid #e8a33d;outline-offset:2px}
+      .mxv-toggle input:focus-visible+span{outline:2px solid #e8a33d;outline-offset:2px}
+      .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
+      .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
     `;
     root.appendChild(style);
-    const size = make("div"); size.className = "ghh3-size";
-    const taskStatus = make("span", {}, t("T2VA · Text-to-video")); taskStatus.className = "ghh3-task";
-    const dimensions = make("span", {}, canvas(widget(node, "aspect")?.value, widget(node, "megapixels")?.value)); dimensions.className = "ghh3-dimensions";
+    const size = make("div"); size.className = "mxv-size";
+    const taskStatus = make("span", {}, t("T2VA · Text-to-video")); taskStatus.className = "mxv-task";
+    const dimensions = make("span", {}, canvas(widget(node, "aspect")?.value, widget(node, "megapixels")?.value)); dimensions.className = "mxv-dimensions";
     size.append(taskStatus, dimensions);
-    const modes = make("div"); modes.className = "ghh3-modes";
-    const modeText = make("button", {}, t("First/last frames / Text-to-video")); modeText.className = "ghh3-mode";
-    const modeRef = make("button", {}, t("All-purpose reference")); modeRef.className = "ghh3-mode"; modes.append(modeText, modeRef);
+    const modes = make("div"); modes.className = "mxv-modes";
+    const modeText = make("button", {}, t("First/last frames / Text-to-video")); modeText.className = "mxv-mode";
+    const modeRef = make("button", {}, t("All-purpose reference")); modeRef.className = "mxv-mode"; modes.append(modeText, modeRef);
     root.append(size, modes);
 
     let layoutLock = false;
     let userHeight = INITIAL_NODE_HEIGHT;
     let restoringState = true;
     let restoreEpoch = 0;
-    const stateKey = "gh_h3_state";
+    const stateKey = "mxv_state";
     const savedState = (() => {
         try { return JSON.parse(node.properties?.[stateKey] || "{}"); } catch { return {}; }
     })();
@@ -612,7 +626,7 @@ function createPanel(node) {
         node.properties[stateKey] = value;
         if (stateWidget) stateWidget.value = value;
     };
-    const domWidget = node.addDOMWidget("gh_h3_panel", "gh_h3_panel", root, { serialize: false, hideOnZoom: false });
+    const domWidget = node.addDOMWidget("mxv_panel", "mxv_panel", root, { serialize: false, hideOnZoom: false });
     domWidget.options = domWidget.options || {}; domWidget.options.serialize = false;
     domWidget.options.getMinHeight = () => MIN_NODE_HEIGHT;
     domWidget.options.getHeight = () => "100%";
@@ -636,7 +650,7 @@ function createPanel(node) {
     // Old graphs may contain the literal string "(none)" in this hidden Int
     // input. Clean it before ComfyUI serializes/submits the prompt.
     sanitizeHiddenInputs(node);
-    const prompt = make("div"); prompt.className = "ghh3-prompt ghh3-prompt-rich"; prompt.contentEditable = "true"; prompt.spellcheck = false;
+    const prompt = make("div"); prompt.className = "mxv-prompt mxv-prompt-rich"; prompt.contentEditable = "true"; prompt.spellcheck = false;
     prompt.tabIndex = 0;
     prompt.setAttribute("role", "textbox");
     prompt.setAttribute("aria-multiline", "true");
@@ -651,7 +665,7 @@ function createPanel(node) {
         text_keyframes: { undo: [], redo: [] },
         all_reference: { undo: [], redo: [] },
     };
-    const ignoredPromptNode = node => node?.classList?.contains("ghh3-prompt-media-preview") || node?.classList?.contains("ghh3-prompt-caret-sentinel");
+    const ignoredPromptNode = node => node?.classList?.contains("mxv-prompt-media-preview") || node?.classList?.contains("mxv-prompt-caret-sentinel");
     const domText = node => {
         if (!node) return "";
         if (node.nodeType === Node.TEXT_NODE) return node.data;
@@ -801,17 +815,17 @@ function createPanel(node) {
     let optimizerAbort = null;
     let optimizerTimer = null;
     let optimizerCompleteAudio = null;
-    const promptWrap = make("div"); promptWrap.className = "ghh3-prompt-wrap";
-    const promptHighlight = make("div"); promptHighlight.className = "ghh3-prompt-highlight";
-    const promptHighlightContent = make("div"); promptHighlightContent.className = "ghh3-prompt-highlight-content"; promptHighlight.append(promptHighlightContent);
+    const promptWrap = make("div"); promptWrap.className = "mxv-prompt-wrap";
+    const promptHighlight = make("div"); promptHighlight.className = "mxv-prompt-highlight";
+    const promptHighlightContent = make("div"); promptHighlightContent.className = "mxv-prompt-highlight-content"; promptHighlight.append(promptHighlightContent);
     const promptVideoThumbnailCache = new Map();
     let resolvePromptMedia = () => null;
-    const promptTools = make("div"); promptTools.className = "ghh3-prompt-tools";
-    const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "ghh3-prompt-tool ghh3-prompt-reset";
-    const elapsedPrompt = make("span"); elapsedPrompt.className = "ghh3-prompt-elapsed";
-    const optimizerModelName = make("span"); optimizerModelName.className = "ghh3-optimizer-model";
-    const optimizePrompt = make("button", {}, "✦"); optimizePrompt.className = "ghh3-prompt-tool ghh3-optimize-tool";
-    const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "ghh3-prompt-tool";
+    const promptTools = make("div"); promptTools.className = "mxv-prompt-tools";
+    const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "mxv-prompt-tool mxv-prompt-reset";
+    const elapsedPrompt = make("span"); elapsedPrompt.className = "mxv-prompt-elapsed";
+    const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
+    const optimizePrompt = make("button", {}, "✦"); optimizePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
+    const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
     promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, optimizePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
     const syncPromptHighlightGeometry = () => {
         promptHighlightContent.style.width = `${prompt.clientWidth}px`;
@@ -917,7 +931,7 @@ function createPanel(node) {
     };
     const renderPromptHighlights = () => {
         const source = String(prompt.value || "");
-        const keepFocus = document.activeElement === prompt || prompt.dataset.ghh3Editing === "1";
+        const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         const restoreSelection = keepFocus ? selectionOffsets() : null;
         prompt.replaceChildren();
         const appendPlain = text => {
@@ -937,27 +951,27 @@ function createPanel(node) {
                 continue;
             }
             if (decoration.kind === "section") {
-                const section = make("span"); section.className = "ghh3-prompt-section"; section.textContent = decoration.raw;
+                const section = make("span"); section.className = "mxv-prompt-section"; section.textContent = decoration.raw;
                 prompt.append(section);
                 cursor = decoration.end;
                 continue;
             }
             if (decoration.kind === "tag") {
-                const tag = make("span"); tag.className = "ghh3-prompt-tag"; tag.textContent = decoration.raw;
+                const tag = make("span"); tag.className = "mxv-prompt-tag"; tag.textContent = decoration.raw;
                 prompt.append(tag);
                 cursor = decoration.end;
                 continue;
             }
             const { type, ordinal } = decoration;
-            const token = make("span"); token.className = "ghh3-prompt-media-token";
+            const token = make("span"); token.className = "mxv-prompt-media-token";
             const mediaEntry = resolvePromptMedia(type, ordinal);
-            token.dataset.ghh3MediaSignature = `${type}:${ordinal}:${mediaEntry?.name || ""}`;
+            token.dataset.mxvMediaSignature = `${type}:${ordinal}:${mediaEntry?.name || ""}`;
             if (mediaEntry) {
                 let preview;
                 if (type === "audio") {
-                    preview = make("span"); preview.className = "ghh3-prompt-media-preview ghh3-prompt-audio-preview";
+                    preview = make("span"); preview.className = "mxv-prompt-media-preview mxv-prompt-audio-preview";
                 } else {
-                    preview = make("img"); preview.className = "ghh3-prompt-media-preview";
+                    preview = make("img"); preview.className = "mxv-prompt-media-preview";
                     if (type === "video") {
                         const thumbnail = requestPromptVideoThumbnail(mediaEntry?.name);
                         if (thumbnail) preview.src = thumbnail;
@@ -967,7 +981,7 @@ function createPanel(node) {
                 token.appendChild(preview);
             }
             const tag = make("span");
-            tag.className = `ghh3-prompt-tag ghh3-prompt-tag-${type}`;
+            tag.className = `mxv-prompt-tag mxv-prompt-tag-${type}`;
             tag.textContent = decoration.raw;
             token.appendChild(tag);
             prompt.appendChild(token);
@@ -980,11 +994,11 @@ function createPanel(node) {
         // caret a stable empty line without becoming part of the prompt text.
         if (source.endsWith("\n")) {
             const sentinel = document.createElement("br");
-            sentinel.className = "ghh3-prompt-caret-sentinel";
+            sentinel.className = "mxv-prompt-caret-sentinel";
             sentinel.setAttribute("aria-hidden", "true");
             prompt.appendChild(sentinel);
         }
-        prompt.classList.toggle("ghh3-prompt-empty", !source);
+        prompt.classList.toggle("mxv-prompt-empty", !source);
         if (restoreSelection) {
             if (document.activeElement !== prompt) prompt.focus({ preventScroll: true });
             setEditorSelection(restoreSelection[0], restoreSelection[1]);
@@ -995,20 +1009,20 @@ function createPanel(node) {
             const entry = resolvePromptMedia(item.type, item.ordinal);
             return { raw: item.raw, signature: `${item.type}:${item.ordinal}:${entry?.name || ""}` };
         });
-        const renderedMedia = [...prompt.querySelectorAll(".ghh3-prompt-media-token")].map(item => ({
+        const renderedMedia = [...prompt.querySelectorAll(".mxv-prompt-media-token")].map(item => ({
             raw: domText(item),
-            signature: item.dataset.ghh3MediaSignature || "",
+            signature: item.dataset.mxvMediaSignature || "",
         }));
         if (expectedMedia.length !== renderedMedia.length || expectedMedia.some((item, index) =>
             item.raw !== renderedMedia[index]?.raw || item.signature !== renderedMedia[index]?.signature
         )) return true;
         const expectedTags = promptTagMatches(source).map(item => item.raw);
-        const renderedTags = [...prompt.querySelectorAll(".ghh3-prompt-tag")]
-            .filter(item => !item.closest(".ghh3-prompt-media-token"))
+        const renderedTags = [...prompt.querySelectorAll(".mxv-prompt-tag")]
+            .filter(item => !item.closest(".mxv-prompt-media-token"))
             .map(item => domText(item));
         if (expectedTags.length !== renderedTags.length || expectedTags.some((item, index) => item !== renderedTags[index])) return true;
         const expectedSections = [...source.matchAll(/^(?:subject_definitions|integrated_multimodal_description|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music)\s*[:：]/gim)].map(item => item[0]);
-        const renderedSections = [...prompt.querySelectorAll(".ghh3-prompt-section")].map(item => domText(item));
+        const renderedSections = [...prompt.querySelectorAll(".mxv-prompt-section")].map(item => domText(item));
         if (expectedSections.length !== renderedSections.length || expectedSections.some((item, index) => item !== renderedSections[index])) return true;
         const expectedDialogue = [...source.matchAll(/<d>\s*\[[^\]\r\n]+\]([\s\S]*?)<\/d>/gi)].map(item => item[1] || "");
         const renderedDialogue = [...prompt.querySelectorAll("mark")].map(item => domText(item));
@@ -1052,10 +1066,11 @@ function createPanel(node) {
     let wheelBoundaryDirection = 0;
     let wheelBoundaryUntil = 0;
     let wheelBoundaryReleased = false;
-    const advanced = make("details"); advanced.className = "ghh3-advanced";
-    const advancedSummary = make("summary", { cursor: "pointer", color: "#aebdca", padding: "7px 16px 8px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box" }, t("Advanced options"));
+    const advanced = make("details"); advanced.className = "mxv-advanced";
+    const advancedSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 8px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("Advanced options"));
+    advancedSummary.insertAdjacentHTML("afterbegin", '<span class="mxv-disclose" aria-hidden="true"></span>');
     advanced.appendChild(advancedSummary);
-    const advancedBody = make("div", { display: "grid", gap: "5px", padding: "5px 16px 8px" }); advancedBody.className = "ghh3-advanced-body";
+    const advancedBody = make("div", { display: "grid", gap: "5px", padding: "5px 16px 8px" }); advancedBody.className = "mxv-advanced-body";
     advanced.appendChild(advancedBody);
 function nodeColorToCss(value) {
         if (typeof value === "string" && value.trim()) return value.trim();
@@ -1081,22 +1096,22 @@ function nodeColorToCss(value) {
             || nodeColorToCss(node.properties?.color)
             || nodeColorToCss(node._bgcolor)
             || nodeColorToCss(node._color)
-            || "#1d2731";
+            || "#22262c";
         return color;
     }
     function syncAdvancedBackground(force = false) {
         const color = advancedBackgroundColor();
-        if (!force && color === root.dataset.ghh3NodeBg) return;
-        root.dataset.ghh3NodeBg = color;
-        root.style.setProperty("--ghh3-node-bg", color);
+        if (!force && color === root.dataset.mxvNodeBg) return;
+        root.dataset.mxvNodeBg = color;
+        root.style.setProperty("--mxv-node-bg", color);
     }
     syncAdvancedBackground(true);
     const advancedLabels = new Map();
     const advancedRows = new Map();
-    const addAdvanced = (name, label, control) => { const row = make("div"); row.className = "ghh3-advanced-row"; const labelEl = make("label", {}, t(label)); labelEl.dataset.ghh3Translation = label; row.appendChild(labelEl); row.appendChild(control); advancedBody.appendChild(row); advancedLabels.set(name, labelEl); advancedRows.set(name, row); };
+    const addAdvanced = (name, label, control) => { const row = make("div"); row.className = "mxv-advanced-row"; const labelEl = make("label", {}, t(label)); labelEl.dataset.mxvTranslation = label; row.appendChild(labelEl); row.appendChild(control); advancedBody.appendChild(row); advancedLabels.set(name, labelEl); advancedRows.set(name, row); };
     const localizedSelects = [];
     const select = (name, values) => {
-        const s = document.createElement("select"); s.className = "ghh3-control";
+        const s = document.createElement("select"); s.className = "mxv-control";
         const syncOptions = () => {
             const current = s.value || widget(node, name)?.value || values[0];
             s.replaceChildren(...values.map(v => new Option(t(v), v)));
@@ -1104,17 +1119,17 @@ function nodeColorToCss(value) {
         };
         syncOptions();
         s.onchange = () => setWidget(node, name, s.value);
-        s._ghH3SyncOptions = syncOptions;
+        s._mxvSyncOptions = syncOptions;
         localizedSelects.push(s);
         return s;
     };
-    const number = (name, step, min, max) => { const wrap = make("div"); wrap.className = "ghh3-number"; const left = make("button", {}, "◀"); const n = document.createElement("input"); n.type = "number"; n.step = step; n.min = min; n.max = max; const raw = Number(widget(node, name)?.value); n.value = Number.isFinite(raw) ? raw : min; const right = make("button", {}, "▶"); const update = value => { const numeric = Number(value); const next = Math.max(Number(min), Math.min(Number(max), Number.isFinite(numeric) ? numeric : Number(min))); n.value = Number.isInteger(next) ? next : next.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); setWidget(node, name, next); }; left.onclick = () => update(Number(n.value || min) - Number(step)); right.onclick = () => update(Number(n.value || min) + Number(step)); n.onchange = () => update(n.value); wrap.append(left, n, right); return wrap; };
-    const check = (name) => { const label = make("label"); label.className = "ghh3-toggle"; const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value; const track = make("span"); c.onchange = () => setWidget(node, name, c.checked); label.append(c, track); return label; };
+    const number = (name, step, min, max) => { const wrap = make("div"); wrap.className = "mxv-number"; const left = make("button", {}, "◀"); const n = document.createElement("input"); n.type = "number"; n.step = step; n.min = min; n.max = max; const raw = Number(widget(node, name)?.value); n.value = Number.isFinite(raw) ? raw : min; const right = make("button", {}, "▶"); const update = value => { const numeric = Number(value); const next = Math.max(Number(min), Math.min(Number(max), Number.isFinite(numeric) ? numeric : Number(min))); n.value = Number.isInteger(next) ? next : next.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); setWidget(node, name, next); }; left.onclick = () => update(Number(n.value || min) - Number(step)); right.onclick = () => update(Number(n.value || min) + Number(step)); n.onchange = () => update(n.value); wrap.append(left, n, right); return wrap; };
+    const check = (name) => { const label = make("label"); label.className = "mxv-toggle"; const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value; const track = make("span"); c.onchange = () => setWidget(node, name, c.checked); label.append(c, track); return label; };
     addAdvanced("audio_mode", "Audio mode", select("audio_mode", ["native", "lock_source", "reference_only", "remix_source"]));
     const audioStrengthControl = number("audio_denoise_strength", "0.05", "0", "1");
     addAdvanced("audio_denoise_strength", "Audio redraw strength", audioStrengthControl);
     const driveAudioOrdinalControl = document.createElement("select");
-    driveAudioOrdinalControl.className = "ghh3-control";
+    driveAudioOrdinalControl.className = "mxv-control";
     addAdvanced("drive_audio_ordinal", "Drive audio", driveAudioOrdinalControl);
     addAdvanced("strict_prompt_tags", "Strict prompt tags", check("strict_prompt_tags"));
     addAdvanced("ref_image_size", "Reference image size", select("ref_image_size", ["match", "1.2x", "1.5x", "2x", "max"]));
@@ -1303,11 +1318,11 @@ function nodeColorToCss(value) {
         modeRef.textContent = t("All-purpose reference");
         prompt.placeholder = t("Prompt:\nClick an uploaded asset to insert its tag, e.g. <picture 1>, <video 1>, or <audio 2>;\nDouble-click a video to insert its audio tag; mute a video at the top-right to exclude its audio from references");
         advancedSummary.textContent = t("Advanced options");
-        for (const label of advancedLabels.values()) label.textContent = t(label.dataset.ghh3Translation);
-        localizedSelects.forEach(control => control._ghH3SyncOptions?.());
+        for (const label of advancedLabels.values()) label.textContent = t(label.dataset.mxvTranslation);
+        localizedSelects.forEach(control => control._mxvSyncOptions?.());
         for (const row of aiRows.values()) {
-            const label = row.querySelector("label[data-ghh3-translation]");
-            if (label) label.textContent = t(label.dataset.ghh3Translation);
+            const label = row.querySelector("label[data-mxv-translation]");
+            if (label) label.textContent = t(label.dataset.mxvTranslation);
         }
         aiText.placeholder = t("Idea / prompt to rewrite");
         aiKey.placeholder = t("API key (cleared when sharing the workflow)");
@@ -1323,31 +1338,32 @@ function nodeColorToCss(value) {
     advanced.addEventListener("toggle", () => { persistState(); });
     root.appendChild(promptWrap);
     /* ===== AI 生成区块：接管隐藏的 prompt_source/ai_* widget（与隐藏列表一一对应）===== */
-    const aiDetails = make("details"); aiDetails.className = "ghh3-advanced ghh3-ai";
-    const aiSummary = make("summary", { cursor: "pointer", color: "#aebdca", padding: "7px 12px 7px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box" }, t("AI generation"));
+    const aiDetails = make("details"); aiDetails.className = "mxv-advanced mxv-ai";
+    const aiSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 7px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("AI generation"));
+    aiSummary.insertAdjacentHTML("afterbegin", '<span class="mxv-disclose" aria-hidden="true"></span>');
     aiDetails.appendChild(aiSummary);
-    const aiBody = make("div", { display: "grid", gap: "5px", padding: "5px 12px 8px" }); aiBody.className = "ghh3-advanced-body";
+    const aiBody = make("div", { display: "grid", gap: "5px", padding: "5px 12px 8px" }); aiBody.className = "mxv-advanced-body";
     aiDetails.appendChild(aiBody);
     const aiRows = new Map();
     const addAi = (name, label, control) => {
-        const row = make("div"); row.className = "ghh3-advanced-row";
-        const labelEl = make("label", {}, t(label)); labelEl.dataset.ghh3Translation = label;
+        const row = make("div"); row.className = "mxv-advanced-row";
+        const labelEl = make("label", {}, t(label)); labelEl.dataset.mxvTranslation = label;
         row.appendChild(labelEl); row.appendChild(control);
         aiBody.appendChild(row); aiRows.set(name, row);
     };
     const aiSelect = select;
     const aiCheck = (name) => {
-        const label = make("label"); label.className = "ghh3-toggle";
+        const label = make("label"); label.className = "mxv-toggle";
         const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value;
         const track = make("span"); c.onchange = () => setWidget(node, name, c.checked);
         label.append(c, track); return label;
     };
-    const aiText = document.createElement("textarea"); aiText.className = "ghh3-control";
+    const aiText = document.createElement("textarea"); aiText.className = "mxv-control";
     aiText.rows = 3; aiText.placeholder = t("Idea / prompt to rewrite");
     aiText.style.width = "100%"; aiText.style.boxSizing = "border-box"; aiText.style.resize = "vertical";
     aiText.value = String(widget(node, "ai_text")?.value ?? "");
     aiText.oninput = () => setWidget(node, "ai_text", aiText.value);
-    const aiKey = document.createElement("input"); aiKey.className = "ghh3-control"; aiKey.type = "password";
+    const aiKey = document.createElement("input"); aiKey.className = "mxv-control"; aiKey.type = "password";
     aiKey.style.width = "100%"; aiKey.style.boxSizing = "border-box";
     aiKey.placeholder = t("API key (cleared when sharing the workflow)");
     aiKey.value = String(widget(node, "ai_api_key")?.value ?? "");
@@ -1357,12 +1373,16 @@ function nodeColorToCss(value) {
     const aiProvider = aiSelect("ai_provider", AI_PROVIDERS);
     const aiLanguage = aiSelect("ai_language", ["zh", "mixed", "en"]);
     const aiMode = aiSelect("ai_mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]);
-    const aiEndpoint = document.createElement("input"); aiEndpoint.className = "ghh3-control"; aiEndpoint.type = "text";
+    aiMode.onchange = () => {
+        setWidget(node, "ai_mode", aiMode.value);
+        switchMode(aiMode.value === "ref2va" ? "all_reference" : aiMode.value === "auto" ? state.mode : "text_keyframes", true);
+    };
+    const aiEndpoint = document.createElement("input"); aiEndpoint.className = "mxv-control"; aiEndpoint.type = "text";
     aiEndpoint.style.width = "100%"; aiEndpoint.style.boxSizing = "border-box";
     aiEndpoint.placeholder = t("endpoint override");
     aiEndpoint.value = String(widget(node, "ai_endpoint")?.value ?? "");
     aiEndpoint.oninput = () => setWidget(node, "ai_endpoint", aiEndpoint.value);
-    const aiModel = document.createElement("input"); aiModel.className = "ghh3-control"; aiModel.type = "text";
+    const aiModel = document.createElement("input"); aiModel.className = "mxv-control"; aiModel.type = "text";
     aiModel.style.width = "100%"; aiModel.style.boxSizing = "border-box";
     aiModel.placeholder = t("model override");
     aiModel.value = String(widget(node, "ai_model")?.value ?? "");
@@ -1428,13 +1448,13 @@ function nodeColorToCss(value) {
     root.appendChild(aiDetails);
     root.appendChild(advanced);
     const commitPromptEditorInput = () => {
-        const keepFocus = document.activeElement === prompt || prompt.dataset.ghh3Editing === "1";
+        const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         promptPlainText = editorText();
         // Keep native contenteditable editing intact for ordinary keystrokes.
         // Rebuild only when a media/dialogue decoration actually changed.
         if (promptDecorationsOutOfSync(promptPlainText)) renderPromptHighlights();
         if (keepFocus && document.activeElement !== prompt) prompt.focus({ preventScroll: true });
-        prompt.classList.toggle("ghh3-prompt-empty", !promptPlainText);
+        prompt.classList.toggle("mxv-prompt-empty", !promptPlainText);
         if (pendingPromptSnapshot) {
             pushPromptUndo(pendingPromptSnapshot);
             pendingPromptSnapshot = null;
@@ -1466,7 +1486,7 @@ function nodeColorToCss(value) {
         promptByMode[state.mode] = prompt.value; setPromptWidget(node, prompt.value); persistState();
     });
     const isPromptHistoryKey = event => {
-        const editing = document.activeElement === prompt || prompt.dataset.ghh3Editing === "1";
+        const editing = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         if (!editing || prompt.readOnly || !(event.ctrlKey || event.metaKey) || event.altKey) return;
         const key = String(event.key || "").toLowerCase();
         return key === "z" || key === "y";
@@ -1513,7 +1533,7 @@ function nodeColorToCss(value) {
         const clear = () => { clearTimeout(timer); timer = null; tip?.remove(); tip = null; };
         button.addEventListener("mouseenter", () => {
             timer = setTimeout(() => {
-                tip = make("div", {}, getText()); tip.className = "ghh3-tool-tip"; document.body.append(tip);
+                tip = make("div", {}, getText()); tip.className = "mxv-tool-tip"; document.body.append(tip);
                 const rect = button.getBoundingClientRect();
                 const centeredLeft = rect.left + rect.width / 2 - tip.offsetWidth / 2;
                 tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, centeredLeft))}px`;
@@ -1752,13 +1772,18 @@ function nodeColorToCss(value) {
         if (!media.has(name) && value && value !== "(none)") media.set(name, { name: value, kind: kindOf({ name: value, type: "" }) });
     }
     syncMediaWidgets();
-    function nextSlot(kind) { const slots = kind === "image" ? imageSlots.slice(2) : kind === "video" ? videoSlots : audioSlots.slice(1); return slots.find(s => !media.has(s)); }
+    function nextSlot(kind) {
+        const slots = state.mode === "text_keyframes"
+            ? (kind === "image" ? (aiMode.value === "l2va" ? ["last_frame", "first_frame"] : ["first_frame", "last_frame"]) : kind === "audio" ? ["hybrid_audio"] : [])
+            : kind === "image" ? imageSlots.slice(2) : kind === "video" ? videoSlots : audioSlots.slice(1);
+        return slots.find(s => !media.has(s));
+    }
     function resolvedTaskType() {
         const first = media.has("first_frame");
         const last = media.has("last_frame");
         const refs = [...media.entries()].some(([slot]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot));
         const hybridAudio = media.has("hybrid_audio");
-        if (state.mode === "all_reference") return refs ? "Ref2VA" : "T2VA";
+        if (state.mode === "all_reference") return "Ref2VA";
         // Keyframe mode ignores all-reference slots. Old serialized graphs
         // may still contain ref_* entries after switching modes, so they must
         // not turn a plain I2VA/FL2VA/L2VA state into Hybrid in the UI.
@@ -1813,7 +1838,15 @@ function nodeColorToCss(value) {
             persistState();
         }
     }
-    function refreshTaskType() { const task = resolvedTaskType(); taskStatus.textContent = `${task} · ${taskLabel(task)}`; dimensions.textContent = canvas(aspectInternalValue(aspect?.value), mp?.value, adaptiveRatio); setWidget(node, "task_type", "auto"); }
+    function refreshTaskType() {
+        const task = resolvedTaskType();
+        const label = taskLabel(task);
+        taskStatus.textContent = `${task} · ${label}`;
+        const automatic = aiMode.querySelector('option[value="auto"]');
+        if (automatic) automatic.textContent = `${t("auto")} — ${label}`;
+        dimensions.textContent = canvas(aspectInternalValue(aspect?.value), mp?.value, adaptiveRatio);
+        setWidget(node, "task_type", "auto");
+    }
     function normalizePromptTagFormat() {
         const task = resolvedTaskType();
         const bare = task === "FL2VA";
@@ -2052,10 +2085,10 @@ function nodeColorToCss(value) {
     }
     function openOptimizerSettings() {
         loadOptimizerSettings().then(current => {
-            const overlay = make("div"); overlay.className = "ghh3-opt-overlay";
-            const dialog = make("div"); dialog.className = "ghh3-opt-dialog"; overlay.append(dialog);
-            const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "ghh3-opt-title"; dialog.append(title);
-            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `ghh3-opt-row${custom ? " ghh3-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
+            const overlay = make("div"); overlay.className = "mxv-opt-overlay";
+            const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
+            const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
+            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
             const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
             const provider = row("Provider", make("select"));
             for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
@@ -2065,10 +2098,10 @@ function nodeColorToCss(value) {
             const providerModels = { ...(current.provider_models || {}) };
             if (current.model && !providerModels[current.provider || "runninghub"]) providerModels[current.provider || "runninghub"] = current.model;
             const key = row("API key", make("input")); key.type = "password"; key.value = providerApiKeys[provider.value] || "";
-            const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "ghh3-opt-check";
-            const language = make("div"); language.className = "ghh3-opt-language";
+            const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "mxv-opt-check";
+            const language = make("div"); language.className = "mxv-opt-language";
             for (const value of ["English", "中文"]) {
-                const label = make("label"); const radio = make("input"); radio.type = "radio"; radio.name = `ghh3-output-language-${node.id}`; radio.value = value; radio.checked = (current.output_language || "中文") === value; label.append(radio, make("span", {}, value)); language.append(label);
+                const label = make("label"); const radio = make("input"); radio.type = "radio"; radio.name = `mxv-output-language-${node.id}`; radio.value = value; radio.checked = (current.output_language || "中文") === value; label.append(radio, make("span", {}, value)); language.append(label);
             }
             const url = row("API URL", make("input"), true);
             const model = row("Model", make("input"), true);
@@ -2077,14 +2110,14 @@ function nodeColorToCss(value) {
                 new Option("OpenAI Responses", "responses"),
                 new Option("Gemini GenerateContent", "gemini"),
             );
-            const runninghubModelGroup = make("div"); runninghubModelGroup.className = "ghh3-opt-model-row";
-            const runninghubModel = make("select"); runninghubModel.className = "ghh3-opt-model-native"; runninghubModelGroup.append(runninghubModel);
-            const runninghubModelPicker = make("button"); runninghubModelPicker.type = "button"; runninghubModelPicker.className = "ghh3-opt-model-picker"; runninghubModelGroup.append(runninghubModelPicker);
+            const runninghubModelGroup = make("div"); runninghubModelGroup.className = "mxv-opt-model-row";
+            const runninghubModel = make("select"); runninghubModel.className = "mxv-opt-model-native"; runninghubModelGroup.append(runninghubModel);
+            const runninghubModelPicker = make("button"); runninghubModelPicker.type = "button"; runninghubModelPicker.className = "mxv-opt-model-picker"; runninghubModelGroup.append(runninghubModelPicker);
             const refreshIcon = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 0 1 4.9 4H20a8 8 0 0 0-2.35-4.65ZM12 17a5 5 0 0 1-4.9-4H4a8 8 0 0 0 8 7v3l5-5-5-5v4Z"/></svg>';
-            const refreshRunninghubModels = make("button"); refreshRunninghubModels.type = "button"; refreshRunninghubModels.className = "ghh3-opt-refresh"; refreshRunninghubModels.innerHTML = refreshIcon; refreshRunninghubModels.title = t("Refresh RunningHub models"); refreshRunninghubModels.setAttribute("aria-label", t("Refresh RunningHub models")); runninghubModelGroup.append(refreshRunninghubModels);
-            const runninghubModelMenu = make("div"); runninghubModelMenu.className = "ghh3-opt-model-menu";
-            const runninghubModelSearch = make("input"); runninghubModelSearch.type = "search"; runninghubModelSearch.placeholder = t("Search models"); runninghubModelSearch.className = "ghh3-opt-model-search";
-            const runninghubModelResults = make("div"); runninghubModelResults.className = "ghh3-opt-model-results";
+            const refreshRunninghubModels = make("button"); refreshRunninghubModels.type = "button"; refreshRunninghubModels.className = "mxv-opt-refresh"; refreshRunninghubModels.innerHTML = refreshIcon; refreshRunninghubModels.title = t("Refresh RunningHub models"); refreshRunninghubModels.setAttribute("aria-label", t("Refresh RunningHub models")); runninghubModelGroup.append(refreshRunninghubModels);
+            const runninghubModelMenu = make("div"); runninghubModelMenu.className = "mxv-opt-model-menu";
+            const runninghubModelSearch = make("input"); runninghubModelSearch.type = "search"; runninghubModelSearch.placeholder = t("Search models"); runninghubModelSearch.className = "mxv-opt-model-search";
+            const runninghubModelResults = make("div"); runninghubModelResults.className = "mxv-opt-model-results";
             runninghubModelMenu.append(runninghubModelSearch, runninghubModelResults); runninghubModelGroup.append(runninghubModelMenu);
             row("Model", runninghubModelGroup);
             const runninghubModelsByProvider = {
@@ -2107,10 +2140,10 @@ function nodeColorToCss(value) {
                 const filtered = keyword ? runninghubModels.filter(value => value.toLowerCase().includes(keyword)) : runninghubModels;
                 runninghubModelResults.replaceChildren();
                 if (!filtered.length) {
-                    const empty = make("div", {}, t("No matching models")); empty.className = "ghh3-opt-model-empty"; runninghubModelResults.append(empty); return;
+                    const empty = make("div", {}, t("No matching models")); empty.className = "mxv-opt-model-empty"; runninghubModelResults.append(empty); return;
                 }
                 for (const value of filtered) {
-                    const option = make("button", {}, value); option.type = "button"; option.className = "ghh3-opt-model-option";
+                    const option = make("button", {}, value); option.type = "button"; option.className = "mxv-opt-model-option";
                     option.classList.toggle("selected", value === runninghubModel.value);
                     option.onclick = () => { runninghubModel.value = value; refreshRunninghubModelPicker(); runninghubModelMenu.classList.remove("open"); };
                     runninghubModelResults.append(option);
@@ -2123,18 +2156,18 @@ function nodeColorToCss(value) {
                 if (opening) { runninghubModelSearch.value = ""; renderRunninghubModels(); requestAnimationFrame(() => runninghubModelSearch.focus()); }
             };
             runninghubModelSearch.addEventListener("input", renderRunninghubModels);
-            const localModelGroup = make("div"); localModelGroup.className = "ghh3-opt-model-row";
-            const localModel = make("select"); localModel.className = "ghh3-opt-model-native"; localModelGroup.append(localModel);
-            const localModelPicker = make("button"); localModelPicker.type = "button"; localModelPicker.className = "ghh3-opt-model-picker"; localModelGroup.append(localModelPicker);
-            const localModelMenu = make("div"); localModelMenu.className = "ghh3-opt-model-menu";
-            const localModelSearch = make("input"); localModelSearch.type = "search"; localModelSearch.placeholder = t("Search local models"); localModelSearch.className = "ghh3-opt-model-search";
-            const localModelResults = make("div"); localModelResults.className = "ghh3-opt-model-results";
+            const localModelGroup = make("div"); localModelGroup.className = "mxv-opt-model-row";
+            const localModel = make("select"); localModel.className = "mxv-opt-model-native"; localModelGroup.append(localModel);
+            const localModelPicker = make("button"); localModelPicker.type = "button"; localModelPicker.className = "mxv-opt-model-picker"; localModelGroup.append(localModelPicker);
+            const localModelMenu = make("div"); localModelMenu.className = "mxv-opt-model-menu";
+            const localModelSearch = make("input"); localModelSearch.type = "search"; localModelSearch.placeholder = t("Search local models"); localModelSearch.className = "mxv-opt-model-search";
+            const localModelResults = make("div"); localModelResults.className = "mxv-opt-model-results";
             localModelMenu.append(localModelSearch, localModelResults); localModelGroup.append(localModelMenu);
-            const refreshModels = make("button"); refreshModels.type = "button"; refreshModels.className = "ghh3-opt-refresh"; refreshModels.innerHTML = refreshIcon; refreshModels.title = t("Refresh local models"); refreshModels.setAttribute("aria-label", t("Refresh local models")); localModelGroup.append(refreshModels);
+            const refreshModels = make("button"); refreshModels.type = "button"; refreshModels.className = "mxv-opt-refresh"; refreshModels.innerHTML = refreshIcon; refreshModels.title = t("Refresh local models"); refreshModels.setAttribute("aria-label", t("Refresh local models")); localModelGroup.append(refreshModels);
             row("Local model", localModelGroup);
             const localMmproj = row("Vision model (mmproj)", make("select"));
             const localDevice = row("Local device", make("select")); localDevice.append(new Option(t("Auto"), "auto"), new Option("GPU", "cuda"), new Option("CPU", "cpu")); localDevice.value = current.local_device || "cuda";
-            const dependencyStatus = make("div"); dependencyStatus.className = "ghh3-opt-dependencies"; dialog.append(dependencyStatus);
+            const dependencyStatus = make("div"); dependencyStatus.className = "mxv-opt-dependencies"; dialog.append(dependencyStatus);
             const maxTokens = row("Maximum output tokens", make("input"));
             maxTokens.type = "number"; maxTokens.min = "512"; maxTokens.max = "8192"; maxTokens.step = "512";
             maxTokens.value = String(Math.max(512, Math.min(8192, Number(current.max_tokens) || 4096)));
@@ -2144,10 +2177,10 @@ function nodeColorToCss(value) {
             };
             maxTokens.addEventListener("change", normalizeMaxTokens);
             row("Output language", language);
-            const checkboxRows = make("div"); checkboxRows.className = "ghh3-opt-checks";
-            const checkboxRow = (label, control) => { const wrap = make("label"); wrap.className = "ghh3-opt-row"; wrap.append(make("span", {}, t(label)), control); checkboxRows.append(wrap); };
+            const checkboxRows = make("div"); checkboxRows.className = "mxv-opt-checks";
+            const checkboxRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); checkboxRows.append(wrap); };
             checkboxRow("Read visual references", readMedia);
-            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "ghh3-opt-check"; checkboxRow("Automatic optimization before run", autoOptimize);
+            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "mxv-opt-check"; checkboxRow("Automatic optimization before run", autoOptimize);
             dialog.append(checkboxRows);
             let localModels = current.models || [];
             let mmprojModels = current.mmproj_models || [];
@@ -2177,10 +2210,10 @@ function nodeColorToCss(value) {
                     : localModels;
                 localModelResults.replaceChildren();
                 if (!filtered.length) {
-                    const empty = make("div", {}, t("No compatible local vision models found")); empty.className = "ghh3-opt-model-empty"; localModelResults.append(empty); return;
+                    const empty = make("div", {}, t("No compatible local vision models found")); empty.className = "mxv-opt-model-empty"; localModelResults.append(empty); return;
                 }
                 for (const item of filtered) {
-                    const option = make("button", {}, item.name); option.type = "button"; option.className = "ghh3-opt-model-option";
+                    const option = make("button", {}, item.name); option.type = "button"; option.className = "mxv-opt-model-option";
                     option.classList.toggle("selected", item.relative_path === localModel.value);
                     option.onclick = () => { localModel.value = item.relative_path; mmprojManuallySelected = false; refreshModelPicker(); autoSelectMmproj(); sync(); localModelMenu.classList.remove("open"); };
                     localModelResults.append(option);
@@ -2251,15 +2284,15 @@ function nodeColorToCss(value) {
                 dialog.classList.toggle("custom", custom);
                 const local = mode.value === "local";
                 dialog.classList.toggle("local", local);
-                [provider, key, url, model, protocol].forEach(control => control.closest("label")?.classList.toggle("ghh3-opt-hidden", local));
-                runninghubModel.closest("label")?.classList.toggle("ghh3-opt-hidden", local || !runninghub);
-                model.closest("label")?.classList.toggle("ghh3-opt-hidden", local || !custom);
-                url.closest("label")?.classList.toggle("ghh3-opt-hidden", local || !custom);
-                protocol.closest("label")?.classList.toggle("ghh3-opt-hidden", local || !custom);
-                [localModel, localDevice, refreshModels].forEach(control => (control.closest("label") || control).classList.toggle("ghh3-opt-hidden", !local));
+                [provider, key, url, model, protocol].forEach(control => control.closest("label")?.classList.toggle("mxv-opt-hidden", local));
+                runninghubModel.closest("label")?.classList.toggle("mxv-opt-hidden", local || !runninghub);
+                model.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
+                url.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
+                protocol.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
+                [localModel, localDevice, refreshModels].forEach(control => (control.closest("label") || control).classList.toggle("mxv-opt-hidden", !local));
                 const gguf = selectedLocalModel()?.format === "gguf";
-                localMmproj.closest("label")?.classList.toggle("ghh3-opt-hidden", !local || !gguf);
-                dependencyStatus.classList.toggle("ghh3-opt-hidden", !local || !dependencyStatus.textContent);
+                localMmproj.closest("label")?.classList.toggle("mxv-opt-hidden", !local || !gguf);
+                dependencyStatus.classList.toggle("mxv-opt-hidden", !local || !dependencyStatus.textContent);
                 const preset = optimizerProviders[provider.value];
                 if (!custom) { url.value = preset.url; model.value = preset.model; protocol.value = preset.protocol; }
             };
@@ -2279,7 +2312,7 @@ function nodeColorToCss(value) {
                 sync();
             }); mode.addEventListener("change", sync); sync();
             provider.dataset.previousValue = provider.value;
-            const actions = make("div"); actions.className = "ghh3-opt-actions";
+            const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save")); actions.append(cancel, save); dialog.append(actions);
             const close = () => overlay.remove(); cancel.onclick = close; overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
             save.onclick = async () => {
@@ -2298,10 +2331,10 @@ function nodeColorToCss(value) {
         }).catch(error => alert(error.message));
     }
     function showOptimizerConfigPrompt() {
-        const overlay = make("div"); overlay.className = "ghh3-opt-overlay";
-        const dialog = make("div"); dialog.className = "ghh3-opt-dialog"; overlay.append(dialog);
+        const overlay = make("div"); overlay.className = "mxv-opt-overlay";
+        const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
         dialog.append(make("div", {}, t("Prompt optimizer API is not configured. Open settings now?")));
-        const actions = make("div"); actions.className = "ghh3-opt-actions";
+        const actions = make("div"); actions.className = "mxv-opt-actions";
         const cancel = make("button", {}, t("Cancel")); const confirm = make("button", {}, t("Confirm")); actions.append(cancel, confirm); dialog.append(actions);
         const close = () => overlay.remove(); cancel.onclick = close; confirm.onclick = () => { close(); openOptimizerSettings(); };
         document.body.append(overlay);
@@ -2492,7 +2525,7 @@ function nodeColorToCss(value) {
             const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext);
             if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             optimizing = true; optimizerRequestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`; optimizerAbort = new AbortController();
-            optimizePrompt.classList.add("ghh3-prompt-loading"); elapsedPrompt.classList.add("visible");
+            optimizePrompt.classList.add("mxv-prompt-loading"); elapsedPrompt.classList.add("visible");
             const started = performance.now();
             const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Optimizing")}：${Math.floor((performance.now() - started) / 1000)} s`; };
             refreshElapsed(); optimizerTimer = setInterval(refreshElapsed, 1000);
@@ -2526,7 +2559,7 @@ function nodeColorToCss(value) {
         }
         finally {
             clearInterval(optimizerTimer); optimizerTimer = null; optimizerAbort = null; optimizerRequestId = null; optimizing = false;
-            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = ""; optimizePrompt.classList.remove("ghh3-prompt-loading"); refreshPromptConnection();
+            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = ""; optimizePrompt.classList.remove("mxv-prompt-loading"); refreshPromptConnection();
         }
     }
     optimizePrompt.onclick = async () => {
@@ -2571,24 +2604,24 @@ function nodeColorToCss(value) {
         closeActiveTrimEditor?.();
         stopActiveMedia();
         const sourceName = entry.originalName || entry.name;
-        const overlay = make("div"); overlay.className = "ghh3-trim-overlay";
-        const dialog = make("div"); dialog.className = "ghh3-trim-dialog";
-        dialog.appendChild(make("div", {}, t("Audio trim"))).className = "ghh3-trim-title";
-        const waveWrap = make("div"); waveWrap.className = "ghh3-trim-wave-wrap";
-        const wave = make("canvas"); wave.className = "ghh3-trim-wave";
-        const loading = make("div", {}, "…"); loading.className = "ghh3-trim-loading";
+        const overlay = make("div"); overlay.className = "mxv-trim-overlay";
+        const dialog = make("div"); dialog.className = "mxv-trim-dialog";
+        dialog.appendChild(make("div", {}, t("Audio trim"))).className = "mxv-trim-title";
+        const waveWrap = make("div"); waveWrap.className = "mxv-trim-wave-wrap";
+        const wave = make("canvas"); wave.className = "mxv-trim-wave";
+        const loading = make("div", {}, "…"); loading.className = "mxv-trim-loading";
         waveWrap.append(wave, loading); dialog.appendChild(waveWrap);
-        const times = make("div"); times.className = "ghh3-trim-times";
-        const timeBox = label => { const box = make("div", {}, t(label)); box.className = "ghh3-trim-time"; const value = make("strong", {}, "--"); box.appendChild(value); times.appendChild(box); return { box, value }; };
+        const times = make("div"); times.className = "mxv-trim-times";
+        const timeBox = label => { const box = make("div", {}, t(label)); box.className = "mxv-trim-time"; const value = make("strong", {}, "--"); box.appendChild(value); times.appendChild(box); return { box, value }; };
         const startTime = timeBox("Start"), endTime = timeBox("End"), durationTime = timeBox("Selected duration");
         const startValue = startTime.value, endValue = endTime.value, durationValue = durationTime.value;
-        const syncDuration = make("button", {}, t("Sync target duration")); syncDuration.className = "ghh3-trim-sync"; durationTime.box.appendChild(syncDuration);
+        const syncDuration = make("button", {}, t("Sync target duration")); syncDuration.className = "mxv-trim-sync"; durationTime.box.appendChild(syncDuration);
         dialog.appendChild(times);
-        const controls = make("div"); controls.className = "ghh3-trim-controls";
-        const preview = make("button"); preview.className = "ghh3-trim-preview"; preview.disabled = true;
+        const controls = make("div"); controls.className = "mxv-trim-controls";
+        const preview = make("button"); preview.className = "mxv-trim-preview"; preview.disabled = true;
         controls.append(preview, make("span", {}, isChineseLocale() ? "滚轮缩放；中键拖动视图；点击选区播放/停止，选区内按住左键拖动选区位置" : "Wheel to zoom; middle-drag to pan; click selection to play/stop; hold left mouse inside selection to move it"));
-        controls.lastChild.className = "ghh3-trim-hint"; dialog.appendChild(controls);
-        const actions = make("div"); actions.className = "ghh3-trim-actions";
+        controls.lastChild.className = "mxv-trim-hint"; dialog.appendChild(controls);
+        const actions = make("div"); actions.className = "mxv-trim-actions";
         const cancel = make("button", {}, t("Cancel"));
         const save = make("button", {}, t("Save")); save.disabled = true;
         actions.append(cancel, save); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
@@ -2611,8 +2644,8 @@ function nodeColorToCss(value) {
         let playheadFrame = 0;
         const minSelection = 0.05;
         const previewIcon = playing => playing
-            ? '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx=".6" fill="#dce7ee"/></svg>'
-            : '<svg viewBox="0 0 12 12"><path d="M2.5 1.5 10 6l-7.5 4.5Z" fill="#dce7ee"/></svg>';
+            ? '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx=".6" fill="#e2e0db"/></svg>'
+            : '<svg viewBox="0 0 12 12"><path d="M2.5 1.5 10 6l-7.5 4.5Z" fill="#e2e0db"/></svg>';
         preview.innerHTML = previewIcon(false);
         const stopPreview = (reset = true) => {
             if (!previewAudio) return;
@@ -2647,7 +2680,7 @@ function nodeColorToCss(value) {
             const { width, height, ratio } = resizeCanvas();
             const context = wave.getContext("2d");
             context.clearRect(0, 0, width, height);
-            context.fillStyle = "#0d1720"; context.fillRect(0, 0, width, height);
+            context.fillStyle = "#14171b"; context.fillRect(0, 0, width, height);
             const scaleHeight = 24 * ratio;
             const waveformHeight = Math.max(1, height - scaleHeight);
             const center = waveformHeight / 2;
@@ -2657,7 +2690,7 @@ function nodeColorToCss(value) {
             const lastSample = Math.min(buffer.length, Math.ceil(viewEnd * buffer.sampleRate));
             const visibleSamples = Math.max(1, lastSample - firstSample);
             const samplesPerPixel = Math.max(1, Math.floor(visibleSamples / width));
-            context.strokeStyle = "#587080"; context.lineWidth = Math.max(1, ratio);
+            context.strokeStyle = "#93793f"; context.lineWidth = Math.max(1, ratio);
             context.beginPath();
             for (let x = 0; x < width; x++) {
                 const from = firstSample + x * visibleSamples / width;
@@ -2677,9 +2710,9 @@ function nodeColorToCss(value) {
             const clippedEndX = Math.max(0, Math.min(width, endX));
             context.fillStyle = "rgba(4,10,15,.62)"; context.fillRect(0, 0, clippedStartX, waveformHeight); context.fillRect(clippedEndX, 0, width - clippedEndX, waveformHeight);
             context.fillStyle = "rgba(10,164,214,.16)"; context.fillRect(clippedStartX, 0, Math.max(0, clippedEndX - clippedStartX), waveformHeight);
-            context.strokeStyle = "#27d9e5"; context.lineWidth = Math.max(2, 2 * ratio);
+            context.strokeStyle = "#e8a33d"; context.lineWidth = Math.max(2, 2 * ratio);
             for (const x of [startX, endX]) { if (x < 0 || x > width) continue; context.beginPath(); context.moveTo(x, 0); context.lineTo(x, waveformHeight); context.stroke(); }
-            context.fillStyle = "#27d9e5";
+            context.fillStyle = "#e8a33d";
             const handleWidth = 5 * ratio, handleHeight = 24 * ratio;
             if (startX >= 0 && startX <= width) context.fillRect(startX - handleWidth / 2, center - handleHeight / 2, handleWidth, handleHeight);
             if (endX >= 0 && endX <= width) context.fillRect(endX - handleWidth / 2, center - handleHeight / 2, handleWidth, handleHeight);
@@ -2693,14 +2726,14 @@ function nodeColorToCss(value) {
                 const minutes = Math.floor(seconds / 60), remaining = Math.round(seconds % 60);
                 return remaining ? `${minutes}:${String(remaining).padStart(2, "0")}` : `${minutes}m`;
             };
-            context.fillStyle = "#0b141c"; context.fillRect(0, waveformHeight, width, scaleHeight);
-            context.strokeStyle = "#435865"; context.lineWidth = Math.max(1, ratio);
+            context.fillStyle = "#14171b"; context.fillRect(0, waveformHeight, width, scaleHeight);
+            context.strokeStyle = "#4a5058"; context.lineWidth = Math.max(1, ratio);
             context.beginPath(); context.moveTo(0, waveformHeight + .5 * ratio); context.lineTo(width, waveformHeight + .5 * ratio); context.stroke();
-            context.fillStyle = "#8095a3"; context.font = `${9 * ratio}px Arial,sans-serif`; context.textBaseline = "top";
+            context.fillStyle = "#8c8983"; context.font = `${9 * ratio}px Arial,sans-serif`; context.textBaseline = "top";
             for (let seconds = firstTick; seconds <= viewEnd + tickStep * .001; seconds += tickStep) {
                 const x = timeToX(seconds);
                 if (x < 0 || x > width) continue;
-                context.strokeStyle = "#536b79"; context.beginPath(); context.moveTo(x, waveformHeight); context.lineTo(x, waveformHeight + 5 * ratio); context.stroke();
+                context.strokeStyle = "#75726c"; context.beginPath(); context.moveTo(x, waveformHeight); context.lineTo(x, waveformHeight + 5 * ratio); context.stroke();
                 const label = formatTick(seconds);
                 const labelWidth = context.measureText(label).width;
                 const labelX = Math.max(2 * ratio, Math.min(width - labelWidth - 2 * ratio, x - labelWidth / 2));
@@ -2765,7 +2798,7 @@ function nodeColorToCss(value) {
                 dragging = "view";
                 panOriginX = event.clientX;
                 panViewStart = viewStart;
-                waveWrap.classList.add("ghh3-trim-panning");
+                waveWrap.classList.add("mxv-trim-panning");
                 waveWrap.setPointerCapture(event.pointerId);
                 return;
             }
@@ -2809,7 +2842,7 @@ function nodeColorToCss(value) {
         const finishDrag = event => {
             if (dragging === "view") {
                 dragging = null;
-                waveWrap.classList.remove("ghh3-trim-panning");
+                waveWrap.classList.remove("mxv-trim-panning");
                 try { waveWrap.releasePointerCapture(event.pointerId); } catch {}
                 return;
             }
@@ -3034,14 +3067,14 @@ function nodeColorToCss(value) {
                 if (!item.isConnected) return;
                 active = true;
                 suppressMediaClickUntil = Date.now() + 600;
-                item.classList.add("ghh3-reorder-source");
+                item.classList.add("mxv-reorder-source");
                 try { item.setPointerCapture(event.pointerId); } catch {}
             }, 350);
             const setTarget = next => {
                 if (target === next) return;
-                target?.classList.remove("ghh3-reorder-target");
+                target?.classList.remove("mxv-reorder-target");
                 target = next;
-                target?.classList.add("ghh3-reorder-target");
+                target?.classList.add("mxv-reorder-target");
             };
             const move = moveEvent => {
                 if (!active) {
@@ -3053,8 +3086,8 @@ function nodeColorToCss(value) {
                 }
                 moveEvent.preventDefault();
                 moveEvent.stopPropagation();
-                const candidate = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest?.(".ghh3-card");
-                const candidateSlot = candidate?.dataset?.ghh3DropSlot;
+                const candidate = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest?.(".mxv-card");
+                const candidateSlot = candidate?.dataset?.mxvDropSlot;
                 setTarget(candidate && root.contains(candidate) && canReorderMedia(slot, candidateSlot) ? candidate : null);
             };
             const finish = finishEvent => {
@@ -3062,14 +3095,14 @@ function nodeColorToCss(value) {
                 window.removeEventListener("pointermove", move, true);
                 window.removeEventListener("pointerup", finish, true);
                 window.removeEventListener("pointercancel", finish, true);
-                item.classList.remove("ghh3-reorder-source");
-                target?.classList.remove("ghh3-reorder-target");
+                item.classList.remove("mxv-reorder-source");
+                target?.classList.remove("mxv-reorder-target");
                 try { item.releasePointerCapture(event.pointerId); } catch {}
                 if (!active) return;
                 finishEvent.preventDefault();
                 finishEvent.stopPropagation();
                 suppressMediaClickUntil = Date.now() + 600;
-                const targetSlot = target?.dataset?.ghh3DropSlot;
+                const targetSlot = target?.dataset?.mxvDropSlot;
                 if (targetSlot) reorderMediaSlots(slot, targetSlot);
             };
             window.addEventListener("pointermove", move, true);
@@ -3078,17 +3111,17 @@ function nodeColorToCss(value) {
         };
     }
     function card(slot, entry, square = true) {
-        const item = make("div"); item.className = "ghh3-card"; if (!square) item.style.aspectRatio = "16/9"; if (slot === "hybrid_audio") { item.classList.add("ghh3-audio-card"); item.style.aspectRatio = "auto"; }
-        item.dataset.ghh3DropSlot = slot;
-        const reorderIndicator = make("div", {}, "✥"); reorderIndicator.className = "ghh3-reorder-indicator"; item.appendChild(reorderIndicator);
+        const item = make("div"); item.className = "mxv-card"; if (!square) item.style.aspectRatio = "16/9"; if (slot === "hybrid_audio") { item.classList.add("mxv-audio-card"); item.style.aspectRatio = "auto"; }
+        item.dataset.mxvDropSlot = slot;
+        const reorderIndicator = make("div", {}, "✥"); reorderIndicator.className = "mxv-reorder-indicator"; item.appendChild(reorderIndicator);
         if (entry.kind === "image") { const img = make("img"); img.src = fileUrl(entry.name); img.draggable = false; item.appendChild(img); }
-        else if (entry.kind === "video") { const video = make("video"); video.src = fileUrl(entry.name); video.muted = !!entry.muted; video.preload = "metadata"; video.draggable = false; item.appendChild(video); const play = make("button", {}, "▶"); play.className = "ghh3-play"; play.onclick = e => { e.stopPropagation(); video.muted = !!entry.muted; video.paused ? video.play() : video.pause(); }; item.appendChild(play); }
+        else if (entry.kind === "video") { const video = make("video"); video.src = fileUrl(entry.name); video.muted = !!entry.muted; video.preload = "metadata"; video.draggable = false; item.appendChild(video); const play = make("button", {}, "▶"); play.className = "mxv-play"; play.onclick = e => { e.stopPropagation(); video.muted = !!entry.muted; video.paused ? video.play() : video.pause(); }; item.appendChild(play); }
         else {
-            item.appendChild(make("div", { height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#8ea3b4", fontSize: "22px" }, "♫"));
+            item.appendChild(make("div", { height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#a09d97", fontSize: "22px" }, "♫"));
             const audio = new Audio(fileUrl(entry.name));
-            const controls = make("div"); controls.className = "ghh3-media-controls";
-            const toggle = make("button"); toggle.className = "ghh3-media-toggle";
-            const time = make("span", {}, "00 s"); time.className = "ghh3-media-time";
+            const controls = make("div"); controls.className = "mxv-media-controls";
+            const toggle = make("button"); toggle.className = "mxv-media-toggle";
+            const time = make("span", {}, "00 s"); time.className = "mxv-media-time";
             const selectionStart = Math.max(0, Number(entry.trimStart) || 0);
             const savedEnd = Number(entry.trimEnd);
             const selectionEnd = () => Number.isFinite(savedEnd) && savedEnd > selectionStart ? Math.min(audio.duration || savedEnd, savedEnd) : audio.duration;
@@ -3111,13 +3144,13 @@ function nodeColorToCss(value) {
             audio.addEventListener("timeupdate", () => { if (!audio.paused && audio.currentTime >= selectionEnd()) stopSelection(); else refresh(); });
             audio.addEventListener("ended", stopSelection);
             controls.append(toggle, time); item.appendChild(controls);
-            const trim = make("button", {}, "✂"); trim.className = "ghh3-audio-trim-button"; trim.title = t("Trim audio");
+            const trim = make("button", {}, "✂"); trim.className = "mxv-audio-trim-button"; trim.title = t("Trim audio");
             trim.onclick = event => { event.stopPropagation(); openAudioTrimEditor(slot, entry); };
             item.appendChild(trim);
         }
         if (entry.kind === "video") {
             const sound = make("button", {}, entry.muted ? String.fromCodePoint(0x1F507) : String.fromCodePoint(0x1F50A));
-            sound.className = "ghh3-sound";
+            sound.className = "mxv-sound";
             sound.title = t(entry.muted ? "Unmute video" : "Mute video");
             sound.onclick = e => {
                 e.stopPropagation();
@@ -3129,11 +3162,11 @@ function nodeColorToCss(value) {
             };
             item.appendChild(sound);
             const video = item.querySelector("video");
-            const oldPlay = item.querySelector(".ghh3-play");
+            const oldPlay = item.querySelector(".mxv-play");
             if (oldPlay) oldPlay.style.display = "none";
-            const controls = make("div"); controls.className = "ghh3-media-controls";
-            const toggle = make("button"); toggle.className = "ghh3-media-toggle";
-            const time = make("span", {}, "00 s"); time.className = "ghh3-media-time";
+            const controls = make("div"); controls.className = "mxv-media-controls";
+            const toggle = make("button"); toggle.className = "mxv-media-toggle";
+            const time = make("span", {}, "00 s"); time.className = "mxv-media-time";
             const setPlaying = playing => { toggle.innerHTML = mediaIcon(playing); };
             const refresh = () => { const remaining = video.paused ? video.duration : Math.max(0, video.duration - video.currentTime); time.textContent = `${formatMediaTime(remaining)} s`; };
             const start = () => { if (activeMedia && activeMedia.media !== video) stopActiveMedia(); activeMedia = { media: video, setPlaying }; video.muted = !!entry.muted; video.play().catch(() => {}); setPlaying(true); };
@@ -3142,8 +3175,8 @@ function nodeColorToCss(value) {
             video.addEventListener("loadedmetadata", refresh); video.addEventListener("timeupdate", refresh); video.addEventListener("ended", () => { refresh(); setPlaying(false); if (activeMedia?.media === video) activeMedia = null; });
             controls.append(toggle, time); item.appendChild(controls);
         }
-        item.appendChild(make("div", {}, `${labelFor(slot, entry.kind)}: ${entry.name}`)).className = "ghh3-card-name";
-        const remove = make("button", {}, "×"); remove.className = "ghh3-remove"; remove.onclick = e => {
+        item.appendChild(make("div", {}, `${labelFor(slot, entry.kind)}: ${entry.name}`)).className = "mxv-card-name";
+        const remove = make("button", {}, "×"); remove.className = "mxv-remove"; remove.onclick = e => {
             e.stopPropagation();
             const driveSelection = captureDriveAudioSelection();
             const previousAudioCount = state.mode === "text_keyframes"
@@ -3192,44 +3225,54 @@ function nodeColorToCss(value) {
         else if (slot === "last_frame") { title = t("Last frame"); subtitle = t("First and last frames empty means text-to-video"); }
         else if (slot === "hybrid_audio") { title = t("Reference audio"); subtitle = t("Optional"); icon = "♫"; }
         else if (referenceEmpty) { title = t("Reference media"); subtitle = t("Images x9 · Videos x3 (mp4/mov) · Audios x3 (mp3/wav/flac...)"); }
-        const d = make("div"); d.className = "ghh3-drop"; if (slot === "hybrid_audio") d.classList.add("ghh3-audio-drop"); if (referenceEmpty) d.classList.add("ghh3-reference-empty");
-        d.dataset.ghh3DropSlot = slot || "";
+        const d = make("div"); d.className = "mxv-drop"; if (slot === "hybrid_audio") d.classList.add("mxv-audio-drop"); if (referenceEmpty) d.classList.add("mxv-reference-empty");
+        d.dataset.mxvDropSlot = slot || "";
         if (slot === "first_frame" || slot === "last_frame") {
-            const row = make("div"); row.className = "ghh3-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "ghh3-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "ghh3-drop-title";
-            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "ghh3-optional";
+            const row = make("div"); row.className = "mxv-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
+            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "mxv-optional";
             d.appendChild(row);
-            d.appendChild(make("div", {}, subtitle)).className = "ghh3-drop-subtitle";
+            d.appendChild(make("div", {}, subtitle)).className = "mxv-drop-subtitle";
         } else if (slot === "hybrid_audio") {
-            const row = make("div"); row.className = "ghh3-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "ghh3-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "ghh3-drop-title";
-            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "ghh3-optional";
+            const row = make("div"); row.className = "mxv-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
+            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "mxv-optional";
             d.appendChild(row);
         } else {
-            const row = make("div"); row.className = "ghh3-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "ghh3-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "ghh3-drop-title";
+            const row = make("div"); row.className = "mxv-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
             d.appendChild(row);
-            if (subtitle) d.appendChild(make("div", {}, subtitle)).className = "ghh3-drop-subtitle";
+            if (subtitle) d.appendChild(make("div", {}, subtitle)).className = "mxv-drop-subtitle";
         }
         d.onclick = () => choose(slot); d.onpointerenter = () => { hoverPasteSlot = slot; }; d.onpointerleave = () => { if (hoverPasteSlot === slot) hoverPasteSlot = undefined; }; d.ondragover = e => { e.preventDefault(); e.stopPropagation(); }; d.ondrop = e => { e.preventDefault(); e.stopPropagation(); accept(e.dataTransfer.files, slot); }; return d;
     }
+    let renderedMediaSignature = null;
     function render(preserveAdvancedSettings = false, preservePromptTags = false) {
+        const signature = JSON.stringify([...media].map(([slot, entry]) => [slot, entry.name]));
+        if (renderedMediaSignature !== null && signature !== renderedMediaSignature) {
+            aiMode.value = "auto"; setWidget(node, "ai_mode", "auto");
+        }
+        renderedMediaSignature = signature;
         if (!preservePromptTags) normalizePromptTagFormat();
         updateAdvancedVisibility(preserveAdvancedSettings);
-        root.querySelector(".ghh3-dynamic")?.remove(); const box = make("div"); box.className = "ghh3-box ghh3-dynamic";
+        root.querySelector(".mxv-dynamic")?.remove(); const box = make("div"); box.className = "mxv-box mxv-dynamic";
         if (state.mode === "text_keyframes") {
-            const grid = make("div"); grid.className = "ghh3-keygrid";
-            for (const s of ["first_frame", "last_frame"]) grid.appendChild(media.has(s) ? card(s, media.get(s), false) : addDrop(s));
+            const grid = make("div"); grid.className = "mxv-keygrid";
+            const selectedMode = aiMode.value;
+            const slots = selectedMode === "t2va" ? [] : selectedMode === "i2va" ? ["first_frame"] : selectedMode === "l2va" ? ["last_frame"] : ["first_frame", "last_frame"];
+            for (const s of ["first_frame", "last_frame"]) {
+                if (slots.includes(s) || media.has(s)) grid.appendChild(media.has(s) ? card(s, media.get(s), false) : addDrop(s));
+            }
             grid.appendChild(media.has("hybrid_audio") ? card("hybrid_audio", media.get("hybrid_audio"), false) : addDrop("hybrid_audio"));
             box.appendChild(grid);
         } else {
-            const grid = make("div"); grid.className = "ghh3-grid"; const entries = [...media.entries()].filter(([slot]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot)).sort((a,b) => typeOrder[a[1].kind] - typeOrder[b[1].kind] || a[0].localeCompare(b[0]));
+            const grid = make("div"); grid.className = "mxv-grid"; const entries = [...media.entries()].filter(([slot]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot)).sort((a,b) => typeOrder[a[1].kind] - typeOrder[b[1].kind] || a[0].localeCompare(b[0]));
             if (!entries.length) grid.appendChild(addDrop(null, true));
             else { entries.forEach(([s,e]) => grid.appendChild(card(s,e))); grid.appendChild(addDrop()); }
-            if (uploadNotice) grid.appendChild(make("div", {}, uploadNotice)).className = "ghh3-limit";
+            if (uploadNotice) grid.appendChild(make("div", {}, uploadNotice)).className = "mxv-limit";
             box.appendChild(grid);
         }
     root.insertBefore(box, promptWrap);
@@ -3247,7 +3290,7 @@ function nodeColorToCss(value) {
             const file = item.getAsFile();
             if (!file) continue;
             const kind = kindOf(file);
-            if (kind === "image" || kind === "video") files.push(file);
+            if (kind === "image" || kind === "video" || kind === "audio") files.push(file);
         }
         return files;
     }
@@ -3278,6 +3321,8 @@ function nodeColorToCss(value) {
             const kind = kindOf(file); if (!kind) continue;
             const slot = preferredSlot || nextSlot(kind);
             if (!slot) { uploadNotice = limitText(kind); continue; }
+            const expectedKind = slot === "hybrid_audio" || slot.startsWith("ref_audio_") ? "audio" : slot.startsWith("ref_video_") ? "video" : "image";
+            if (kind !== expectedKind) { preferredSlot = null; continue; }
             const existing = media.get(slot);
             if (existing && existing.kind !== kind) continue;
             try {
@@ -3304,20 +3349,21 @@ function nodeColorToCss(value) {
     }
     const captureMaterialDrop = event => {
         const target = event.target instanceof Element ? event.target : null;
-        const materialArea = target?.closest?.(".ghh3-card, .ghh3-drop, .ghh3-dynamic");
+        const materialArea = target?.closest?.(".mxv-card, .mxv-drop, .mxv-dynamic");
         if (!materialArea || !root.contains(materialArea)) return;
         if (!event.dataTransfer?.types?.includes?.("Files")) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         if (event.type !== "drop") return;
-        const slotElement = target.closest("[data-ghh3-drop-slot]");
-        const preferredSlot = slotElement?.dataset?.ghh3DropSlot || null;
+        const slotElement = target.closest("[data-mxv-drop-slot]");
+        const preferredSlot = slotElement?.dataset?.mxvDropSlot || null;
         accept(event.dataTransfer.files, preferredSlot);
     };
     window.addEventListener("dragenter", captureMaterialDrop, true);
     window.addEventListener("dragover", captureMaterialDrop, true);
     window.addEventListener("drop", captureMaterialDrop, true);
-    function switchMode(nextMode) {
+    function switchMode(nextMode, fromAiMode = false) {
+        if (!fromAiMode) { aiMode.value = "auto"; setWidget(node, "ai_mode", "auto"); }
         promptByMode[state.mode] = prompt.value;
         state.mode = nextMode;
         optimizerBefore = optimizerBeforeByMode[state.mode] ?? null;
@@ -3344,7 +3390,7 @@ function nodeColorToCss(value) {
         const internalValue = ASPECT_INTERNAL_VALUES.includes(v) ? v : aspectInternalValue(v);
         old?.call(this, internalValue);
         this.value = internalValue;
-        this._ghH3AspectInternalValue = internalValue;
+        this._mxvAspectInternal = internalValue;
         refreshSize();
         refreshAdaptiveRatio();
     })(aspect.callback));
@@ -3540,7 +3586,7 @@ app.registerExtension({
     const previous = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function() {
         const result = previous?.apply(this, arguments);
-        if (!this._ghH3PanelReady && createPanel(this)) this._ghH3PanelReady = true;
+        if (!this._mxvPanelReady && createPanel(this)) this._mxvPanelReady = true;
         return result;
     };
     },

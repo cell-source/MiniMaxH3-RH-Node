@@ -46,12 +46,22 @@ const pyList = [...pyBlock[1].matchAll(/^    "([a-z_]+)":/gm)].map(m => m[1]).so
 check(JSON.stringify(feList) === JSON.stringify(pyList),
     `providers sync fe=${feList.join(',')} py=${pyList.join(',')}`);
 
-/* 5. 布局与配色基线 */
+/* 5. 布局与配色基线（mxv 重设计） */
 check(js.includes('display: "flex"') && js.includes('flexFlow: "column"'), 'panel root is column flex');
 check(js.includes('overflowY: "auto"'), 'panel scrolls vertically');
-check(js.includes('background:#111c27;border:1px solid #334a5d;border-radius:8px'),
-    'details cards use .ghh3-box baseline colors');
+check(js.includes('.mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23'),
+    'details cards use mxv warm-charcoal baseline');
+check(js.includes('border-left:3px solid #e8a33d'), 'prompt editor has amber accent bar');
+check(js.includes('.mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px'),
+    'mode switcher is pill segmented style');
+check(js.includes('mxv-disclose'), 'accordion summaries have disclose arrow');
 check(!/position:absolute;left:8px;right:8px;bottom:6px/.test(js), 'no absolute overlay for advanced');
+
+/* 5b. 与 GHX 参考项目的指纹分离：不允许出现旧前缀与旧蓝系配色 */
+check(!js.includes('ghh3') && !js.includes('gh_h3'), 'legacy ghh3 prefix fully removed');
+for (const legacy of ['#111c27', '#0aa4d6', '#334a5d', '#1d2731', '#24384a']) {
+    check(!js.includes(legacy), 'legacy GHX color removed: ' + legacy);
+}
 
 /* 6. 旧折叠实现已移除 */
 check(!js.includes('installAiGroupFold'), 'old fold impl removed');
@@ -107,4 +117,24 @@ check(restoredControls.ai_enrich.checked === false, 'restored false toggle visib
 check(restoredControls.ai_timeout.value === '300', 'restored timeout visible');
 check(resynced === 1, 'restored source visibility refreshed');
 
+const modeContext = vm.createContext({
+    state: { mode: 'text_keyframes' }, media: new Map(), aiMode: { value: 'auto' },
+    imageSlots: ['first_frame', 'last_frame', 'ref_image_1'], videoSlots: ['ref_video_1'],
+    audioSlots: ['hybrid_audio', 'ref_audio_1'],
+});
+vm.runInContext(js.slice(js.indexOf('    function nextSlot(kind)'), js.indexOf('    const taskLabels')), modeContext);
+for (const [slots, task] of [[[], 'T2VA'], [['first_frame'], 'I2VA'], [['last_frame'], 'L2VA'],
+    [['first_frame', 'last_frame'], 'FL2VA'], [['first_frame', 'last_frame', 'hybrid_audio'], 'Hybrid']]) {
+    modeContext.media = new Map(slots.map(slot => [slot, {}]));
+    check(vm.runInContext('resolvedTaskType()', modeContext) === task, 'material mode: ' + task);
+}
+modeContext.media = new Map();
+check(vm.runInContext('nextSlot("audio")', modeContext) === 'hybrid_audio', 'keyframe audio stays visible');
+modeContext.aiMode.value = 'l2va';
+check(vm.runInContext('nextSlot("image")', modeContext) === 'last_frame', 'last-frame mode routes images');
+modeContext.state.mode = 'all_reference';
+check(vm.runInContext('resolvedTaskType()', modeContext) === 'Ref2VA', 'empty reference mode stays reference');
+for (const kind of ['image', 'video', 'audio']) {
+    check(vm.runInContext(`nextSlot("${kind}")`, modeContext) === `ref_${kind}_1`, 'reference slot: ' + kind);
+}
 console.log(`PASS: ${assertions} assertions (panel AI section consistency)`);

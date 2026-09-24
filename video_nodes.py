@@ -683,7 +683,12 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
             interrupt()
             if duration_seconds > 15:
                 raise ValueError("AI/离线/整理提示词生成仅支持 2–15 秒；更长时长请直接在提示词编辑器中撰写")
-            gen_mode = ai_mode if ai_mode != "auto" else ("ref2va" if main_mode == "all_reference" else "t2va")
+            first_present = bool(media_values.get("first_frame") and media_values["first_frame"] != "(none)")
+            last_present = bool(media_values.get("last_frame") and media_values["last_frame"] != "(none)")
+            inferred_mode = ("ref2va" if main_mode == "all_reference" else
+                             "fl2va" if first_present and last_present else
+                             "i2va" if first_present else "l2va" if last_present else "t2va")
+            gen_mode = ai_mode if ai_mode != "auto" else inferred_mode
             client = (make_client(ai_provider, ai_api_key, ai_endpoint, ai_model, ai_timeout, interrupt)
                       if prompt_source == "ai" else None)
             controls = {"mode": gen_mode, "lang": ai_language, "duration": str(duration_seconds),
