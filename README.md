@@ -64,15 +64,29 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 | ai_mode | `auto` 随主模式；或固定 t2va/i2va/fl2va/l2va/ref2va |
 | ai_strict_validation | 默认开启；不合规结果中止执行。关闭后继续输出文本，报告写明原因 |
 | ai_anti_pop | 开启时使用实验性的内联对白；关闭时使用官方 `<d>` 包装 |
-| ai_provider | DeepSeek / GLM / 自定义 OpenAI 兼容 chat/completions 服务 |
-| ai_endpoint / ai_model | 可覆盖服务地址与模型；自定义服务必须填写两者 |
+| ai_provider | 大模型服务预设：DeepSeek / GLM 智谱 / OpenAI / OpenRouter / 通义千问（DashScope）/ 硅基流动（SiliconFlow）/ 自定义；选定后自动使用预设端点与默认模型 |
+| ai_api_key | **由用户自行填写**的大模型 API Key；留空时读取对应服务商的环境变量 |
+| ai_endpoint / ai_model | 可覆盖预设端点与模型；选「自定义」时两者必填 |
 
 AI 生成保留原工具的语言和 FL2VA 时间轴纠正，每类最多两次。所有调用共享 ai_timeout 总预算；
 等待网络时中断响应受单次读超时限制（最长约 30 秒）。请求失败不回退为离线结果。
 提示词引擎按 duration_seconds 生成时间轴，仅支持 2–15 秒；更长时长请直接在编辑器撰写（panel）。
 离线模式不翻译，不补全 Ref2VA 主体/保留关系；Ref2VA 建议用 AI 或输入完整六 section 后选择 format。
 
-服务端环境变量：`DEEPSEEK_API_KEY`、`GLM_API_KEY`，或通用 `H3_LLM_API_KEY`。
+接入方式与 GHX 参考项目一致：**大模型信息由用户自行填写**——选一个服务商预设、填入自己的
+API Key 即可；预设只提供端点与默认模型，可随时用 ai_endpoint / ai_model 覆盖为任意
+OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
+
+| ai_provider | 兑底环境变量 | 预设默认模型 |
+| --- | --- | --- |
+| deepseek | `DEEPSEEK_API_KEY` | deepseek-flash |
+| glm | `GLM_API_KEY` | glm-5.3-flash |
+| openai | `OPENAI_API_KEY` | gpt-4.1-mini |
+| openrouter | `OPENROUTER_API_KEY` | google/gemini-2.5-flash |
+| dashscope | `DASHSCOPE_API_KEY` | qwen-plus |
+| siliconflow | `SILICONFLOW_API_KEY` | Qwen/Qwen2.5-72B-Instruct |
+| custom | `H3_LLM_API_KEY` | （必填 ai_endpoint 与 ai_model） |
+
 也可填写节点 ai_api_key，但该字段会保存到工作流中，分享前应清空。
 节点不使用旧 HTML 内置 Key，分发 ZIP 也不包含原 HTML。
 

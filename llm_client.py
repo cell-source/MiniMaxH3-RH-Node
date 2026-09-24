@@ -6,15 +6,27 @@ from urllib.parse import urlsplit
 
 import requests
 
+# 服务商预设（参照 MiniMaxH3-Integration-GHX 的 PROVIDERS 模式扩充为 OpenAI
+# 兼容 chat/completions 文本服务）：名称 → (端点, 默认模型, 环境变量, 额外参数)。
+# 端点与模型都只是预设：用户在节点上选 provider 后仍可覆盖 ai_endpoint/ai_model；
+# Key 由用户填写（ai_api_key）或从环境变量读取，不硬编码在包内。
 PROVIDERS = {
     "deepseek": ("https://api.deepseek.com/chat/completions", "deepseek-flash", "DEEPSEEK_API_KEY", {"thinking": {"type": "disabled"}}),
     "glm": ("https://open.bigmodel.cn/api/paas/v4/chat/completions", "glm-5.3-flash", "GLM_API_KEY", {"reasoning_effort": "low"}),
+    "openai": ("https://api.openai.com/v1/chat/completions", "gpt-4.1-mini", "OPENAI_API_KEY", {}),
+    "openrouter": ("https://openrouter.ai/api/v1/chat/completions", "google/gemini-2.5-flash", "OPENROUTER_API_KEY", {}),
+    "dashscope": ("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions", "qwen-plus", "DASHSCOPE_API_KEY", {}),
+    "siliconflow": ("https://api.siliconflow.cn/v1/chat/completions", "Qwen/Qwen2.5-72B-Instruct", "SILICONFLOW_API_KEY", {}),
     "custom": ("", "", "H3_LLM_API_KEY", {}),
 }
 
 
 def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_interrupt=lambda: None):
-    default_url, default_model, env_name, extra = PROVIDERS[provider]
+    preset = PROVIDERS.get(str(provider or "").strip().lower())
+    if preset is None:
+        known = ", ".join(sorted(PROVIDERS))
+        raise ValueError(f"未知的 AI 提供方 {provider!r}；可选：{known}，或选择 custom 并自行填写端点与模型")
+    default_url, default_model, env_name, extra = preset
     key = api_key.strip() or os.environ.get(env_name, "").strip() or os.environ.get("H3_LLM_API_KEY", "").strip()
     url = endpoint.strip() or default_url
     model = model.strip() or default_model

@@ -53,8 +53,9 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 
 - 提交后 `promptTips` 出现 `node_errors` 时，先确认节点 ID 为 `MiniMaxH3IntegrationRH`，
   不要残留旧 GH/GHX/双节点时代的 ID。
-- 节点 `ai_api_key` 字段会随工作流保存：**API 提交前清空该字段**，改用服务端环境变量
-  （`DEEPSEEK_API_KEY` / `GLM_API_KEY` / 通用 `H3_LLM_API_KEY`）。
+- 节点 `ai_api_key` 字段会随工作流保存：**API 提交前清空该字段**，改用对应服务商的环境变量
+  （`DEEPSEEK_API_KEY` / `GLM_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` /
+  `DASHSCOPE_API_KEY` / `SILICONFLOW_API_KEY` / 通用 `H3_LLM_API_KEY`）。
 - `ai_strict_validation` 默认开启：提示词校验失败节点抛错中止执行；需要拿到文本人工修正时置 false。
 - 一体化节点的 `no_subtitle`/`soundscape`/`music` 开关仅作用于 `prompt_source=panel` 的手写提示词；
   `ai/offline/format` 来源时由 `ai_*` 参数组接替。

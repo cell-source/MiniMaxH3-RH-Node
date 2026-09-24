@@ -117,18 +117,22 @@
         "name": "AI 提供方",
         "options": {
           "deepseek": "DeepSeek",
-          "glm": "GLM",
-          "custom": "自定义"
+          "glm": "GLM 智谱",
+          "openai": "OpenAI",
+          "openrouter": "OpenRouter",
+          "dashscope": "通义千问（DashScope）",
+          "siliconflow": "硅基流动（SiliconFlow）",
+          "custom": "自定义（手填端点与模型）"
         }
       },
       "ai_api_key": {
-        "name": "API Key（建议留空用服务端环境变量）"
+        "name": "API Key（自填，分享前请清空）"
       },
       "ai_endpoint": {
-        "name": "自定义服务地址"
+        "name": "覆盖端点（可选）"
       },
       "ai_model": {
-        "name": "自定义模型名"
+        "name": "覆盖模型名（可选）"
       },
       "ai_timeout": {
         "name": "AI 总超时（秒）"

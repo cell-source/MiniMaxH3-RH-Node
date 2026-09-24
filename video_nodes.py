@@ -22,7 +22,7 @@ from comfy_extras import nodes_audio, nodes_custom_sampler
 from .conditioning import build_conditioning
 from .core import align_frame_count_down
 from .audio_ops import decode_av_latent
-from .llm_client import make_client
+from .llm_client import PROVIDERS as LLM_PROVIDERS, make_client
 from .prompt_runtime import generate_prompt
 from .sampling import (
     DEFAULT_SAMPLER_NAME,
@@ -625,8 +625,13 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
                 io.Boolean.Input("ai_no_subtitles", default=True),
                 io.Boolean.Input("ai_anti_pop", default=True),
                 io.Boolean.Input("ai_strict_validation", default=True),
-                io.Combo.Input("ai_provider", options=["deepseek", "glm", "custom"], default="deepseek"),
-                io.String.Input("ai_api_key", default="", optional=True, tooltip="优先使用服务端环境变量。此字段会保存到工作流，分享前请清空。"),
+                io.Combo.Input(
+                    "ai_provider",
+                    options=sorted(LLM_PROVIDERS),
+                    default="deepseek",
+                    tooltip="大模型服务预设：选定后自动使用其端点与默认模型；仍可用 ai_endpoint/ai_model 覆盖。Key 在 ai_api_key 填写（或用对应环境变量）。",
+                ),
+                io.String.Input("ai_api_key", default="", optional=True, tooltip="由用户自行填写的大模型 API Key；留空时读取对应服务商环境变量（如 DEEPSEEK_API_KEY/OPENAI_API_KEY 等）。此字段会保存到工作流，分享前请清空。"),
                 io.String.Input("ai_endpoint", default="", optional=True),
                 io.String.Input("ai_model", default="", optional=True),
                 io.Int.Input("ai_timeout", default=180, min=15, max=600, optional=True),

@@ -172,6 +172,36 @@ class TransportTests(unittest.TestCase):
         with patch("llm_client.requests.post", return_value=response), self.assertRaisesRegex(RuntimeError, "401"):
             make_client("deepseek", "test-secret")("s", "u")
 
+    def test_provider_presets_complete(self):
+        """参照 GHX 扩充的服务商预设：每个 provider 必须有端点、默认模型与环境变量名（用户自填 Key 的兜底）。"""
+        from llm_client import PROVIDERS
+        self.assertGreaterEqual(len(PROVIDERS), 7)
+        for name, (endpoint, model, env, extra) in PROVIDERS.items():
+            with self.subTest(provider=name):
+                self.assertTrue(endpoint.startswith("https://") if name != "custom" else True, (name, endpoint))
+                if name != "custom":
+                    self.assertTrue(endpoint.endswith("/chat/completions"), (name, endpoint))
+                    self.assertTrue(model, name)
+                    self.assertTrue(env.isupper(), name)
+                    self.assertIsInstance(extra, dict)
+
+    def test_provider_preset_used_in_request(self):
+        """选预设 provider 后，未覆盖端点/模型时使用预设值发请求（用户只需填 Key）。"""
+        lines = ['data: ' + json.dumps({"choices": [{"delta": {"content": "ok"}, "finish_reason": None}]}), 'data: [DONE]']
+        with patch("llm_client.requests.post", return_value=Response(lines)) as post:
+            make_client("openrouter", "test-secret")("s", "u")
+        self.assertEqual(post.call_args.args[0], "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(post.call_args.kwargs["json"]["model"], "google/gemini-2.5-flash")
+        self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer test-secret")
+        # 用户覆盖模型名后以覆盖值为准
+        with patch("llm_client.requests.post", return_value=Response(lines)) as post2:
+            make_client("siliconflow", "test-secret", model="deepseek-ai/DeepSeek-V3")("s", "u")
+        self.assertEqual(post2.call_args.kwargs["json"]["model"], "deepseek-ai/DeepSeek-V3")
+
+    def test_unknown_provider_clear_error(self):
+        with self.assertRaisesRegex(ValueError, "未知的 AI 提供方"):
+            make_client("no-such-provider", "test-secret")
+
 
 if __name__ == "__main__":
     unittest.main()

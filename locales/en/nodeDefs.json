@@ -117,18 +117,22 @@
         "name": "AI Provider",
         "options": {
           "deepseek": "DeepSeek",
-          "glm": "GLM",
-          "custom": "Custom"
+          "glm": "GLM (Zhipu)",
+          "openai": "OpenAI",
+          "openrouter": "OpenRouter",
+          "dashscope": "Alibaba DashScope",
+          "siliconflow": "SiliconFlow",
+          "custom": "Custom (fill endpoint & model)"
         }
       },
       "ai_api_key": {
-        "name": "API Key (prefer server env var)"
+        "name": "API Key (user-filled; clear before sharing)"
       },
       "ai_endpoint": {
-        "name": "Custom Endpoint"
+        "name": "Endpoint override (optional)"
       },
       "ai_model": {
-        "name": "Custom Model"
+        "name": "Model override (optional)"
       },
       "ai_timeout": {
         "name": "AI Timeout (s)"
