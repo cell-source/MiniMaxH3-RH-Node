@@ -1423,6 +1423,9 @@ function nodeColorToCss(value) {
     aiCredWrap.append(aiCredSummary, aiCredButton);
     aiCredRow.append(aiCredLabel, aiCredWrap);
     aiBody.appendChild(aiCredRow);
+    // 统一入口：优化/生成模型都在「LLM 提示词优化配置」弹窗配置（openOptimizerSettings
+    // 为 createPanel 内的函数声明，运行时提升可用）。
+    aiCredButton.onclick = () => openOptimizerSettings();
     const AI_CRED_ROWS = ["ai_provider", "ai_api_key", "ai_endpoint", "ai_model"];
     const providerLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
     /* 共享钥匙串：与优化器配置共用同一份 per-provider API Key（一处填写，两处可用）。 */
@@ -1444,68 +1447,6 @@ function nodeColorToCss(value) {
         const model = String(widget(node, "ai_model")?.value || "").trim();
         aiCredSummary.textContent = `${providerLabels[provider] || provider} · ${hasKey ? t("Key saved") : t("Key missing")}${model ? ` · ${model}` : ""}`;
     };
-    const openAiCredentialDialog = () => {
-        const overlay = make("div"); overlay.className = "mxv-opt-overlay";
-        const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
-        dialog.appendChild(make("div", {}, t("Generation credentials"))).className = "mxv-opt-title";
-        const row = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
-        const providerSelect = document.createElement("select"); providerSelect.className = "mxv-control";
-        providerSelect.replaceChildren(...AI_PROVIDERS.map(v => new Option(t(v), v)));
-        providerSelect.value = String(aiProvider.value || "deepseek");
-        row("Provider", providerSelect);
-        const keyInput = document.createElement("input"); keyInput.type = "password"; keyInput.className = "mxv-control";
-        keyInput.style.width = "100%"; keyInput.style.boxSizing = "border-box";
-        keyInput.placeholder = t("API key (cleared when sharing the workflow)");
-        // Key 与优化器配置共享钥匙串：本平台已配过则直接带出，无需重复填写。
-        keyInput.value = String(widget(node, "ai_api_key")?.value ?? "").trim() || getSharedKey(providerSelect.value);
-        row("API key", keyInput);
-        const endpointInput = document.createElement("input"); endpointInput.type = "text"; endpointInput.className = "mxv-control";
-        endpointInput.style.width = "100%"; endpointInput.style.boxSizing = "border-box";
-        endpointInput.placeholder = t("endpoint override");
-        endpointInput.value = String(widget(node, "ai_endpoint")?.value ?? "");
-        const endpointRow = row("Endpoint override", endpointInput);
-        const modelInput = document.createElement("input"); modelInput.type = "text"; modelInput.className = "mxv-control";
-        modelInput.style.width = "100%"; modelInput.style.boxSizing = "border-box";
-        modelInput.placeholder = t("model override");
-        modelInput.value = String(widget(node, "ai_model")?.value ?? "");
-        const modelRow = row("Model override", modelInput);
-        const syncCustom = () => {
-            const custom = providerSelect.value === "custom";
-            endpointRow.closest("label").classList.toggle("mxv-opt-hidden", !custom);
-            modelRow.closest("label").classList.toggle("mxv-opt-hidden", !custom);
-        };
-        syncCustom();
-        providerSelect.onchange = () => {
-            syncCustom();
-            // 平台切换时跟随共享钥匙串：已配过的平台自动带出 Key。
-            keyInput.value = getSharedKey(providerSelect.value);
-        };
-        const actions = make("div"); actions.className = "mxv-opt-actions";
-        const cancelBtn = make("button", {}, t("Cancel")); cancelBtn.type = "button";
-        const saveBtn = make("button", {}, t("Save")); saveBtn.type = "button";
-        actions.append(cancelBtn, saveBtn); dialog.append(actions);
-        cancelBtn.onclick = () => overlay.remove();
-        overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
-        saveBtn.onclick = () => {
-            const provider = providerSelect.value;
-            const key = keyInput.value.trim();
-            setWidget(node, "ai_provider", provider);
-            aiProvider.value = provider;
-            setWidget(node, "ai_api_key", key);
-            aiKey.value = key;
-            setWidget(node, "ai_endpoint", endpointInput.value.trim());
-            aiEndpoint.value = endpointInput.value.trim();
-            setWidget(node, "ai_model", modelInput.value.trim());
-            aiModel.value = modelInput.value.trim();
-            // 写回共享钥匙串：优化器在同平台下无需再次填 Key。
-            setSharedKey(provider, key);
-            refreshAiCredSummary();
-            persistState();
-            overlay.remove();
-        };
-        document.body.append(overlay);
-    };
-    aiCredButton.onclick = openAiCredentialDialog;
     /* 来源联动：panel 时 ai_text 及全部生成参数仅保留来源可见（隐藏其余行）；
        ai 来源时凭据 4 行收进摘要行；custom 覆盖项在弹窗内编辑。 */
     const aiPanelRows = ["ai_text", "ai_language", "ai_mode", "ai_provider", "ai_api_key",
