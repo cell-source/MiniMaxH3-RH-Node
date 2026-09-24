@@ -10,8 +10,8 @@ const RH_NODE_IDS = [
 const OPTIMIZER_ROUTE = "/rh/minimax-h3/prompt-optimizer";
 const WIDTH = 500;
 const PANEL_WIDTH = 476;
-const INITIAL_NODE_HEIGHT = Math.round(WIDTH * 2 * 0.9);
-const MAX_RESTORED_NODE_HEIGHT = INITIAL_NODE_HEIGHT * 1.5;
+const INITIAL_NODE_HEIGHT = 700; // 面板按完全展开内容高度设计，节点高度自适应内容
+const MAX_RESTORED_NODE_HEIGHT = INITIAL_NODE_HEIGHT * 4;
 const MIN_NODE_HEIGHT = 0;
 const ASPECTS = {
     adaptive: null,
@@ -514,10 +514,8 @@ function createPanel(node) {
         flexFlow: "column",
         alignItems: "stretch",
         gap: "6px",
-        height: "100%",
         minHeight: "0",
-        overflowY: "auto",
-        overflowX: "hidden",
+        overflow: "hidden",
     });
     const style = make("style");
     style.textContent = `
@@ -532,8 +530,8 @@ function createPanel(node) {
       .mxv-audio-drop .mxv-drop-icon{font-size:14px;line-height:1;height:1.2em}
       .mxv-drop-title-row .mxv-optional{position:static;display:inline-flex;align-items:center;height:1.2em;line-height:1.2}
       .mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-icon,.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-optional{transform:translateY(-1px)}
-       .mxv-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,1fr);width:100%;min-height:190px;background:#1b1e23;border-radius:6px;overflow:hidden;border-left:3px solid #e8a33d}.mxv-prompt-wrap .mxv-prompt{grid-row:2;border-radius:0 0 6px 6px}.mxv-prompt-wrap.external .mxv-prompt{opacity:.42;cursor:not-allowed}.mxv-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#1b1e23;z-index:4}.mxv-prompt-elapsed{display:none;margin-right:auto;color:#75726c;font:9px/17px Arial,sans-serif}.mxv-prompt-elapsed.visible{display:inline-block}.mxv-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(140,137,131,.6);font:8px/17px Arial,sans-serif;margin-left:auto;margin-right:17px}.mxv-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:3px;background:#1b1e23;color:#7d7a74;font:11px/17px Arial,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.mxv-optimize-tool{font-size:13px}.mxv-prompt-tool:hover{color:#b3b1ac;background:#2e3238}.mxv-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.mxv-prompt-reset{display:none;font-size:12px;line-height:15px}.mxv-prompt-reset.visible{display:inline-block}.mxv-prompt-loading{color:#e8a33d!important;opacity:1!important;animation:mxv-spin 1.6s linear infinite}@keyframes mxv-spin{to{transform:rotate(360deg)}}.mxv-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:4px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;font:10px/1.2 Arial,sans-serif;pointer-events:none;white-space:nowrap}.mxv-opt-check{justify-self:end;width:auto!important}.mxv-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.mxv-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.mxv-opt-language label:first-child{justify-self:start}.mxv-opt-language label:last-child{justify-self:end}.mxv-opt-language input{width:auto}
-       .mxv-prompt-wrap{grid-template-columns:minmax(0,1fr)}.mxv-prompt-wrap .mxv-prompt-rich{position:absolute;grid-row:auto;left:0;right:0;top:22px;bottom:0;width:100%;height:auto;min-height:0;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#1b1e23;color:#e8e6e1;-webkit-text-fill-color:currentColor;caret-color:#e8e6e1;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.mxv-prompt-rich.mxv-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#4a5058;white-space:pre-wrap;pointer-events:none}.mxv-prompt-highlight{display:none}.mxv-prompt-rich mark{padding:0;color:#e8a33d;-webkit-text-fill-color:#e8a33d;background:transparent;font:inherit}.mxv-prompt-section{padding:0;color:#9a7734;-webkit-text-fill-color:#9a7734;background:transparent;font:inherit}.mxv-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:5px;background:#3a3d42;color:#cdcdcd;-webkit-text-fill-color:#cdcdcd;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.mxv-prompt-tag-video{background:#443c4a}.mxv-prompt-tag-picture{background:#3d3a2e}.mxv-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.mxv-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(148,120,62,.7);border-radius:5px;background:#22262c;object-fit:cover;color:#c2a05c;display:inline-flex;align-items:center;justify-content:center;font:14px/26px Arial,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.mxv-prompt-media-preview.mxv-prompt-audio-preview{border-radius:50%}.mxv-prompt-media-preview.mxv-prompt-audio-preview:before{content:"♫";font-size:13px}.mxv-prompt-wrap.external .mxv-prompt-rich{opacity:.42}
+       .mxv-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,auto);width:100%;min-height:190px;background:#1b1e23;border-radius:6px;overflow:hidden;border-left:3px solid #e8a33d}.mxv-prompt-wrap .mxv-prompt{grid-row:2;border-radius:0 0 6px 6px}.mxv-prompt-wrap.external .mxv-prompt{opacity:.42;cursor:not-allowed}.mxv-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#1b1e23;z-index:4}.mxv-prompt-elapsed{display:none;margin-right:auto;color:#75726c;font:9px/17px Arial,sans-serif}.mxv-prompt-elapsed.visible{display:inline-block}.mxv-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(140,137,131,.6);font:8px/17px Arial,sans-serif;margin-left:auto;margin-right:17px}.mxv-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:3px;background:#1b1e23;color:#7d7a74;font:11px/17px Arial,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.mxv-optimize-tool{font-size:13px}.mxv-prompt-tool:hover{color:#b3b1ac;background:#2e3238}.mxv-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.mxv-prompt-reset{display:none;font-size:12px;line-height:15px}.mxv-prompt-reset.visible{display:inline-block}.mxv-prompt-loading{color:#e8a33d!important;opacity:1!important;animation:mxv-spin 1.6s linear infinite}@keyframes mxv-spin{to{transform:rotate(360deg)}}.mxv-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:4px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;font:10px/1.2 Arial,sans-serif;pointer-events:none;white-space:nowrap}.mxv-opt-check{justify-self:end;width:auto!important}.mxv-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.mxv-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.mxv-opt-language label:first-child{justify-self:start}.mxv-opt-language label:last-child{justify-self:end}.mxv-opt-language input{width:auto}
+       .mxv-prompt-wrap{grid-template-columns:minmax(0,1fr)}.mxv-prompt-wrap .mxv-prompt-rich{position:relative;grid-row:2;left:0;right:0;top:0;bottom:auto;width:100%;height:auto;min-height:168px;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#1b1e23;color:#e8e6e1;-webkit-text-fill-color:currentColor;caret-color:#e8e6e1;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.mxv-prompt-rich.mxv-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#4a5058;white-space:pre-wrap;pointer-events:none}.mxv-prompt-highlight{display:none}.mxv-prompt-rich mark{padding:0;color:#e8a33d;-webkit-text-fill-color:#e8a33d;background:transparent;font:inherit}.mxv-prompt-section{padding:0;color:#9a7734;-webkit-text-fill-color:#9a7734;background:transparent;font:inherit}.mxv-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:5px;background:#3a3d42;color:#cdcdcd;-webkit-text-fill-color:#cdcdcd;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.mxv-prompt-tag-video{background:#443c4a}.mxv-prompt-tag-picture{background:#3d3a2e}.mxv-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.mxv-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(148,120,62,.7);border-radius:5px;background:#22262c;object-fit:cover;color:#c2a05c;display:inline-flex;align-items:center;justify-content:center;font:14px/26px Arial,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.mxv-prompt-media-preview.mxv-prompt-audio-preview{border-radius:50%}.mxv-prompt-media-preview.mxv-prompt-audio-preview:before{content:"♫";font-size:13px}.mxv-prompt-wrap.external .mxv-prompt-rich{opacity:.42}
         .mxv-opt-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-opt-dialog{width:min(470px,calc(100vw - 30px));background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:14px}.mxv-opt-title{font-size:12px;margin-bottom:12px;white-space:nowrap}.mxv-opt-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:8px;min-height:38px;margin:0}.mxv-opt-row>span{white-space:nowrap}.mxv-opt-row input,.mxv-opt-row select{width:100%;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px;font:inherit}.mxv-opt-hidden{display:none!important}.mxv-opt-model-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0}.mxv-opt-model-native{display:none}.mxv-opt-model-picker{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px 24px 6px 7px;cursor:pointer;position:relative;font:inherit}.mxv-opt-model-picker:after{content:"⌄";position:absolute;right:7px}.mxv-opt-model-menu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:10070;box-sizing:border-box;width:max-content;min-width:100%;max-width:calc(100vw - 30px);padding:5px;background:#1b1e23;border:1px solid #383e46;border-radius:5px;box-shadow:0 8px 22px rgba(0,0,0,.45)}.mxv-opt-model-menu.open{display:block}.mxv-opt-model-search{display:block;width:100%;min-width:100%;margin-bottom:5px;font:inherit}.mxv-opt-model-results{max-height:285px;overflow:auto}.mxv-opt-model-option{display:block;width:max-content;min-width:100%;border:0;background:transparent;color:#e8e6e1;text-align:left;padding:6px;border-radius:3px;white-space:nowrap;cursor:pointer;font:inherit}.mxv-opt-model-option:hover,.mxv-opt-model-option.selected{background:#2e3238}.mxv-opt-model-empty{padding:7px;color:#b3b1ac;font-size:12px}.mxv-opt-refresh{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:0;cursor:pointer;font-size:16px;line-height:1;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}.mxv-opt-refresh:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-opt-refresh:active{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-refresh.loading{background:#e8a33d;border-color:#e8a33d;color:#221a0c;cursor:wait}.mxv-opt-refresh.loading svg{animation:mxv-spin 1.2s linear infinite}.mxv-opt-refresh:disabled{opacity:.85}.mxv-opt-dependencies{margin:6px 0;color:#d98d97;font-size:12px;line-height:1.35}.mxv-opt-checks{margin:0}.mxv-opt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:28px}.mxv-opt-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:5px 12px;cursor:pointer}.mxv-opt-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-custom{display:none}.mxv-opt-dialog.custom .mxv-opt-custom{display:grid}
         .mxv-audio-trim-button,.mxv-sound{position:absolute;z-index:6;width:14px;height:14px;padding:0;border:0;border-radius:50%;background:rgba(46,50,56,.6)!important;color:#fff;font:9px/14px Arial,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}.mxv-audio-trim-button{right:3px;top:3px}.mxv-audio-card .mxv-audio-trim-button{right:40px;top:4px}.mxv-sound{right:2px;top:2px}.mxv-card:hover .mxv-audio-trim-button,.mxv-card:hover .mxv-sound,.mxv-audio-trim-button:focus-visible,.mxv-sound:focus-visible{opacity:1;pointer-events:auto}.mxv-audio-trim-button:hover,.mxv-sound:hover{color:#fff;background:rgba(74,80,88,.72)!important}
         .mxv-trim-overlay{position:fixed;inset:0;z-index:10200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-trim-dialog{width:min(720px,calc(100vw - 30px));box-sizing:border-box;padding:14px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5)}.mxv-trim-title{font-size:13px;margin-bottom:12px}.mxv-trim-wave-wrap{position:relative;width:100%;height:190px;overflow:hidden;border:1px solid #383e46;border-radius:6px;background:#14171b;cursor:crosshair;touch-action:none}.mxv-trim-wave-wrap.mxv-trim-panning{cursor:grabbing}.mxv-trim-wave{display:block;width:100%;height:100%}.mxv-trim-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b3b1ac;background:#14171b}.mxv-trim-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.mxv-trim-time{position:relative;padding:7px 9px;border-radius:5px;background:#1b1e23;color:#b3b1ac}.mxv-trim-time strong{display:block;margin-top:3px;color:#e8e6e1;font-size:13px;font-weight:500}.mxv-trim-sync{position:absolute;right:6px;top:5px;border:1px solid #383e46;border-radius:4px;background:#2e3238;color:#e8e6e1;padding:2px 7px;font:12px/16px Arial,sans-serif;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.04)}.mxv-trim-sync:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-trim-controls{display:flex;align-items:center;gap:8px;margin-top:12px}.mxv-trim-preview{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:0;cursor:pointer}.mxv-trim-preview svg{width:12px;height:12px}.mxv-trim-hint{color:#b3b1ac;font-size:10px}.mxv-trim-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.mxv-trim-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:6px 14px;cursor:pointer}.mxv-trim-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-trim-actions button:disabled,.mxv-trim-preview:disabled{opacity:.45;cursor:not-allowed}
@@ -1334,7 +1332,7 @@ function nodeColorToCss(value) {
     // Read locale at node initialization. A storage event can still refresh
     // the UI after a real settings change, but no periodic polling is needed.
     window.addEventListener("storage", applyLocale);
-    advanced.addEventListener("toggle", () => { persistState(); });
+    advanced.addEventListener("toggle", () => { persistState(); syncLayout(false, true); });
     root.appendChild(promptWrap);
     /* ===== AI 生成区块：接管隐藏的 prompt_source/ai_* widget（与隐藏列表一一对应）===== */
     const aiDetails = make("details"); aiDetails.className = "mxv-advanced mxv-ai";
@@ -1429,10 +1427,14 @@ function nodeColorToCss(value) {
             row.style.display = show ? "" : "none";
         }
         aiSummary.textContent = `${t("AI generation")} — ${t("Source")}: ${t(source)}`;
+        // syncLayout/measureContentHeight 定义在面板装配后期；此函数在装配早期
+        // 就会被首次调用（TDZ 限制），故延迟到下一帧执行。
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => syncLayout(false, true));
     };
     aiSource.onchange = () => { setWidget(node, "prompt_source", aiSource.value); syncAiRows(); };
     aiProvider.onchange = () => { setWidget(node, "ai_provider", aiProvider.value); syncAiRows(); };
     syncAiRows();
+    aiDetails.addEventListener("toggle", () => { syncLayout(false, true); });
     const syncAiControls = () => {
         for (const [name, row] of aiRows) {
             const control = row.querySelector("input, select, textarea");
@@ -1641,19 +1643,40 @@ function nodeColorToCss(value) {
         event.preventDefault();
         event.stopImmediatePropagation();
     }, true);
+    const measureContentHeight = () => {
+        // 完全展开的自然内容高度。注意：ComfyUI 会在节点滚出视口时给 dom-widget
+        // 容器设 display:none，此时所有测量值全为 0——必须保留上次已知高度，
+        // 绝不能返回坍缩值，否则 node.setSize 会被锁死在最小高度上。
+        const visible = root.offsetHeight > 0;
+        if (!visible) return userHeight;
+        // 直接采用渲染态 scrollHeight：它天然包含全部子元素、gap 与最新内容
+        // （render/updateAdvancedVisibility 更新 DOM 后的值），避免了"测量时点
+        // 早于内容更新"导致的 27px 级误差。提示词 flex:1 吸收富余时
+        // scrollHeight==分配高度，读数等于当前值——不会自我增长（无正反馈）；
+        // 代价是内容减少后节点不自动回落（保持宽松），可接受。
+        const content = root.scrollHeight;
+        if (content <= 0) return userHeight;
+        return Math.max(MIN_NODE_HEIGHT + 120, Math.ceil(content) + 2);
+    };
     function syncLayout(height = userHeight, writeNode = false) {
         if (layoutLock) return;
         layoutLock = true;
         try {
-            const numericHeight = Number(height);
-            const nextHeight = Number.isFinite(numericHeight)
-                ? Math.max(0, Math.ceil(numericHeight))
-                : userHeight;
+            // 面板按"完全展开"设计：节点高度 = 面板内容自然高度 + 面板顶部占位。
+            // 顶部占位用 domWidget.y（LiteGraph 布局坐标：标题栏 + 面板上方的
+            // 原生 widget 行），它不受画布 transform 缩放影响，比"节点高-容器高"
+            // 的 DOM 读数差值稳定（后者会被 canvas scale 污染）。
+            const panelTop = Number(domWidget?.y);
+            const content = measureContentHeight();
+            const nextHeight = Number.isFinite(panelTop) && panelTop > 0
+                ? Math.ceil(panelTop + content)
+                : content;
             userHeight = nextHeight;
-            if (writeNode && (node.size?.[0] !== WIDTH || node.size?.[1] !== nextHeight)) {
+            // 面板根的高度 = 容器将得到的高度（=内容高），提示词的 1fr 由此撑满。
+            root.style.height = `${content}px`;
+            if ((writeNode || node.size?.[1] !== nextHeight) && (node.size?.[0] !== WIDTH || node.size?.[1] !== nextHeight)) {
                 node.setSize([WIDTH, nextHeight]);
             }
-            root.style.height = "100%";
             // The rich editor is absolutely bounded by promptWrap. Keeping an
             // inline 100% height here would add the 22px toolbar once again and
             // lets Nodes 2.0 include text content in the widget's measured size.
@@ -1665,11 +1688,11 @@ function nodeColorToCss(value) {
     }
     const previousOnResize = node.onResize;
     node.onResize = function(...args) {
-        const nextHeight = Number(this.size?.[1]);
         if (this.size?.[0] !== WIDTH) this.size[0] = WIDTH;
         previousOnResize?.apply(this, args);
-        if (layoutLock || !Number.isFinite(nextHeight)) return;
-        syncLayout(nextHeight, false);
+        if (layoutLock) return;
+        // 完全展开设计：忽略外部传入的高度，始终回弹到内容自然高度。
+        syncLayout(false, true);
         persistState();
     };
 
@@ -3398,7 +3421,8 @@ function nodeColorToCss(value) {
     modeRef.classList.toggle("active", state.mode === "all_reference");
     updateAdvancedVisibility();
     render();
-    advanced.open = false;
+    advanced.open = true;
+    aiDetails.open = true;
     for (const hook of ["onAdded", "onConfigure", "onGraphConfigured"]) {
         const old = node[hook];
         node[hook] = function(...args) {
@@ -3472,9 +3496,9 @@ function nodeColorToCss(value) {
                 }
                 modeText.classList.toggle("active", state.mode === "text_keyframes");
                 modeRef.classList.toggle("active", state.mode === "all_reference");
-                if (Object.prototype.hasOwnProperty.call(restored, "advanced")) {
-                    advanced.open = !!restored.advanced;
-                }
+                // 完全展开设计：手风琴始终展开，不恢复历史收起状态。
+                advanced.open = true;
+                aiDetails.open = true;
                 // Hidden widgets are restored by LiteGraph after the panel was
                 // built; resync toggle visuals so they never contradict the
                 // values that actually get submitted.
@@ -3555,7 +3579,8 @@ function nodeColorToCss(value) {
         if (savedHasContent && Number.isFinite(Number(savedState.height)) && Number(savedState.height) <= MAX_RESTORED_NODE_HEIGHT) {
             userHeight = Math.max(0, Number(savedState.height));
         }
-        advanced.open = !!savedState.advanced;
+        advanced.open = true;
+        aiDetails.open = true;
         if (node.size?.[0] !== WIDTH || node.size?.[1] !== userHeight) node.setSize([WIDTH, userHeight]);
         syncLayout(userHeight, true);
         refreshPromptConnection();

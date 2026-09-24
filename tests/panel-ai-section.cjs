@@ -48,7 +48,10 @@ check(JSON.stringify(feList) === JSON.stringify(pyList),
 
 /* 5. 布局与配色基线（mxv 重设计） */
 check(js.includes('display: "flex"') && js.includes('flexFlow: "column"'), 'panel root is column flex');
-check(js.includes('overflowY: "auto"'), 'panel scrolls vertically');
+check(js.includes('measureContentHeight') && js.includes('node.setSize([WIDTH, nextHeight])'),
+    'panel height auto-fits content (no scrollbar design)');
+check(js.includes('advanced.open = true;') && js.includes('aiDetails.open = true;'),
+    'accordions default to fully expanded');
 check(js.includes('.mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23'),
     'details cards use mxv warm-charcoal baseline');
 check(js.includes('border-left:3px solid #e8a33d'), 'prompt editor has amber accent bar');
