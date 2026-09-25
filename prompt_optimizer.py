@@ -401,12 +401,24 @@ def _resolve_input_file(name: str) -> Path:
     value = str(name or "").strip()
     if not value:
         raise ValueError("参考素材文件名为空")
+    # 路径穿越防护：工作流 JSON 可被人为构造，媒体文件名只允许指向
+    # input 目录内部（拒绝 .. 序列与绝对路径），防止恶意工作流把本机
+    # 任意文件经 ffmpeg 解码后上传外传。
+    if os.path.isabs(value) or ".." in value.replace("\\", "/").split("/") or value.startswith("~"):
+        raise ValueError(f"参考素材文件名不合法: {value}")
+    input_root = os.path.realpath(folder_paths.get_input_directory())
+    candidates = []
     annotated = folder_paths.get_annotated_filepath(value)
-    if annotated and os.path.isfile(annotated):
-        return Path(annotated)
-    path = Path(folder_paths.get_input_directory()) / value
-    if path.is_file():
-        return path
+    if annotated:
+        candidates.append(Path(annotated))
+    candidates.append(Path(input_root) / value)
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        resolved = os.path.realpath(candidate)
+        if os.path.commonpath([resolved, input_root]) != input_root:
+            raise ValueError(f"参考素材路径越界: {value}")
+        return Path(resolved)
     raise FileNotFoundError(f"找不到参考素材: {value}")
 
 

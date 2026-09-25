@@ -609,6 +609,33 @@ function createPanel(node) {
             text_keyframes: (savedState.mode || "text_keyframes") === "text_keyframes" ? optimizerBefore : null,
             all_reference: savedState.mode === "all_reference" ? optimizerBefore : null,
         };
+    /* 凭据不进工作流 JSON（明文会随分享/上传分发）：per-provider 钥匙串只存
+       本机 localStorage，工作流内仅保留 has_api_key 布尔供 UI 提示。 */
+    const KEYCHAIN_STORAGE_KEY = "mxv_h3_keychain";
+    const readStoredKeychain = () => {
+        try { return JSON.parse(localStorage.getItem(KEYCHAIN_STORAGE_KEY) || "{}"); } catch { return {}; }
+    };
+    const writeStoredKeychain = keys => {
+        try { localStorage.setItem(KEYCHAIN_STORAGE_KEY, JSON.stringify(keys || {})); } catch {}
+    };
+    const sanitizeOptimizerForWorkflow = settings => {
+        if (!settings || typeof settings !== "object") return settings;
+        const keys = settings.api_keys && typeof settings.api_keys === "object" ? { ...settings.api_keys } : {};
+        writeStoredKeychain(keys);
+        const sanitized = { ...settings, api_keys: {}, api_key: "", has_api_key: !!settings.api_key || Object.values(keys).some(v => String(v || "").trim()) };
+        return sanitized;
+    };
+    const restoreKeychainFromStorage = settings => {
+        if (!settings || typeof settings !== "object") return settings;
+        const stored = readStoredKeychain();
+        const incoming = settings.api_keys && typeof settings.api_keys === "object" ? { ...settings.api_keys } : {};
+        // 工作流里的 api_keys 已被剥离为空；本机 localStorage 为准（键名合并，空值不覆盖已有）。
+        const merged = { ...incoming };
+        for (const [provider, key] of Object.entries(stored)) {
+            if (String(key || "").trim()) merged[provider] = key;
+        }
+        return { ...settings, api_keys: merged, api_key: merged[settings.provider] || settings.api_key || "" };
+    };
     const serializedState = () => {
         promptByMode[state.mode] = prompt.value;
         return JSON.stringify({
@@ -621,7 +648,7 @@ function createPanel(node) {
             advanced: !!advanced?.open,
             audioModeByMode: { ...audioModeByMode },
             audioModeAutoByMode: { ...audioModeAutoByMode },
-            optimizer: optimizerSettings,
+            optimizer: sanitizeOptimizerForWorkflow(optimizerSettings),
             optimizerCache,
             optimizerBefore,
             optimizerBeforeByMode: { ...optimizerBeforeByMode },
@@ -2443,10 +2470,9 @@ function nodeColorToCss(value) {
                 aiModel.value = genModel.value.trim();
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
                 aiEndpoint.value = genEndpoint.value.trim();
-                if (genKey) {
-                    setWidget(node, "ai_api_key", genKey);
-                    aiKey.value = genKey;
-                }
+                // Key 为空同样写回：清空凭据时 widget 与钥匙串必须一致，避免旧 Key 残留生效。
+                setWidget(node, "ai_api_key", genKey);
+                aiKey.value = genKey;
                 setSharedKey(genProviderValue, genKey);
                 refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
@@ -3557,7 +3583,7 @@ function nodeColorToCss(value) {
                 prompt.value = cleanPrompt(promptByMode[state.mode]);
                 renderPromptHighlights();
                 setPromptWidget(node, prompt.value);
-                optimizerSettings = restored.optimizer || optimizerSettings;
+                optimizerSettings = restoreKeychainFromStorage(restored.optimizer || optimizerSettings);
                 refreshOptimizerName(); refreshPromptConnection();
                 optimizerCache = restored.optimizerCache || null;
                 if (restored.audioModeByMode && typeof restored.audioModeByMode === "object") {
@@ -3580,9 +3606,25 @@ function nodeColorToCss(value) {
                 setWidget(node, "main_mode", state.mode);
                 media.clear();
                 for (const [slot, entry] of restored.media || []) media.set(slot, entry);
+                // 媒体条目文件名白名单校验：工作流 JSON 可被人为构造，拒绝路径
+                // 分隔符/绝对路径，防止下游按名字解码/上传任意本机文件。
+                for (const [slot, entry] of [...media.entries()]) {
+                    const name = entry && typeof entry.name === "string" ? entry.name : "";
+                    if (!name || name === "(none)" || name.startsWith("~")
+                        || name.includes("\\") || name.includes("/") || name.includes("..")) {
+                        media.delete(slot);
+                    }
+                }
                 for (const name of mediaSlots) {
                     const value = widget(node, name)?.value;
-                    if (!media.has(name) && value && value !== "(none)") media.set(name, { name: value, kind: kindOf({ name: value, type: "" }) });
+                    if (!media.has(name) && value && value !== "(none)") {
+                        // 原生 widget 值同样过白名单（同为工作流可构造输入）。
+                        if (value.includes("\\") || value.includes("/") || value.includes("..") || value.startsWith("~")) {
+                            setMediaWidget(node, name, "");
+                            continue;
+                        }
+                        media.set(name, { name: value, kind: kindOf({ name: value, type: "" }) });
+                    }
                     if (value === "(none)") setMediaWidget(node, name, "");
                 }
                 syncMediaWidgets();
