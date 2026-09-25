@@ -141,23 +141,26 @@ for (const kind of ['image', 'video', 'audio']) {
 check(js.includes('const aiGeneratePrompt = make("button", {}, "✨")'), 'AI generate button created');
 check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizePrompt, optimizerGear)'),
     'AI generate button sits beside the polish tool');
-check(js.includes('aiGeneratePrompt.onclick = openAiGenerateDialog'), 'AI generate button wired to dialog');
-const dialogBody = js.slice(js.indexOf('function openAiGenerateDialog()'), js.indexOf('function lowImageData'));
-check(!!dialogBody, 'AI generate dialog defined');
+check(js.includes('aiGeneratePrompt.onclick = openOptimizerSettings'), '✨ opens the unified config dialog');
+check(!js.includes('function openAiGenerateDialog'), 'separate AI generation dialog removed');
+const dialogBody = js.slice(js.indexOf('function openOptimizerSettings()'), js.indexOf('function showOptimizerConfigPrompt()'));
+check(!!dialogBody, 'unified config dialog defined');
 for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamps', 'ai_fixed_camera',
     'ai_no_subtitles', 'ai_anti_pop', 'ai_strict_validation']) {
-    check(dialogBody.includes(`"${name}"`), 'dialog switch writes hidden widget: ' + name);
+    check(dialogBody.includes(`"${name}"`), 'config dialog switch writes hidden widget: ' + name);
 }
 check(dialogBody.includes('const route = operation === "ai" ? "generate" : "format";')
-    && dialogBody.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'dialog posts to generate/format endpoints');
+    && dialogBody.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'config dialog posts to generate/format endpoints');
 check(dialogBody.indexOf('pushPromptUndo(promptSnapshot())') < dialogBody.indexOf('applyOptimizedPrompt(value, before)'),
     'undo snapshot pushed before filling the editor (Ctrl+Z restores)');
-check(dialogBody.includes('language.onchange = () => setWidget(node, "ai_language", language.value)')
+check(dialogBody.includes('genRow("Generation language", genLanguage)') && dialogBody.includes('genRow("AI timeout", genTimeout)'),
+    'generation language/timeout laid out flat in the unified dialog');
+check(dialogBody.includes('actions.append(cancel, save, formatButton, runButton)'),
+    'config dialog hosts save + generate/format actions together');
+check(dialogBody.includes('genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value)')
     && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog keeps language/timeout in widgets');
 check(!js.includes('mxv-gen-more') && !dialogBody.includes('make("details")'),
-    'language/timeout rows are laid out flat (no collapse wrapper)');
-check(dialogBody.includes('genRow("Output language", language)') && dialogBody.includes('genRow("AI timeout", timeout)'),
-    'language/timeout rows appended directly to the dialog');
+    'no collapse wrapper inside the config dialog');
 
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
