@@ -275,7 +275,6 @@ const DOM_TRANSLATIONS = {
     "Enter a prompt first": "请先输入提示词",
     "Generation API key is missing. Open settings now?": "尚未配置生成模型 API Key，是否立即打开设置？",
     "Generation prompt failed": "AI 生成失败",
-    "More settings": "更多设置",
     "AI timeout": "AI 超时（秒）",
     "Output language": "输出语言",
     "Maximum output tokens": "最大输出 Tokens",
@@ -588,12 +587,6 @@ function createPanel(node) {
       .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
       .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
       .mxv-gen-dialog{width:min(430px,calc(100vw - 30px))}
-      .mxv-gen-more{border:1px solid #383e46;border-radius:5px;margin-top:10px}
-      .mxv-gen-more>summary{cursor:pointer;color:#b3b1ac;padding:7px 10px;list-style:none}
-      .mxv-gen-more>summary::-webkit-details-marker{display:none}
-      .mxv-gen-more>summary:before{content:"▸";display:inline-block;margin-right:6px;transition:transform .12s}
-      .mxv-gen-more[open]>summary:before{transform:rotate(90deg)}
-      .mxv-gen-more-body{display:grid;gap:2px;padding:2px 10px 10px}
     `;
     root.appendChild(style);
     const size = make("div"); size.className = "mxv-size";
@@ -2441,13 +2434,10 @@ function nodeColorToCss(value) {
         const timeout = document.createElement("input"); timeout.type = "number"; timeout.min = "15"; timeout.max = "600"; timeout.step = "5"; timeout.className = "mxv-control";
         timeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_timeout")?.value) || 180)));
         timeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(timeout.value) || 180)); timeout.value = String(value); setWidget(node, "ai_timeout", value); };
-        const more = make("details"); more.className = "mxv-gen-more";
-        const moreBody = make("div"); moreBody.className = "mxv-gen-more-body";
-        const moreRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); moreBody.append(wrap); };
-        moreRow("Output language", language);
-        moreRow("AI timeout", timeout);
-        more.append(make("summary", {}, t("More settings")), moreBody);
-        dialog.append(more);
+        // 输出语言与 AI 超时直接平铺在开关下方（2026-09-25 用户反馈：折叠包裹多此一举）。
+        const genRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); };
+        genRow("Output language", language);
+        genRow("AI timeout", timeout);
         const actions = make("div"); actions.className = "mxv-opt-actions";
         const cancel = make("button", {}, t("Cancel"));
         const formatButton = make("button", {}, t("H3 format (offline)"));

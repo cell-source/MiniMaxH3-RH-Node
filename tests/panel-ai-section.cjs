@@ -153,7 +153,11 @@ check(dialogBody.includes('const route = operation === "ai" ? "generate" : "form
 check(dialogBody.indexOf('pushPromptUndo(promptSnapshot())') < dialogBody.indexOf('applyOptimizedPrompt(value, before)'),
     'undo snapshot pushed before filling the editor (Ctrl+Z restores)');
 check(dialogBody.includes('language.onchange = () => setWidget(node, "ai_language", language.value)')
-    && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog folds language/timeout into widgets');
+    && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog keeps language/timeout in widgets');
+check(!js.includes('mxv-gen-more') && !dialogBody.includes('make("details")'),
+    'language/timeout rows are laid out flat (no collapse wrapper)');
+check(dialogBody.includes('genRow("Output language", language)') && dialogBody.includes('genRow("AI timeout", timeout)'),
+    'language/timeout rows appended directly to the dialog');
 
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
