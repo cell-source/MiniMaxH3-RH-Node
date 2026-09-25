@@ -123,12 +123,14 @@ for (const kind of ['image', 'video', 'audio']) {
     check(vm.runInContext(`nextSlot("${kind}")`, modeContext) === `ref_${kind}_1`, 'reference slot: ' + kind);
 }
 
-/* 8. 批次 B：AI 生成弹窗（收编原 AI 区块）——按钮、开关、请求路径与填回语义 */
+/* 8. AI 生成/整理一键直出 + 统一配置界面（2026-09-26）：配置只管配置，动作在工具条 */
 check(js.includes('const aiGeneratePrompt = make("button", {}, "✨")'), 'AI generate button created');
-check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizerGear)'),
-    'toolbar keeps only ✨/⚙/↻ (polish button folded into config)');
+check(js.includes('const aiFormatPrompt = make("button", {}, "≡")'), 'offline format button created');
+check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear)'),
+    'toolbar hosts ↻/≡/✨/⚙ direct actions');
 check(!js.includes('const optimizePrompt'), 'polish toolbar button removed');
-check(js.includes('aiGeneratePrompt.onclick = openOptimizerSettings'), '✨ opens the unified config dialog');
+check(js.includes('aiGeneratePrompt.onclick = () => { if (ensureGenerationKey()) runGeneration("ai"); }'), '✨ generates directly per config');
+check(js.includes('aiFormatPrompt.onclick = () => runGeneration("format");'), '≡ formats directly per config');
 check(!js.includes('function openAiGenerateDialog'), 'separate AI generation dialog removed');
 const dialogBody = js.slice(js.indexOf('function openOptimizerSettings()'), js.indexOf('function showOptimizerConfigPrompt()'));
 check(!!dialogBody, 'unified config dialog defined');
@@ -138,17 +140,23 @@ for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamp
     'ai_no_subtitles', 'ai_anti_pop', 'ai_strict_validation']) {
     check(dialogBody.includes(`"${name}"`), 'config dialog switch writes hidden widget: ' + name);
 }
-check(dialogBody.includes('const route = operation === "ai" ? "generate" : "format";')
-    && dialogBody.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'config dialog posts to generate/format endpoints');
+check(dialogBody.includes('actions.append(cancel, save, polishButton)'), 'config dialog is config-only (cancel/save/polish)');
+check(!dialogBody.includes('runButton') && !dialogBody.includes('formatButton'), 'no generate/format action buttons left in the config dialog');
+check(!dialogBody.includes('legacyIdea') && !js.includes('Idea / prompt to rewrite'), 'legacy idea textarea removed from the config dialog');
+check(dialogBody.includes('source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); }'),
+    'source switch mirrors the editor content into the runtime input');
+check(js.includes('const route = operation === "ai" ? "generate" : "format";')
+    && js.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'toolbar actions post to generate/format endpoints');
 check(dialogBody.includes('genRow("Generation language", genLanguage)') && dialogBody.includes('genRow("AI timeout", genTimeout)'),
     'generation language/timeout laid out flat in the unified dialog');
-check(dialogBody.includes('actions.append(cancel, save, polishButton, formatButton, runButton)'),
-    'config dialog hosts save + polish + generate/format actions together');
 check(dialogBody.includes('genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value)')
     && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog keeps language/timeout in widgets');
 check(!js.includes('mxv-gen-more') && !dialogBody.includes('make("details")'),
     'no collapse wrapper inside the config dialog');
 check(!dialogBody.includes('optimizePrompt'), 'dialog does not reference the removed toolbar button');
+check(js.includes('function mirrorSourceIdea()') && js.includes('function syncEditorSource()')
+    && !js.includes('useEditorPrompt'), 'editor content mirrors into the runtime source input (actions never flip the source)');
+check(js.split('mirrorSourceIdea()').length - 1 >= 6, 'mirror runs on edit/undo/fill/reset/source-switch/restore');
 
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),

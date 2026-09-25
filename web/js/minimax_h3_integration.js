@@ -179,7 +179,6 @@ const DOM_TRANSLATIONS = {
     "ai": "AI 在线生成",
     "offline": "离线原文包装",
     "format": "整理完整提示词",
-    "Idea / prompt to rewrite": "创意 / 待整理提示词",
     "API key (cleared when sharing the workflow)": "API Key（分享工作流前请清空）",
     "H3 mode": "H3 模式",
     "Endpoint override": "覆盖端点（可选）",
@@ -265,14 +264,14 @@ const DOM_TRANSLATIONS = {
     "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Optimizing": "润色中", "Restore before optimization": "恢复润色前", "Configure API": "配置模型与选项（润色与 AI 生成共用）",
     "Prompt optimizer API is not configured. Open settings now?": "尚未配置润色 API，是否立即打开设置？",
     "Confirm": "确定",
-    "AI generate prompt": "AI 生成：把当前内容交给生成平台，套用官方 H3 结构（镜头/音景/配乐/时间戳）生成完整提示词并填回",
-    "Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).": "基于编辑器当前内容生成 H3 提示词，结果填回编辑器（Ctrl+Z 可撤销）。",
-    "Generate and fill": "生成并填入",
+    "AI generate prompt": "AI 生成：按当前配置把编辑器内容套用官方 H3 结构（镜头/音景/配乐/时间戳）生成完整提示词并填回（Ctrl+Z 可撤销）",
+    "These options configure AI generation and run-time prompt processing; the input always comes from the prompt editor.": "以下选项配置 AI 生成与运行期提示词处理方式；输入始终取自提示词编辑器，无需另行填写创意文本。",
     "Polish": "✦ 润色",
-    "H3 format (offline)": "H3 格式整理（离线）",
+    "H3 format (offline)": "H3 格式整理（离线）：按官方 H3 规范整理编辑器内容并填回（不调用在线模型）",
     "Generating": "生成中",
     "Formatting": "整理中",
     "Enter a prompt first": "请先输入提示词",
+    "Generation API key is missing. Open settings now?": "尚未配置生成模型 API Key，是否立即打开设置？",
     "Generation prompt failed": "AI 生成失败",
     "AI generation options": "AI 生成选项",
     "Generation language": "生成语言",
@@ -281,7 +280,7 @@ const DOM_TRANSLATIONS = {
     "Prompt changed; result was not applied": "提示词或模式已改变，未覆盖当前内容",
     "Generation supports 2–15 seconds": "提示词生成仅支持 2–15 秒，请先调整视频时长",
     "Generation timed out": "生成超时，请缩短输入或调整超时设置",
-    "Editing or filling the editor switches the source to panel; the previous idea is kept.": "编辑或填回提示词后将使用编辑器内容，原创意输入仍会保留。",
+    "The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is.": "「AI 在线生成 / 离线原文包装 / 整理完整提示词」始终以编辑器内容为输入；「提示词编辑器」来源则原样使用编辑器文本。",
     "Sound and subtitle options also apply when running editor prompts.": "音景、配乐和无字幕选项也用于编辑器提示词的运行处理。",
     "Output language": "输出语言",
     "Maximum output tokens": "最大输出 Tokens",
@@ -789,13 +788,14 @@ function createPanel(node) {
     };
     const restorePromptSnapshot = snapshot => {
         if (!snapshot) return;
-        useEditorPrompt();
+        promptRevision++;
         promptPlainText = snapshot.text;
         renderPromptHighlights();
         prompt.focus();
         setEditorSelection(snapshot.start, snapshot.end);
         promptByMode[state.mode] = prompt.value;
         setPromptWidget(node, prompt.value);
+        mirrorSourceIdea();
         persistState();
     };
     const stepPromptHistory = redo => {
@@ -899,11 +899,12 @@ function createPanel(node) {
     elapsedPrompt.title = t("Cancel processing");
     elapsedPrompt.onclick = () => cancelPromptOperation();
     const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
+    const aiFormatPrompt = make("button", {}, "≡"); aiFormatPrompt.className = "mxv-prompt-tool";
     const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
-    // 润色不再占用工具条按钮（2026-09-25）：由配置界面的「运行前自动润色」开关与
-    // 界面内 ✦ 润色按钮承担，进度由左侧 elapsed 指示器展示。
-    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
+    // 动作一键直出（2026-09-26）：≡ 离线整理、✨ AI 生成按当前配置直接执行并填回；
+    // 配置界面只负责配置，润色仍由「运行前自动润色」开关与界面内 ✦ 润色按钮承担。
+    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
     const syncPromptHighlightGeometry = () => {
         promptHighlightContent.style.width = `${prompt.clientWidth}px`;
     };
@@ -1424,9 +1425,15 @@ function nodeColorToCss(value) {
         }
         generationOptionsVersion = 1;
     }
-    function useEditorPrompt() {
+    // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：ai_text 镜像编辑器，
+    // 来源本身只在配置界面显式切换，编辑/撤销/填回都不会改写来源。
+    function mirrorSourceIdea() {
+        if (String(widget(node, "prompt_source")?.value || "panel") === "panel") return;
+        setWidget(node, "ai_text", prompt.value);
+    }
+    function syncEditorSource() {
         promptRevision++;
-        setWidget(node, "prompt_source", "panel");
+        mirrorSourceIdea();
     }
     function beginPromptOperation(kind) {
         if (activePromptOperation || panelRemoved || upstreamConnected() || node.graph !== app.graph || (node.mode != null && node.mode !== 0)) return null;
@@ -1439,6 +1446,7 @@ function nodeColorToCss(value) {
         optimizing = kind === "optimize";
         aiGenerating = !optimizing;
         refreshDialogActions();
+        aiGeneratePrompt.disabled = aiFormatPrompt.disabled = resetPrompt.disabled = true;
         return operation;
     }
     function promptOperationCurrent(operation) {
@@ -1459,7 +1467,7 @@ function nodeColorToCss(value) {
         if (!panelRemoved) { refreshDialogActions(); refreshPromptConnection(); }
     }
     const commitPromptEditorInput = () => {
-        useEditorPrompt();
+        syncEditorSource();
         const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         promptPlainText = editorText();
         // Keep native contenteditable editing intact for ordinary keystrokes.
@@ -1491,12 +1499,13 @@ function nodeColorToCss(value) {
         // Chromium can report an explicit paragraph insertion just before its
         // delayed compositionend event.  Do not discard that first Enter;
         // first capture the already committed DOM text, then add the newline.
-        useEditorPrompt();
+        promptRevision++;
         const [start, end] = selectionOffsets();
         promptPlainText = editorText();
         prompt.setRangeText("\n", start, end, "end");
         pushPromptUndo(pendingPromptSnapshot); pendingPromptSnapshot = null;
-        promptByMode[state.mode] = prompt.value; setPromptWidget(node, prompt.value); persistState();
+        promptByMode[state.mode] = prompt.value; setPromptWidget(node, prompt.value);
+        mirrorSourceIdea(); persistState();
     });
     const isPromptHistoryKey = event => {
         const editing = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
@@ -1527,6 +1536,7 @@ function nodeColorToCss(value) {
         promptWrap.classList.toggle("external", external);
         prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
         aiGeneratePrompt.disabled = external;
+        aiFormatPrompt.disabled = external;
         resetPrompt.disabled = external;
     }
     const updateWorkflowState = running => {
@@ -1555,6 +1565,7 @@ function nodeColorToCss(value) {
         });
         button.addEventListener("mouseleave", clear); button.addEventListener("pointerdown", clear);
     }
+    delayedTooltip(aiFormatPrompt, () => t("H3 format (offline)"));
     delayedTooltip(aiGeneratePrompt, () => t("AI generate prompt"));
     delayedTooltip(resetPrompt, () => t("Restore before optimization"));
     delayedTooltip(optimizerGear, () => t("Configure API"));
@@ -2431,18 +2442,15 @@ function nodeColorToCss(value) {
             /* ===== AI 生成区（2026-09-25 二次整合）：✨ 与 ⚙ 共用本配置界面，不再单独弹窗 ===== */
             const genTitle = make("div", {}, t("AI generation options")); genTitle.className = "mxv-opt-section"; dialog.append(genTitle);
             const genPurpose = make("div"); genPurpose.className = "mxv-opt-purpose";
-            genPurpose.textContent = t("Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).");
+            genPurpose.textContent = t("These options configure AI generation and run-time prompt processing; the input always comes from the prompt editor.");
             dialog.append(genPurpose);
             const source = row("Source", make("select"));
             for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
             source.value = String(widget(node, "prompt_source")?.value || "panel");
-            const legacyIdea = row("Idea / prompt to rewrite", make("textarea"));
-            legacyIdea.value = cleanPrompt(widget(node, "ai_text")?.value);
-            const syncSource = () => legacyIdea.closest("label").classList.toggle("mxv-opt-hidden", source.value === "panel");
-            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; syncSource(); persistState(); };
-            legacyIdea.onchange = () => { setWidget(node, "ai_text", legacyIdea.value); persistState(); };
-            syncSource();
-            const sourceHint = make("div", {}, t("Editing or filling the editor switches the source to panel; the previous idea is kept."));
+            // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：不再单独维护"创意"文本，
+            // ai_text 由 mirrorSourceIdea 自动镜像编辑器，来源仅在配置界面显式切换。
+            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); };
+            const sourceHint = make("div", {}, t("The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is."));
             sourceHint.className = "mxv-opt-purpose"; dialog.append(sourceHint);
             const genMode = row("H3 mode", make("select"));
             for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
@@ -2481,11 +2489,9 @@ function nodeColorToCss(value) {
             genRow("AI timeout", genTimeout);
             const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
-            // ✦ 润色动作收进配置界面（工具条不再有独立按钮）。
+            // ✦ 润色是唯一的界面内动作；≡ 整理与 ✨ 生成已改为工具条一键直出（2026-09-26）。
             const polishButton = make("button", {}, t("Polish")); polishButton.title = t("Optimize prompt");
-            const formatButton = make("button", {}, t("H3 format (offline)"));
-            const runButton = make("button", {}, t("Generate and fill"));
-            actions.append(cancel, save, polishButton, formatButton, runButton); dialog.append(actions);
+            actions.append(cancel, save, polishButton); dialog.append(actions);
             const close = (cancelRunning = true) => {
                 if (cancelRunning) cancelPromptOperation();
                 overlay.remove();
@@ -2499,7 +2505,7 @@ function nodeColorToCss(value) {
             overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
             refreshDialogActions = () => {
                 const busy = !!activePromptOperation;
-                runButton.disabled = formatButton.disabled = polishButton.disabled = save.disabled = busy;
+                polishButton.disabled = save.disabled = busy;
                 for (const control of dialog.querySelectorAll("input, select, textarea")) control.disabled = busy;
                 cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
             };
@@ -2532,108 +2538,7 @@ function nodeColorToCss(value) {
                 applyDialogConfig(); close();
                 runPromptOptimization();
             };
-            /* ===== AI 生成动作：与配置同界面；生成前先把界面取值写入 widget，保证请求即所见 ===== */
-            const commitGenerationConfig = () => {
-                commitKeyToOwner();
-                setWidget(node, "ai_provider", genProvider.value);
-                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value));
-                setWidget(node, "ai_model", genModel.value.trim());
-                setWidget(node, "ai_endpoint", genEndpoint.value.trim());
-                setWidget(node, "ai_language", genLanguage.value);
-                setWidget(node, "ai_timeout", Math.max(15, Math.min(600, Number(genTimeout.value) || 180)));
-                persistState();
-            };
-            const generationMode = () => {
-                const explicit = String(widget(node, "ai_mode")?.value || "auto");
-                if (["t2va", "i2va", "fl2va", "l2va", "ref2va"].includes(explicit)) return explicit;
-                if (state.mode === "all_reference") return "ref2va";
-                const first = media.has("first_frame");
-                const last = media.has("last_frame");
-                return first && last ? "fl2va" : first ? "i2va" : last ? "l2va" : "t2va";
-            };
-            const generationBody = () => {
-                const provider = String(widget(node, "ai_provider")?.value || "deepseek");
-                const flag = name => !!widget(node, name)?.value;
-                const duration = Number(durationWidget?.value ?? 5);
-                if (!Number.isFinite(duration) || duration < 2 || duration > 15) throw new Error(t("Generation supports 2–15 seconds"));
-                return {
-                    prompt: prompt.value,
-                    provider,
-                    api_key: getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value),
-                    endpoint: cleanPrompt(widget(node, "ai_endpoint")?.value),
-                    model: cleanPrompt(widget(node, "ai_model")?.value),
-                    timeout: Number(widget(node, "ai_timeout")?.value || 180),
-                    controls: {
-                        mode: generationMode(),
-                        lang: genLanguage.value,
-                        duration,
-                        ratio: String(widget(node, "aspect")?.value || "16:9"),
-                        model: provider,
-                        enrich_do_enrich: flag("ai_enrich"),
-                        enrich_soundscape: flag("ai_soundscape"),
-                        enrich_music: flag("ai_music"),
-                        auto_timestamps: flag("ai_auto_timestamps"),
-                        fixed_camera: flag("ai_fixed_camera"),
-                        visual_stability: flag("ai_visual_stability"),
-                        no_subtitles: flag("ai_no_subtitles"),
-                        anti_pop: flag("ai_anti_pop"),
-                    },
-                };
-            };
-            const applyGenerationResult = (result, operation) => {
-                if (!promptOperationCurrent(operation)) throw new Error(t("Prompt changed; result was not applied"));
-                const value = String(result?.prompt ?? "");
-                if (!value.trim()) throw new Error(t("Generation prompt failed"));
-                if (operation.strict && result.valid !== true) throw new Error(result.report || t("Generation prompt failed"));
-                const before = operation.before;
-                // 先压栈再替换：Ctrl+Z 可回到生成前的编辑器内容。
-                pushPromptUndo(promptSnapshot());
-                applyOptimizedPrompt(value, before, operation.mode);
-                playOptimizerCompleteSound();
-                // 非严格模式仍允许填回待修文本；严格模式必须在任何覆盖前拒绝。
-                if (result.valid === false && result.report) alert(result.report);
-            };
-            const runGeneration = async operation => {
-                if (activePromptOperation) return;
-                if (!prompt.value.trim()) { alert(t("Enter a prompt first")); return; }
-                const pending = beginPromptOperation(operation);
-                if (!pending) return;
-                pending.strict = widget(node, "ai_strict_validation")?.value !== false;
-                let timeout;
-                let timedOut = false;
-                const originalRun = runButton.textContent;
-                const originalFormat = formatButton.textContent;
-                runButton.textContent = operation === "ai" ? t("Generating") : originalRun;
-                formatButton.textContent = operation === "format" ? t("Formatting") : originalFormat;
-                try {
-                    commitGenerationConfig();
-                    const body = { ...generationBody(), request_id: pending.id };
-                    timeout = setTimeout(() => { timedOut = true; cancelPromptOperation(); }, ((operation === "ai" ? body.timeout : 15) + 5) * 1000);
-                    const route = operation === "ai" ? "generate" : "format";
-                    const response = await api.fetchApi(`${OPTIMIZER_ROUTE}/${route}`, {
-                        method: "POST",
-                        signal: pending.controller.signal,
-                        body: new Blob([JSON.stringify(body)], { type: "application/json" }),
-                    });
-                    const text = await response.text();
-                    let data;
-                    try { data = text ? JSON.parse(text) : {}; }
-                    catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Generation prompt failed")); }
-                    if (!response.ok) throw new Error(data.error || t("Generation prompt failed"));
-                    if (pending.controller.signal.aborted) return;
-                    applyGenerationResult(data, pending);
-                    close(false);
-                } catch (error) {
-                    if (!panelRemoved && (timedOut || !pending.controller.signal.aborted)) alert(timedOut ? t("Generation timed out") : error.message);
-                } finally {
-                    clearTimeout(timeout);
-                    finishPromptOperation(pending);
-                    runButton.textContent = originalRun;
-                    formatButton.textContent = originalFormat;
-                }
-            };
-            runButton.onclick = () => runGeneration("ai");
-            formatButton.onclick = () => runGeneration("format");
+            // 生成/整理动作已提升为工具条一键直出（见 runGeneration），配置界面不再承担执行。
             document.body.append(overlay);
         }).catch(error => { if (!panelRemoved && epoch === settingsEpoch) alert(error.message); });
     }
@@ -2746,7 +2651,7 @@ function nodeColorToCss(value) {
         };
     }
     function applyOptimizedPrompt(value, before, targetMode = state.mode) {
-        useEditorPrompt();
+        promptRevision++;
         promptByMode[targetMode] = value;
         optimizerBeforeByMode[targetMode] = before;
         if (state.mode === targetMode) {
@@ -2754,6 +2659,7 @@ function nodeColorToCss(value) {
             prompt.value = value; renderPromptHighlights(); setPromptWidget(node, value);
             resetPrompt.classList.add("visible");
         }
+        mirrorSourceIdea();
         persistState();
     }
     function playOptimizerCompleteSound() {
@@ -2764,14 +2670,113 @@ function nodeColorToCss(value) {
             optimizerCompleteAudio.play().catch(() => {});
         } catch {}
     }
+    /* ===== AI 生成 / H3 离线整理：工具条一键直出（2026-09-26）=====
+       配置界面只负责配置；≡/✨ 按当前 widget 配置直接执行并填回编辑器，
+       进度与取消复用左侧 elapsed 指示器（点击即取消）。 */
+    const generationMode = () => {
+        const explicit = String(widget(node, "ai_mode")?.value || "auto");
+        if (["t2va", "i2va", "fl2va", "l2va", "ref2va"].includes(explicit)) return explicit;
+        if (state.mode === "all_reference") return "ref2va";
+        const first = media.has("first_frame");
+        const last = media.has("last_frame");
+        return first && last ? "fl2va" : first ? "i2va" : last ? "l2va" : "t2va";
+    };
+    const generationBody = () => {
+        const provider = String(widget(node, "ai_provider")?.value || "deepseek");
+        const flag = name => !!widget(node, name)?.value;
+        const duration = Number(durationWidget?.value ?? 5);
+        if (!Number.isFinite(duration) || duration < 2 || duration > 15) throw new Error(t("Generation supports 2–15 seconds"));
+        return {
+            prompt: prompt.value,
+            provider,
+            api_key: getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value),
+            endpoint: cleanPrompt(widget(node, "ai_endpoint")?.value),
+            model: cleanPrompt(widget(node, "ai_model")?.value),
+            timeout: Number(widget(node, "ai_timeout")?.value || 180),
+            controls: {
+                mode: generationMode(),
+                lang: String(widget(node, "ai_language")?.value || "zh"),
+                duration,
+                ratio: String(widget(node, "aspect")?.value || "16:9"),
+                model: provider,
+                enrich_do_enrich: flag("ai_enrich"),
+                enrich_soundscape: flag("ai_soundscape"),
+                enrich_music: flag("ai_music"),
+                auto_timestamps: flag("ai_auto_timestamps"),
+                fixed_camera: flag("ai_fixed_camera"),
+                visual_stability: flag("ai_visual_stability"),
+                no_subtitles: flag("ai_no_subtitles"),
+                anti_pop: flag("ai_anti_pop"),
+            },
+        };
+    };
+    const applyGenerationResult = (result, operation) => {
+        if (!promptOperationCurrent(operation)) throw new Error(t("Prompt changed; result was not applied"));
+        const value = String(result?.prompt ?? "");
+        if (!value.trim()) throw new Error(t("Generation prompt failed"));
+        if (operation.strict && result.valid !== true) throw new Error(result.report || t("Generation prompt failed"));
+        const before = operation.before;
+        // 先压栈再替换：Ctrl+Z 可回到生成前的编辑器内容。
+        pushPromptUndo(promptSnapshot());
+        applyOptimizedPrompt(value, before, operation.mode);
+        playOptimizerCompleteSound();
+        // 非严格模式仍允许填回待修文本；严格模式必须在任何覆盖前拒绝。
+        if (result.valid === false && result.report) alert(result.report);
+    };
+    async function runGeneration(operation) {
+        if (activePromptOperation || panelRemoved) return;
+        if (!prompt.value.trim()) { alert(t("Enter a prompt first")); return; }
+        const pending = beginPromptOperation(operation);
+        if (!pending) return;
+        pending.strict = widget(node, "ai_strict_validation")?.value !== false;
+        let timeout;
+        let timedOut = false;
+        elapsedPrompt.classList.add("visible");
+        const started = performance.now();
+        const refreshElapsed = () => { elapsedPrompt.textContent = `${t(operation === "ai" ? "Generating" : "Formatting")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
+        refreshElapsed();
+        const elapsedTimer = setInterval(refreshElapsed, 1000);
+        try {
+            const body = { ...generationBody(), request_id: pending.id };
+            timeout = setTimeout(() => { timedOut = true; cancelPromptOperation(); }, ((operation === "ai" ? body.timeout : 15) + 5) * 1000);
+            const route = operation === "ai" ? "generate" : "format";
+            const response = await api.fetchApi(`${OPTIMIZER_ROUTE}/${route}`, {
+                method: "POST",
+                signal: pending.controller.signal,
+                body: new Blob([JSON.stringify(body)], { type: "application/json" }),
+            });
+            const text = await response.text();
+            let data;
+            try { data = text ? JSON.parse(text) : {}; }
+            catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Generation prompt failed")); }
+            if (!response.ok) throw new Error(data.error || t("Generation prompt failed"));
+            if (pending.controller.signal.aborted) return;
+            applyGenerationResult(data, pending);
+        } catch (error) {
+            if (!panelRemoved && (timedOut || !pending.controller.signal.aborted)) alert(timedOut ? t("Generation timed out") : error.message);
+        } finally {
+            clearTimeout(timeout);
+            clearInterval(elapsedTimer);
+            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = "";
+            finishPromptOperation(pending);
+        }
+    }
+    const ensureGenerationKey = () => {
+        const provider = String(widget(node, "ai_provider")?.value || "deepseek");
+        if (getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value)) return true;
+        if (confirm(t("Generation API key is missing. Open settings now?"))) openOptimizerSettings();
+        return false;
+    };
     optimizerGear.onclick = openOptimizerSettings;
-    // ✨ 与 ⚙ 共用同一配置界面（2026-09-25 整合）：生成开关与动作已内嵌其中。
-    aiGeneratePrompt.onclick = openOptimizerSettings;
+    // ✨/≡ 一键直出（2026-09-26）：不再弹配置界面，按已保存配置直接生成/整理并填回。
+    aiGeneratePrompt.onclick = () => { if (ensureGenerationKey()) runGeneration("ai"); };
+    aiFormatPrompt.onclick = () => runGeneration("format");
     resetPrompt.onclick = () => {
         if (optimizerBefore == null || upstreamConnected()) return;
-        useEditorPrompt();
+        promptRevision++;
         if (optimizerCache?.originalPrompt === optimizerBefore) optimizerCache.result = prompt.value;
         prompt.value = optimizerBefore; renderPromptHighlights(); promptByMode[state.mode] = prompt.value; setPromptWidget(node, prompt.value);
+        mirrorSourceIdea();
         optimizerBeforeByMode[state.mode] = null;
         optimizerBefore = null; resetPrompt.classList.remove("visible"); persistState();
     };
@@ -3746,6 +3751,8 @@ function nodeColorToCss(value) {
                 prompt.value = cleanPrompt(promptByMode[state.mode]);
                 renderPromptHighlights();
                 setPromptWidget(node, prompt.value);
+                // 旧工作流的非面板来源同样以编辑器内容为输入：恢复后立即镜像。
+                mirrorSourceIdea();
                 optimizerSettings = restoreKeychainFromStorage(restored.optimizer || optimizerSettings);
                 refreshOptimizerName(); refreshPromptConnection();
                 optimizerCache = restored.optimizerCache || null;

@@ -27,13 +27,23 @@ class PanelRuntimeTests(unittest.TestCase):
         helpers = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                    and node.name in {"_coerce_int", "_coerce_bool", "_restore_ui_state"}]
         module = ast.fix_missing_locations(ast.Module(body=helpers + [execute], type_ignores=[]))
-        def unexpected_generation(*args):
-            raise AssertionError("filled editor must not call the legacy generator")
+        cls.generation_inputs = []
+        cls.client_calls = []
+
+        def fake_generate_prompt(text, operation, controls, llm=None, check_interrupt=lambda: None):
+            # 非面板来源在运行期处理编辑器内容：记录收到的输入文本并回显。
+            cls.generation_inputs.append(text)
+            return {"prompt": f"<GENERATED:{text}>", "valid": True, "report": "ok"}
+
+        def fake_make_client(*args, **kwargs):
+            cls.client_calls.append(args)
+            return lambda system, user: "unused"
+
         context = {
             "json": json, "DEFAULT_SAMPLER_NAME": "test", "DEFAULT_SCHEDULER_NAME": "test",
             "model_management": types.SimpleNamespace(throw_exception_if_processing_interrupted=lambda: None),
             "apply_advanced_constraints": apply_advanced_constraints,
-            "make_client": unexpected_generation, "generate_prompt": unexpected_generation,
+            "make_client": fake_make_client, "generate_prompt": fake_generate_prompt,
         }
         exec(compile(module, "video_nodes.py prompt resolution", "exec"), context)
         cls.resolve = staticmethod(context["execute"])
@@ -43,6 +53,8 @@ class PanelRuntimeTests(unittest.TestCase):
         for source in ("panel", "ai", "offline", "format"):
             for enabled in (False, True):
                 with self.subTest(source=source, sound=enabled):
+                    self.generation_inputs.clear()
+                    self.client_calls.clear()
                     result = generate_prompt(source_text, "format", {"mode": "t2va", "lang": "zh",
                         "enrich_soundscape": enabled, "enrich_music": enabled, "no_subtitles": False})
                     script = '''
@@ -59,18 +71,28 @@ console.log(JSON.stringify(Object.fromEntries(c.node.widgets.map(w => [w.name,w.
                     completed = subprocess.run(["node", "-e", script, json.dumps({"source": source, "enabled": enabled, "prompt": result["prompt"]})],
                                                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True)
                     widgets = json.loads(completed.stdout)
-                    self.assertEqual(widgets["prompt_source"], "panel")
-                    self.assertEqual(widgets["ai_text"], "old idea")
+                    # 来源是显式配置：填回不翻转；非面板来源的 ai_text 镜像编辑器内容。
+                    self.assertEqual(widgets["prompt_source"], source)
+                    self.assertEqual(widgets["ai_text"], "old idea" if source == "panel" else widgets["prompt"])
+                    self.assertEqual(widgets["ai_text"], "old idea" if source == "panel" else result["prompt"])
                     args = {name: None for name, parameter in inspect.signature(self.resolve).parameters.items()
                             if parameter.default is inspect.Parameter.empty}
                     args.update({name: value for name, value in widgets.items() if name in inspect.signature(self.resolve).parameters})
                     args.update(main_mode="text_keyframes", duration_seconds=5, aspect="16:9",
                                 gh_state_json=json.dumps({"mode": "text_keyframes", "prompts": {"text_keyframes": widgets["prompt"]}}))
                     actual = self.resolve(**args)
-                    self.assertEqual("贴合画面环境的环境声自然延续" in actual, enabled)
-                    self.assertEqual("慢速而克制的钢琴独奏" in actual, enabled)
-                    self.assertNotIn("Every spoken line", actual)
-                    self.assertIn("女子站着。", actual)
+                    if source == "panel":
+                        # 填回结果即最终文本：面板来源直接运行，不得触发旧生成器或远程客户端。
+                        self.assertEqual(self.generation_inputs, [])
+                        self.assertEqual(self.client_calls, [])
+                        self.assertIn("女子站着。", actual)
+                        self.assertEqual("贴合画面环境的环境声自然延续" in actual, enabled)
+                        self.assertEqual("慢速而克制的钢琴独奏" in actual, enabled)
+                        self.assertNotIn("Every spoken line", actual)
+                    else:
+                        # 非面板来源在运行期处理编辑器内容：收到的输入必须等于编辑器文本。
+                        self.assertEqual(self.generation_inputs, [widgets["prompt"]])
+                        self.assertEqual(actual, f"<GENERATED:{widgets['prompt']}>")
 
 
 if __name__ == "__main__":

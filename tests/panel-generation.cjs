@@ -30,10 +30,10 @@ function host(overrides = {}) {
         selectionOffsets: () => [0, 0], setEditorSelection: noop, renderPromptHighlights: noop,
         promptByMode: { text_keyframes: 'original', all_reference: 'reference' }, optimizerBeforeByMode: {}, optimizerBefore: null,
         resetPrompt: { classList: { add: noop, remove: noop } },
-        durationWidget: { value: 5 }, genLanguage: { value: 'zh' }, genTimeout: { value: 180 },
-        genProvider: { value: 'deepseek' }, genModel: { value: '' }, genEndpoint: { value: '' },
+        aiGeneratePrompt: {}, aiFormatPrompt: {}, // toolbar buttons; onclick rows are not extracted
+        durationWidget: { value: 5 },
+        genProvider: { value: 'deepseek' },
         commitKeyToOwner: noop, providerApiKeys: {}, getSharedKey: () => '',
-        runButton: { textContent: 'generate' }, formatButton: { textContent: 'format' },
         OPTIMIZER_ROUTE: '/rh/minimax-h3/prompt-optimizer', alerts: [], requests: [],
         optimizerSettings: { has_api_key: true, auto_optimize: true, mode: 'api' }, optimizerCache: null,
         resolvedTaskType: () => 'T2VA', resemblesOfficialPrompt: () => false, workflowRunning: false,
@@ -54,7 +54,7 @@ function host(overrides = {}) {
         section('function widget(node, name)', 'function hasOwn('),
         section('const sharedGenerationOptions =', 'const commitPromptEditorInput ='),
         section('const promptSnapshot =', 'const setEditorSelection ='),
-        section('const commitGenerationConfig =', 'runButton.onclick = () => runGeneration("ai");'),
+        section('const generationMode = () => {', 'optimizerGear.onclick = openOptimizerSettings;'),
         section('function applyOptimizedPrompt(', 'function playOptimizerCompleteSound('),
         section('async function cancelOptimization()', 'function resemblesOfficialPrompt('),
         section('async function runPromptOptimization(', 'const autoOptimizeBeforeQueue ='),
@@ -81,9 +81,9 @@ if (require.main === module) (async () => {
     const legacy = host();
     run(legacy, 'migrateGenerationOptions()');
     assert.equal(value(legacy, 'soundscape'), true); // old runtime source keeps AI options
-    run(legacy, 'useEditorPrompt()');
-    assert.equal(value(legacy, 'prompt_source'), 'panel');
-    assert.equal(value(legacy, 'ai_text'), 'old idea');
+    run(legacy, 'syncEditorSource()');
+    assert.equal(value(legacy, 'prompt_source'), 'ai'); // source is explicit config; actions never flip it
+    assert.equal(value(legacy, 'ai_text'), 'original'); // editor content mirrors into the runtime source input
     const body = run(legacy, 'generationBody()');
     assert.equal(body.controls.visual_stability, true);
     for (const mode of ['t2va', 'i2va', 'fl2va', 'l2va', 'ref2va']) {
@@ -135,8 +135,8 @@ if (require.main === module) (async () => {
     success.requests[0].resolve({ prompt: 'generated', valid: false, report: 'edit this' });
     await pending;
     assert.equal(success.prompt.value, 'generated');
-    assert.equal(value(success, 'prompt_source'), 'panel');
-    assert.equal(value(success, 'ai_text'), 'old idea');
+    assert.equal(value(success, 'prompt_source'), 'ai');
+    assert.equal(value(success, 'ai_text'), 'generated'); // filled result mirrors into the source input
     assert.equal(value(success, 'prompt'), 'generated');
     run(success, 'stepPromptHistory(false)');
     assert.equal(success.prompt.value, 'original');
@@ -163,7 +163,7 @@ if (require.main === module) (async () => {
     assert.equal(polishing.prompt.value, 'original');
 
     for (const change of ['cancelPromptOperation()', 'panelRemoved = true; cancelPromptOperation()',
-        'prompt.value = "new edit"; useEditorPrompt()', 'app.graph = {}', 'state.mode = "all_reference"']) {
+        'prompt.value = "new edit"; syncEditorSource()', 'app.graph = {}', 'state.mode = "all_reference"']) {
         const stale = host();
         pending = run(stale, 'runGeneration("ai")');
         run(stale, change);
