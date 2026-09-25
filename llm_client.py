@@ -43,20 +43,21 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
         raise ValueError("请填写完整的 chat/completions URL 和模型名称")
     deadline = time.monotonic() + timeout
 
-    def complete(system, user):
-        check_interrupt()
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise TimeoutError("AI 生成及纠正已超过总超时时间")
+    def complete_once(system, user, remaining):
         body = {"model": model, "messages": [{"role": "system", "content": system},
                 {"role": "user", "content": user}], "stream": True, "temperature": 0,
                 "max_tokens": 6000, **extra}
-        try:
-            with requests.post(url, headers={"Authorization": f"Bearer {key}"}, json=body,
-                               stream=True, timeout=(min(15, remaining), min(30, remaining)),
+        # 首 token 可能因平台队列/冷启动超过 30s（审查 M2）：连接窗口放宽到 60s。
+        with requests.post(url, headers={"Authorization": f"Bearer {key}"}, json=body,
+                               stream=True, timeout=(min(60, remaining), min(60, remaining)),
                                allow_redirects=False) as response:
                 if response.status_code != 200:
-                    raise RuntimeError(f"AI 服务返回 HTTP {response.status_code}；请检查模型、额度及 Key")
+                    error_body = ""
+                    try:
+                        error_body = response.text[:300]
+                    except Exception:
+                        pass
+                    raise RuntimeError(f"AI 服务返回 HTTP {response.status_code}；请检查模型、额度及 Key。服务响应: {error_body}")
                 response.encoding = "utf-8"
                 chunks = []
                 finished = False
@@ -70,7 +71,15 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
                     if data == "[DONE]":
                         finished = True
                         break
-                    item = json.loads(data)
+                    if not data:
+                        continue
+                    try:
+                        item = json.loads(data)
+                    except json.JSONDecodeError:
+                        # 网关 keepalive/截断行/非 JSON 噪声：跳过而不是炸掉整个生成（审查 M1）。
+                        continue
+                    if not isinstance(item, dict):
+                        continue
                     if "error" in item:
                         raise RuntimeError("AI 服务流式响应包含错误")
                     for choice in item.get("choices", []):
@@ -89,7 +98,30 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
                 if not chunks:
                     raise RuntimeError("AI 返回内容为空")
                 return "".join(chunks)
-        except requests.RequestException:
-            raise RuntimeError("AI 请求连接失败或超时，请检查服务地址和网络") from None
+
+    def complete(system, user):
+        check_interrupt()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("AI 生成及纠正已超过总超时时间")
+        # 429/5xx/网络抖动退避重试（审查 M2）：引擎单次生成会发多次 LLM 调用，
+        # 一次抖动不应废弃前面已花费的调用。
+        last_error = None
+        for attempt in range(3):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError("AI 生成及纠正已超过总超时时间")
+            try:
+                return complete_once(system, user, remaining)
+            except RuntimeError as error:
+                message = str(error)
+                last_error = error
+                # 仅对可重试错误退避：HTTP 状态类与服务连接类。内容类错误（截断/过滤）不重试。
+                retryable = ("HTTP 429" in message or "HTTP 5" in message
+                             or "连接失败或超时" in message)
+                if not retryable or attempt == 2:
+                    raise
+                time.sleep(min(8, 2 ** (attempt + 1)))
+        raise last_error or RuntimeError("AI 请求失败")
 
     return complete

@@ -29,7 +29,12 @@ def generate_prompt(text, operation, controls, llm=None, check_interrupt=lambda:
             content = llm(request["system"], request["user"])
             check_interrupt()
             return json.dumps({"content": content})
-        except Exception as exc:
+        except BaseException as exc:
+            # InterruptProcessingException 继承自 BaseException（ComfyUI 的中断
+            # 机制）：必须原样穿透，不能被 except Exception 吞掉降级成"AI 请求
+            # 失败"——否则用户点取消表现为节点失败且中断标志已被消费（审查 M3）。
+            if type(exc).__name__ == "InterruptProcessingException":
+                raise
             failure.append(exc)
             return json.dumps({"error": "AI 请求失败"})
 
@@ -49,4 +54,10 @@ def generate_prompt(text, operation, controls, llm=None, check_interrupt=lambda:
     result = context.eval("__result")
     if result is None:
         raise RuntimeError("提示词引擎未完成执行")
-    return json.loads(result)
+    parsed = json.loads(result)
+    # 引擎契约校验（审查 M5）：quickjs 侧返回结构变更时给出可读错误而非裸 KeyError。
+    if not isinstance(parsed, dict) or "prompt" not in parsed:
+        raise RuntimeError("提示词引擎返回结构异常：缺少 prompt 字段")
+    parsed.setdefault("valid", True)
+    parsed.setdefault("report", "")
+    return parsed
