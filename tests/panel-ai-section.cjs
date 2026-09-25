@@ -1,8 +1,5 @@
-/* 面板 AI 区块静态一致性测试：
-   1) AI_GROUP_WIDGETS 与面板 addAi/绑定清单一一对应（无遗漏、无多余）
-   2) 前端 AI_PROVIDERS 与 llm_client.PROVIDERS 同步
-   3) hideWidget 隐藏列表包含全部 AI widget
-   4) 布局/配色基线存在（flex 流 + .ghh3-box 同款配色被 details 引用） */
+/* 面板隐藏 widget、服务商清单、布局及翻译的静态一致性检查。
+   生成、恢复、撤销、互斥与取消行为由 panel-generation.cjs 执行生产函数验证。 */
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -101,18 +98,7 @@ for (const name of ['prompt_source', 'ai_language', 'ai_mode', 'ai_provider']) {
     }
 }
 
-/* AI 区块已删除：隐藏 widget（ai_*）恢复完全依赖 ComfyUI 原生序列化，
-   syncAiControls 保留为空实现供 onConfigure 兼容调用，且不得抛错。 */
-const restoreFunction = js.match(/const syncAiControls = \(\) => \{[\s\S]*?\n    \};/);
-check(!!restoreFunction, 'AI restore compatibility stub exists');
-let restoreThrew = null;
-try {
-    vm.runInContext(restoreFunction[0] + '\nsyncAiControls();', vm.createContext({}));
-} catch (error) {
-    restoreThrew = error;
-}
-check(restoreThrew === null, 'restore compatibility stub is side-effect free');
-check(js.includes('syncAiControls()'), 'onConfigure still calls the restore stub');
+/* 恢复行为由 panel-generation.cjs 执行验证，不再匹配注释中的空桩调用。 */
 check(!js.includes('aiRows'), 'deleted AI row registry stays deleted');
 
 const modeContext = vm.createContext({
@@ -154,8 +140,6 @@ for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamp
 }
 check(dialogBody.includes('const route = operation === "ai" ? "generate" : "format";')
     && dialogBody.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'config dialog posts to generate/format endpoints');
-check(dialogBody.indexOf('pushPromptUndo(promptSnapshot())') < dialogBody.indexOf('applyOptimizedPrompt(value, before)'),
-    'undo snapshot pushed before filling the editor (Ctrl+Z restores)');
 check(dialogBody.includes('genRow("Generation language", genLanguage)') && dialogBody.includes('genRow("AI timeout", genTimeout)'),
     'generation language/timeout laid out flat in the unified dialog');
 check(dialogBody.includes('actions.append(cancel, save, polishButton, formatButton, runButton)'),
@@ -184,8 +168,7 @@ const controlsList = controlsNames[1].match(/"([a-z_]+)"/g).map(s => s.replace(/
 check(JSON.stringify(controlsList) === JSON.stringify(['enrich_do_enrich', 'enrich_soundscape', 'enrich_music',
     'auto_timestamps', 'fixed_camera', 'visual_stability', 'no_subtitles', 'anti_pop']),
     'engine controls match the video_nodes ai path');
-check(optimizerPy.includes('await asyncio.to_thread(_run_generation_operation, payload, "ai")')
-    && optimizerPy.includes('await asyncio.to_thread(_run_generation_operation, payload, "format")'),
+check(optimizerPy.includes('asyncio.to_thread(_run_generation_operation, payload, operation, check_interrupt)'),
     'generation runs off the event loop (to_thread)');
 
 console.log(`PASS: ${assertions} assertions (panel AI section consistency)`);

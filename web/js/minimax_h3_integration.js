@@ -277,6 +277,12 @@ const DOM_TRANSLATIONS = {
     "AI generation options": "AI 生成选项",
     "Generation language": "生成语言",
     "AI timeout": "AI 超时（秒）",
+    "Cancel processing": "取消处理",
+    "Prompt changed; result was not applied": "提示词或模式已改变，未覆盖当前内容",
+    "Generation supports 2–15 seconds": "提示词生成仅支持 2–15 秒，请先调整视频时长",
+    "Generation timed out": "生成超时，请缩短输入或调整超时设置",
+    "Editing or filling the editor switches the source to panel; the previous idea is kept.": "编辑或填回提示词后将使用编辑器内容，原创意输入仍会保留。",
+    "Sound and subtitle options also apply when running editor prompts.": "音景、配乐和无字幕选项也用于编辑器提示词的运行处理。",
     "Output language": "输出语言",
     "Maximum output tokens": "最大输出 Tokens",
     "Optimization mode": "优化方式", "Online API": "在线 API", "Local vision model": "本地视觉模型",
@@ -430,7 +436,8 @@ function setWidget(node, name, value) {
     const w = widget(node, name); if (!w) return;
     // Zero is a valid value for integer/float controls such as the optional
     // primary-audio ordinal. Only actual empty values should become (none).
-    const next = value === null || value === undefined || value === "" ? "(none)" : value;
+    const empty = value === null || value === undefined || value === "";
+    const next = empty ? (["ai_text", "ai_api_key", "ai_model", "ai_endpoint"].includes(name) ? "" : "(none)") : value;
     if (w.value === next) return;
     w.value = next;
     w.callback?.call(w, w.value);
@@ -591,6 +598,9 @@ function createPanel(node) {
       .mxv-opt-gen-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-top:6px}
       .mxv-opt-gen-item{display:flex;align-items:center;gap:7px;min-height:28px;color:#b3b1ac;font-size:11px;white-space:nowrap;cursor:pointer}
       .mxv-opt-gen-item input{width:auto;flex:0 0 auto;accent-color:#e8a33d}
+      .mxv-opt-actions{flex-wrap:wrap}.mxv-opt-row textarea{width:100%;box-sizing:border-box;min-height:60px;background:#1b1e23;color:#e8e6e1}
+      button.mxv-prompt-elapsed{border:0;background:transparent;padding:0;cursor:pointer}button.mxv-prompt-elapsed:hover{color:#e8a33d}
+      @media(max-width:480px){.mxv-opt-gen-grid{grid-template-columns:1fr}.mxv-opt-row{grid-template-columns:110px minmax(0,1fr)}}
     `;
     root.appendChild(style);
     const size = make("div"); size.className = "mxv-size";
@@ -616,6 +626,7 @@ function createPanel(node) {
         try { Object.assign(savedState, JSON.parse(stateWidget.value)); } catch {}
     }
     let optimizerSettings = savedState.optimizer || null;
+    let generationOptionsVersion = Number(savedState.generationOptionsVersion) || 0;
     let optimizerCache = savedState.optimizerCache || null;
     let optimizerBefore = savedState.optimizerBefore ?? null;
     const optimizerBeforeByMode = savedState.optimizerBeforeByMode && typeof savedState.optimizerBeforeByMode === "object"
@@ -667,6 +678,7 @@ function createPanel(node) {
             optimizerCache,
             optimizerBefore,
             optimizerBeforeByMode: { ...optimizerBeforeByMode },
+            generationOptionsVersion,
         });
     };
     const persistState = () => {
@@ -777,6 +789,7 @@ function createPanel(node) {
     };
     const restorePromptSnapshot = snapshot => {
         if (!snapshot) return;
+        useEditorPrompt();
         promptPlainText = snapshot.text;
         renderPromptHighlights();
         prompt.focus();
@@ -865,6 +878,12 @@ function createPanel(node) {
     };
     let optimizing = false;
     let aiGenerating = false;
+    let activePromptOperation = null;
+    let promptRevision = 0;
+    let panelRemoved = false;
+    let settingsEpoch = 0;
+    let closeOptimizerSettings = null;
+    let refreshDialogActions = () => {};
     let optimizerRequestId = null;
     let optimizerAbort = null;
     let optimizerTimer = null;
@@ -876,7 +895,9 @@ function createPanel(node) {
     let resolvePromptMedia = () => null;
     const promptTools = make("div"); promptTools.className = "mxv-prompt-tools";
     const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "mxv-prompt-tool mxv-prompt-reset";
-    const elapsedPrompt = make("span"); elapsedPrompt.className = "mxv-prompt-elapsed";
+    const elapsedPrompt = make("button"); elapsedPrompt.type = "button"; elapsedPrompt.className = "mxv-prompt-elapsed";
+    elapsedPrompt.title = t("Cancel processing");
+    elapsedPrompt.onclick = () => cancelPromptOperation();
     const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
     const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
@@ -1387,14 +1408,58 @@ function nodeColorToCss(value) {
     const setSharedKey = (provider, key) => {
         if (!optimizerSettings) return;
         optimizerSettings.api_keys = { ...(optimizerSettings.api_keys || {}), [provider]: key };
-        if (optimizerSettings.provider === provider) optimizerSettings.api_key = key;
+        if (optimizerSettings.provider === provider) { optimizerSettings.api_key = key; optimizerSettings.has_api_key = !!key; }
         persistState();
     };
-    const syncAiControls = () => {
-        // AI 区块已删除；隐藏 widget 恢复依赖 ComfyUI 原生序列化，无需 UI 同步。
-        // 保留空实现供恢复路径调用（onConfigure 中 syncAiControls()）。
-    };
+    const sharedGenerationOptions = { ai_no_subtitles: "no_subtitle", ai_soundscape: "soundscape", ai_music: "music" };
+    function setGenerationOption(name, value) {
+        setWidget(node, name, value);
+        if (sharedGenerationOptions[name]) setWidget(node, sharedGenerationOptions[name], value);
+    }
+    function migrateGenerationOptions() {
+        const legacyPanel = generationOptionsVersion < 1 && String(widget(node, "prompt_source")?.value || "panel") === "panel";
+        for (const [name, panelName] of Object.entries(sharedGenerationOptions)) {
+            const value = widget(node, legacyPanel ? panelName : name)?.value;
+            setGenerationOption(name, value === true || value === "true");
+        }
+        generationOptionsVersion = 1;
+    }
+    function useEditorPrompt() {
+        promptRevision++;
+        setWidget(node, "prompt_source", "panel");
+    }
+    function beginPromptOperation(kind) {
+        if (activePromptOperation || panelRemoved || upstreamConnected() || node.graph !== app.graph || (node.mode != null && node.mode !== 0)) return null;
+        const operation = {
+            kind, controller: new AbortController(),
+            id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            graph: node.graph, mode: state.mode, before: prompt.value, revision: promptRevision,
+        };
+        activePromptOperation = operation;
+        optimizing = kind === "optimize";
+        aiGenerating = !optimizing;
+        refreshDialogActions();
+        return operation;
+    }
+    function promptOperationCurrent(operation) {
+        return activePromptOperation === operation && !operation.controller.signal.aborted && !panelRemoved
+            && node.graph === operation.graph && node.graph === app.graph && !upstreamConnected()
+            && (node.mode == null || node.mode === 0) && state.mode === operation.mode
+            && promptRevision === operation.revision && prompt.value === operation.before;
+    }
+    function cancelPromptOperation() {
+        const operation = activePromptOperation;
+        if (!operation) return;
+        operation.controller.abort();
+        api.fetchApi(`${OPTIMIZER_ROUTE}/cancel`, { method: "POST", body: new Blob([JSON.stringify({ request_id: operation.id })], { type: "application/json" }) }).catch(() => {});
+    }
+    function finishPromptOperation(operation) {
+        if (activePromptOperation !== operation) return;
+        activePromptOperation = null; optimizing = false; aiGenerating = false;
+        if (!panelRemoved) { refreshDialogActions(); refreshPromptConnection(); }
+    }
     const commitPromptEditorInput = () => {
+        useEditorPrompt();
         const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         promptPlainText = editorText();
         // Keep native contenteditable editing intact for ordinary keystrokes.
@@ -1426,6 +1491,7 @@ function nodeColorToCss(value) {
         // Chromium can report an explicit paragraph insertion just before its
         // delayed compositionend event.  Do not discard that first Enter;
         // first capture the already committed DOM text, then add the newline.
+        useEditorPrompt();
         const [start, end] = selectionOffsets();
         promptPlainText = editorText();
         prompt.setRangeText("\n", start, end, "end");
@@ -2086,7 +2152,11 @@ function nodeColorToCss(value) {
         return optimizerSettings;
     }
     function openOptimizerSettings() {
+        closeOptimizerSettings?.();
+        const epoch = ++settingsEpoch;
         loadOptimizerSettings().then(current => {
+            if (panelRemoved || epoch !== settingsEpoch || node.graph !== app.graph) return;
+            migrateGenerationOptions();
             const overlay = make("div"); overlay.className = "mxv-opt-overlay";
             const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
             const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
@@ -2103,15 +2173,14 @@ function nodeColorToCss(value) {
             for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
             const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
             genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
-            const genModel = row("Generation model", make("input"), genProvider.value === "custom");
+            const genModel = row("Generation model", make("input"));
             genModel.placeholder = t("model override");
-            genModel.value = String(widget(node, "ai_model")?.value ?? "");
-            const genEndpoint = row("Generation endpoint", make("input"), genProvider.value !== "custom");
+            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
+            const genEndpoint = row("Generation endpoint", make("input"));
             genEndpoint.placeholder = t("endpoint override");
-            genEndpoint.value = String(widget(node, "ai_endpoint")?.value ?? "");
+            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
             const syncGenRows = () => {
                 const custom = genProvider.value === "custom";
-                genModel.closest("label").classList.toggle("mxv-opt-custom", custom);
                 genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
                 // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
                 genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
@@ -2122,13 +2191,11 @@ function nodeColorToCss(value) {
             let keyOwner = provider.value;
             const commitKeyToOwner = () => {
                 const current = key.value.trim();
+                providerApiKeys[keyOwner] = current;
+                setSharedKey(keyOwner, current);
                 if (keyOwner === genProvider.value) {
                     // 归属生成侧：直接写生成 widget 与钥匙串。
                     setWidget(node, "ai_api_key", current);
-                    setSharedKey(genProvider.value, current);
-                } else {
-                    providerApiKeys[keyOwner] = current;
-                    setSharedKey(keyOwner, current);
                 }
             };
             genProvider.onchange = () => {
@@ -2140,6 +2207,7 @@ function nodeColorToCss(value) {
             };
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
+            if (!Object.hasOwn(providerApiKeys, savedGenProvider)) providerApiKeys[savedGenProvider] = cleanPrompt(widget(node, "ai_api_key")?.value);
             const providerModels = { ...(current.provider_models || {}) };
             if (current.model && !providerModels[current.provider || "runninghub"]) providerModels[current.provider || "runninghub"] = current.model;
             const key = row("API key", make("input")); key.type = "password"; key.value = providerApiKeys[provider.value] || "";
@@ -2346,13 +2414,7 @@ function nodeColorToCss(value) {
                 const previousProvider = provider.dataset.previousValue || current.provider || "runninghub";
                 // Key 输入框可能归属生成侧（用户刚为生成平台填的 Key）：
                 // 先按归属回存，不能无差别写进优化平台的槽位（审查 S3 串写）。
-                if (keyOwner === genProvider.value) {
-                    setWidget(node, "ai_api_key", key.value.trim());
-                    setSharedKey(genProvider.value, key.value.trim());
-                } else {
-                    providerApiKeys[previousProvider] = key.value;
-                    setSharedKey(previousProvider, key.value.trim());
-                }
+                commitKeyToOwner();
                 if (previousProvider === "runninghub" || previousProvider === "runninghub_overseas") {
                     providerModels[previousProvider] = runninghubModel.value;
                 }
@@ -2371,13 +2433,28 @@ function nodeColorToCss(value) {
             const genPurpose = make("div"); genPurpose.className = "mxv-opt-purpose";
             genPurpose.textContent = t("Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).");
             dialog.append(genPurpose);
+            const source = row("Source", make("select"));
+            for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
+            source.value = String(widget(node, "prompt_source")?.value || "panel");
+            const legacyIdea = row("Idea / prompt to rewrite", make("textarea"));
+            legacyIdea.value = cleanPrompt(widget(node, "ai_text")?.value);
+            const syncSource = () => legacyIdea.closest("label").classList.toggle("mxv-opt-hidden", source.value === "panel");
+            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; syncSource(); persistState(); };
+            legacyIdea.onchange = () => { setWidget(node, "ai_text", legacyIdea.value); persistState(); };
+            syncSource();
+            const sourceHint = make("div", {}, t("Editing or filling the editor switches the source to panel; the previous idea is kept."));
+            sourceHint.className = "mxv-opt-purpose"; dialog.append(sourceHint);
+            const genMode = row("H3 mode", make("select"));
+            for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
+            genMode.value = String(widget(node, "ai_mode")?.value || "auto");
+            genMode.onchange = () => { setWidget(node, "ai_mode", genMode.value); persistState(); };
             // 开关直接读写隐藏 ai_* widget：与工作流序列化同源，运行期 ai/offline 兼容路径复用同一份取值。
             const genChecks = make("div"); genChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
             const genSwitchRow = (label, name) => {
                 const wrap = make("label"); wrap.className = "mxv-opt-gen-item";
                 const input = document.createElement("input"); input.type = "checkbox"; input.className = "mxv-opt-check";
                 input.checked = !!widget(node, name)?.value;
-                input.onchange = () => setWidget(node, name, input.checked);
+                input.onchange = () => { setGenerationOption(name, input.checked); persistState(); };
                 wrap.append(input, make("span", {}, t(label))); genChecks.append(wrap);
             };
             genSwitchRow("Bounded enrichment", "ai_enrich");
@@ -2385,10 +2462,13 @@ function nodeColorToCss(value) {
             genSwitchRow("Music", "ai_music");
             genSwitchRow("Auto timestamps", "ai_auto_timestamps");
             genSwitchRow("Fixed camera", "ai_fixed_camera");
+            genSwitchRow("Visual stability", "ai_visual_stability");
             genSwitchRow("No-subtitle constraint", "ai_no_subtitles");
             genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
             genSwitchRow("Strict validation", "ai_strict_validation");
             dialog.append(genChecks);
+            const soundHint = make("div", {}, t("Sound and subtitle options also apply when running editor prompts."));
+            soundHint.className = "mxv-opt-purpose"; dialog.append(soundHint);
             const genLanguage = make("select"); genLanguage.className = "mxv-control";
             for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
             genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
@@ -2406,21 +2486,31 @@ function nodeColorToCss(value) {
             const formatButton = make("button", {}, t("H3 format (offline)"));
             const runButton = make("button", {}, t("Generate and fill"));
             actions.append(cancel, save, polishButton, formatButton, runButton); dialog.append(actions);
-            const close = () => { if (aiGenerating) return; overlay.remove(); }; cancel.onclick = close; overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
+            const close = (cancelRunning = true) => {
+                if (cancelRunning) cancelPromptOperation();
+                overlay.remove();
+                document.removeEventListener("keydown", escapeDialog, true);
+                if (closeOptimizerSettings === close) { closeOptimizerSettings = null; refreshDialogActions = () => {}; }
+            };
+            const escapeDialog = event => { if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); close(); } };
+            closeOptimizerSettings = close;
+            document.addEventListener("keydown", escapeDialog, true);
+            cancel.onclick = () => close();
+            overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
+            refreshDialogActions = () => {
+                const busy = !!activePromptOperation;
+                runButton.disabled = formatButton.disabled = polishButton.disabled = save.disabled = busy;
+                for (const control of dialog.querySelectorAll("input, select, textarea")) control.disabled = busy;
+                cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
+            };
+            refreshDialogActions();
             /* 保存/润色共用：把界面当前取值写入 optimizerSettings 与生成侧 widget（所见即所请求）。 */
             const applyDialogConfig = () => {
                 const outputLanguage = language.querySelector("input:checked")?.value || "中文";
                 const preset = optimizerProviders[provider.value];
                 const selectedModel = (provider.value === "runninghub" || provider.value === "runninghub_overseas") ? runninghubModel.value : model.value;
                 // 按归属写回 Key：输入框当前值属于 keyOwner 平台（优化或生成）。
-                if (keyOwner === genProvider.value) {
-                    setWidget(node, "ai_api_key", key.value.trim());
-                    setSharedKey(genProvider.value, key.value.trim());
-                    providerApiKeys[keyOwner] = providerApiKeys[keyOwner] ?? key.value.trim();
-                } else {
-                    providerApiKeys[provider.value] = key.value;
-                    setSharedKey(provider.value, key.value.trim());
-                }
+                commitKeyToOwner();
                 providerModels[provider.value] = selectedModel;
                 normalizeMaxTokens();
                 const body = { mode: mode.value, provider: provider.value, api_url: provider.value === "custom" ? url.value : preset?.url || url.value, model: selectedModel, protocol: provider.value === "custom" ? protocol.value : preset?.protocol || protocol.value, read_media: readMedia.checked, output_language: outputLanguage, local_model: localModel.value, local_mmproj: localMmproj.value, local_device: localDevice.value, max_tokens: Number(maxTokens.value), auto_optimize: autoOptimize.checked, api_keys: { ...providerApiKeys }, provider_models: { ...providerModels } };
@@ -2429,6 +2519,7 @@ function nodeColorToCss(value) {
                 optimizerSettings = body;
                 // ===== 生成侧写回：一个弹窗配好两个用途 =====
                 setWidget(node, "ai_provider", genProvider.value);
+                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value));
                 setWidget(node, "ai_model", genModel.value.trim());
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
                 // Key 的写回已由 keyOwner 归属逻辑完成（commitKeyToOwner/provider change/save）。
@@ -2445,6 +2536,7 @@ function nodeColorToCss(value) {
             const commitGenerationConfig = () => {
                 commitKeyToOwner();
                 setWidget(node, "ai_provider", genProvider.value);
+                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value));
                 setWidget(node, "ai_model", genModel.value.trim());
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
                 setWidget(node, "ai_language", genLanguage.value);
@@ -2452,6 +2544,8 @@ function nodeColorToCss(value) {
                 persistState();
             };
             const generationMode = () => {
+                const explicit = String(widget(node, "ai_mode")?.value || "auto");
+                if (["t2va", "i2va", "fl2va", "l2va", "ref2va"].includes(explicit)) return explicit;
                 if (state.mode === "all_reference") return "ref2va";
                 const first = media.has("first_frame");
                 const last = media.has("last_frame");
@@ -2460,17 +2554,19 @@ function nodeColorToCss(value) {
             const generationBody = () => {
                 const provider = String(widget(node, "ai_provider")?.value || "deepseek");
                 const flag = name => !!widget(node, name)?.value;
+                const duration = Number(durationWidget?.value ?? 5);
+                if (!Number.isFinite(duration) || duration < 2 || duration > 15) throw new Error(t("Generation supports 2–15 seconds"));
                 return {
                     prompt: prompt.value,
                     provider,
-                    api_key: getSharedKey(provider) || String(widget(node, "ai_api_key")?.value || ""),
-                    endpoint: String(widget(node, "ai_endpoint")?.value ?? ""),
-                    model: String(widget(node, "ai_model")?.value ?? ""),
+                    api_key: getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value),
+                    endpoint: cleanPrompt(widget(node, "ai_endpoint")?.value),
+                    model: cleanPrompt(widget(node, "ai_model")?.value),
                     timeout: Number(widget(node, "ai_timeout")?.value || 180),
                     controls: {
                         mode: generationMode(),
                         lang: genLanguage.value,
-                        duration: Number(durationWidget?.value || 5),
+                        duration,
                         ratio: String(widget(node, "aspect")?.value || "16:9"),
                         model: provider,
                         enrich_do_enrich: flag("ai_enrich"),
@@ -2478,51 +2574,60 @@ function nodeColorToCss(value) {
                         enrich_music: flag("ai_music"),
                         auto_timestamps: flag("ai_auto_timestamps"),
                         fixed_camera: flag("ai_fixed_camera"),
+                        visual_stability: flag("ai_visual_stability"),
                         no_subtitles: flag("ai_no_subtitles"),
                         anti_pop: flag("ai_anti_pop"),
                     },
                 };
             };
-            const applyGenerationResult = result => {
+            const applyGenerationResult = (result, operation) => {
+                if (!promptOperationCurrent(operation)) throw new Error(t("Prompt changed; result was not applied"));
                 const value = String(result?.prompt ?? "");
                 if (!value.trim()) throw new Error(t("Generation prompt failed"));
-                const before = prompt.value;
+                if (operation.strict && result.valid !== true) throw new Error(result.report || t("Generation prompt failed"));
+                const before = operation.before;
                 // 先压栈再替换：Ctrl+Z 可回到生成前的编辑器内容。
                 pushPromptUndo(promptSnapshot());
-                applyOptimizedPrompt(value, before);
+                applyOptimizedPrompt(value, before, operation.mode);
                 playOptimizerCompleteSound();
-                // 离线整理不改变内容时（如自由文本缺 H3 字段），把校验报告带给用户，
-                // 避免"点了按钮没反应"的困惑；ai 路径 strict_validation 关闭时同理。
+                // 非严格模式仍允许填回待修文本；严格模式必须在任何覆盖前拒绝。
                 if (result.valid === false && result.report) alert(result.report);
             };
             const runGeneration = async operation => {
-                if (aiGenerating) return;
+                if (activePromptOperation) return;
                 if (!prompt.value.trim()) { alert(t("Enter a prompt first")); return; }
-                aiGenerating = true;
+                const pending = beginPromptOperation(operation);
+                if (!pending) return;
+                pending.strict = widget(node, "ai_strict_validation")?.value !== false;
+                let timeout;
+                let timedOut = false;
                 const originalRun = runButton.textContent;
                 const originalFormat = formatButton.textContent;
-                runButton.disabled = formatButton.disabled = cancel.disabled = save.disabled = true;
                 runButton.textContent = operation === "ai" ? t("Generating") : originalRun;
                 formatButton.textContent = operation === "format" ? t("Formatting") : originalFormat;
                 try {
                     commitGenerationConfig();
+                    const body = { ...generationBody(), request_id: pending.id };
+                    timeout = setTimeout(() => { timedOut = true; cancelPromptOperation(); }, ((operation === "ai" ? body.timeout : 15) + 5) * 1000);
                     const route = operation === "ai" ? "generate" : "format";
                     const response = await api.fetchApi(`${OPTIMIZER_ROUTE}/${route}`, {
                         method: "POST",
-                        body: new Blob([JSON.stringify(generationBody())], { type: "application/json" }),
+                        signal: pending.controller.signal,
+                        body: new Blob([JSON.stringify(body)], { type: "application/json" }),
                     });
                     const text = await response.text();
                     let data;
                     try { data = text ? JSON.parse(text) : {}; }
                     catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Generation prompt failed")); }
                     if (!response.ok) throw new Error(data.error || t("Generation prompt failed"));
-                    applyGenerationResult(data);
-                    overlay.remove();
+                    if (pending.controller.signal.aborted) return;
+                    applyGenerationResult(data, pending);
+                    close(false);
                 } catch (error) {
-                    alert(error.message);
+                    if (!panelRemoved && (timedOut || !pending.controller.signal.aborted)) alert(timedOut ? t("Generation timed out") : error.message);
                 } finally {
-                    aiGenerating = false;
-                    runButton.disabled = formatButton.disabled = cancel.disabled = save.disabled = false;
+                    clearTimeout(timeout);
+                    finishPromptOperation(pending);
                     runButton.textContent = originalRun;
                     formatButton.textContent = originalFormat;
                 }
@@ -2530,7 +2635,7 @@ function nodeColorToCss(value) {
             runButton.onclick = () => runGeneration("ai");
             formatButton.onclick = () => runGeneration("format");
             document.body.append(overlay);
-        }).catch(error => alert(error.message));
+        }).catch(error => { if (!panelRemoved && epoch === settingsEpoch) alert(error.message); });
     }
     function showOptimizerConfigPrompt() {
         const overlay = make("div"); overlay.className = "mxv-opt-overlay";
@@ -2641,6 +2746,7 @@ function nodeColorToCss(value) {
         };
     }
     function applyOptimizedPrompt(value, before, targetMode = state.mode) {
+        useEditorPrompt();
         promptByMode[targetMode] = value;
         optimizerBeforeByMode[targetMode] = before;
         if (state.mode === targetMode) {
@@ -2663,6 +2769,7 @@ function nodeColorToCss(value) {
     aiGeneratePrompt.onclick = openOptimizerSettings;
     resetPrompt.onclick = () => {
         if (optimizerBefore == null || upstreamConnected()) return;
+        useEditorPrompt();
         if (optimizerCache?.originalPrompt === optimizerBefore) optimizerCache.result = prompt.value;
         prompt.value = optimizerBefore; renderPromptHighlights(); promptByMode[state.mode] = prompt.value; setPromptWidget(node, prompt.value);
         optimizerBeforeByMode[state.mode] = null;
@@ -2670,11 +2777,7 @@ function nodeColorToCss(value) {
     };
     async function cancelOptimization() {
         if (!optimizing) return;
-        const requestId = optimizerRequestId;
-        optimizerAbort?.abort();
-        if (requestId) {
-            api.fetchApi(`${OPTIMIZER_ROUTE}/cancel`, { method: "POST", body: new Blob([JSON.stringify({ request_id: requestId })], { type: "application/json" }) }).catch(() => {});
-        }
+        cancelPromptOperation();
     }
     function resemblesOfficialPrompt(value, task = resolvedTaskType()) {
         const text = String(value || "").toLowerCase();
@@ -2709,7 +2812,7 @@ function nodeColorToCss(value) {
         }
     }
     async function runPromptOptimization({ automatic = false } = {}) {
-        if (optimizing || upstreamConnected() || node.graph !== app.graph || (node.mode != null && node.mode !== 0)) return false;
+        if (activePromptOperation || panelRemoved || upstreamConnected() || node.graph !== app.graph || (node.mode != null && node.mode !== 0)) return false;
         const optimizationMode = state.mode;
         const before = prompt.value;
         const task = resolvedTaskType();
@@ -2718,8 +2821,13 @@ function nodeColorToCss(value) {
         if (automatic && resemblesOfficialPrompt(before, task)) return false;
         const specs = optimizerMediaSpecs();
         const taskContext = optimizerTaskContext(specs, optimizationMode, audioMode);
+        const pending = beginPromptOperation("optimize");
+        if (!pending) return false;
+        optimizerRequestId = pending.id; optimizerAbort = pending.controller;
+        const timeout = setTimeout(() => cancelPromptOperation(), 200000);
         try {
             await loadOptimizerSettings();
+            if (!promptOperationCurrent(pending)) return false;
             if (automatic && !optimizerSettings?.auto_optimize) return false;
             const local = optimizerSettings?.mode === "local";
             if (local && workflowRunning) return false;
@@ -2728,18 +2836,13 @@ function nodeColorToCss(value) {
                 return false;
             }
             const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext);
-            if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
-            optimizing = true; optimizerRequestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`; optimizerAbort = new AbortController();
+            if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { pushPromptUndo(promptSnapshot()); applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             elapsedPrompt.classList.add("visible");
             const started = performance.now();
-            const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Optimizing")}：${Math.floor((performance.now() - started) / 1000)} s`; };
+            const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Optimizing")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
             refreshElapsed(); optimizerTimer = setInterval(refreshElapsed, 1000);
             const mediaPayload = await optimizerMediaPayload(specs);
-            const timeout = setTimeout(() => {
-                const requestId = optimizerRequestId;
-                optimizerAbort?.abort();
-                if (requestId) api.fetchApi(`${OPTIMIZER_ROUTE}/cancel`, { method: "POST", body: new Blob([JSON.stringify({ request_id: requestId })], { type: "application/json" }) }).catch(() => {});
-            }, 200000);
+            if (!promptOperationCurrent(pending)) return false;
             let response;
             let data;
             try {
@@ -2756,15 +2859,19 @@ function nodeColorToCss(value) {
                 catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : "提示词优化接口返回了无效数据"); }
                 if (!response.ok) throw new Error(data.error || "Prompt optimization failed");
             } finally { clearTimeout(timeout); }
+            if (!promptOperationCurrent(pending)) return false;
+            pushPromptUndo(promptSnapshot());
             optimizerCache = { contextSignature, originalPrompt: before, result: data.prompt }; applyOptimizedPrompt(data.prompt, before, optimizationMode); playOptimizerCompleteSound();
             return true;
         } catch (error) {
-            if (!automatic && error.name !== "AbortError") alert(error.message);
+            if (!automatic && !panelRemoved && !pending.controller.signal.aborted && error.name !== "AbortError") alert(error.message);
             return false;
         }
         finally {
-            clearInterval(optimizerTimer); optimizerTimer = null; optimizerAbort = null; optimizerRequestId = null; optimizing = false;
-            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = ""; refreshPromptConnection();
+            clearTimeout(timeout);
+            clearInterval(optimizerTimer); optimizerTimer = null; optimizerAbort = null; optimizerRequestId = null;
+            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = "";
+            finishPromptOperation(pending);
         }
     }
     const autoOptimizeBeforeQueue = () => runPromptOptimization({ automatic: true });
@@ -3564,6 +3671,8 @@ function nodeColorToCss(value) {
     window.addEventListener("dragover", captureMaterialDrop, true);
     window.addEventListener("drop", captureMaterialDrop, true);
     function switchMode(nextMode, fromAiMode = false) {
+        promptRevision++;
+        cancelPromptOperation();
         if (!fromAiMode) { setWidget(node, "ai_mode", "auto"); }
         promptByMode[state.mode] = prompt.value;
         state.mode = nextMode;
@@ -3605,6 +3714,7 @@ function nodeColorToCss(value) {
     for (const hook of ["onAdded", "onConfigure", "onGraphConfigured"]) {
         const old = node[hook];
         node[hook] = function(...args) {
+            if (hook === "onConfigure") { promptRevision++; settingsEpoch++; cancelPromptOperation(); closeOptimizerSettings?.(); }
             const configuredState = hook === "onConfigure" ? args[0]?.properties?.[stateKey] : null;
             const result = old?.apply(this, args);
             sanitizeHiddenInputs(this);
@@ -3621,6 +3731,8 @@ function nodeColorToCss(value) {
                 requestAnimationFrame(() => {
                 let restored = {};
                 try { restored = JSON.parse(configuredState || widget(node, "gh_state_json")?.value || node.properties?.[stateKey] || "{}"); } catch {}
+                generationOptionsVersion = Number(restored.generationOptionsVersion) || 0;
+                migrateGenerationOptions();
                 const restoredMode = restored.mode || widget(node, "main_mode")?.value || "text_keyframes";
                 state.mode = restoredMode;
                 const restoredLegacyPrompt = cleanPrompt(restored.prompt) || cleanPrompt(widget(node, "prompt")?.value);
@@ -3738,6 +3850,8 @@ function nodeColorToCss(value) {
     };
     const oldRemoved = node.onRemoved;
     node.onRemoved = function(...args) {
+        panelRemoved = true; settingsEpoch++;
+        cancelPromptOperation(); closeOptimizerSettings?.();
         autoOptimizerHandlers.delete(autoOptimizeBeforeQueue);
         workflowStateHandlers.delete(updateWorkflowState);
         clearInterval(optimizerTimer);
@@ -3764,6 +3878,8 @@ function nodeColorToCss(value) {
     };
     const initialRestoreEpoch = restoreEpoch;
     requestAnimationFrame(() => {
+        if (panelRemoved) return;
+        if (initialRestoreEpoch === restoreEpoch) migrateGenerationOptions();
         const savedHasContent = Boolean(
             savedState.prompt
             || savedState.prompts?.text_keyframes

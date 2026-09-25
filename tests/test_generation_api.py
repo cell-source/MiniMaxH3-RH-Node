@@ -6,33 +6,47 @@ prompt_optimizer 依赖 ComfyUI 运行时（folder_paths/server），测试环�
 import asyncio
 import importlib
 import json
+import os
 import sys
+import threading
 import types
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
+_saved_modules = {}
 
-# ComfyUI 运行时桩：仅保证 prompt_optimizer 可导入，不参与被测逻辑。
-for name in ("folder_paths", "server"):
-    if name not in sys.modules:
-        sys.modules[name] = types.ModuleType(name)
-sys.modules["server"].PromptServer = types.SimpleNamespace(instance=None)
 
-# prompt_optimizer 使用包内相对导入（.llm_client/.prompt_runtime）：
-# 目录名含连字符无法常规导入，这里构造一个合成包别名再加载。
-_package = types.ModuleType("h3pkg")
-_package.__path__ = [str(ROOT)]
-sys.modules["h3pkg"] = _package
-prompt_optimizer = importlib.import_module("h3pkg.prompt_optimizer")
+def setUpModule():
+    global prompt_optimizer, _generation_payload_controls, _run_generation_operation
+    global format_prompt_api, generate_prompt_api
+    names = ("folder_paths", "server", "h3pkg", "h3pkg.prompt_optimizer", "h3pkg.llm_client", "h3pkg.prompt_runtime")
+    for name in names:
+        _saved_modules[name] = sys.modules.get(name)
+        sys.modules.pop(name, None)
+    sys.modules["folder_paths"] = types.ModuleType("folder_paths")
+    server = types.ModuleType("server")
+    server.PromptServer = types.SimpleNamespace(instance=None)
+    sys.modules["server"] = server
+    package = types.ModuleType("h3pkg")
+    package.__path__ = [str(ROOT)]
+    sys.modules["h3pkg"] = package
+    prompt_optimizer = importlib.import_module("h3pkg.prompt_optimizer")
+    importlib.import_module("h3pkg.llm_client")
+    importlib.import_module("h3pkg.prompt_runtime")
+    _generation_payload_controls = prompt_optimizer._generation_payload_controls
+    _run_generation_operation = prompt_optimizer._run_generation_operation
+    format_prompt_api = prompt_optimizer.format_prompt_api
+    generate_prompt_api = prompt_optimizer.generate_prompt_api
 
-_generation_payload_controls = prompt_optimizer._generation_payload_controls
-_run_generation_operation = prompt_optimizer._run_generation_operation
-format_prompt_api = prompt_optimizer.format_prompt_api
-generate_prompt_api = prompt_optimizer.generate_prompt_api
-from prompt_runtime import generate_prompt  # noqa: E402,F401  (冒烟：直接导入路径可用)
+
+def tearDownModule():
+    for name, original in _saved_modules.items():
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 class _FakeRequest:
@@ -54,6 +68,18 @@ def base(scene):
 
 
 class PayloadControlsTests(unittest.TestCase):
+    def test_booleans_and_numeric_boundaries(self):
+        self.assertFalse(_generation_payload_controls({"controls": {"fixed_camera": "false"}})["fixed_camera"])
+        self.assertTrue(_generation_payload_controls({"controls": {"fixed_camera": "true"}})["fixed_camera"])
+        for value in ("(none)", "nan", "inf", True, 0, 16, {}, []):
+            with self.subTest(value=value), self.assertRaises(prompt_optimizer.GenerationInputError):
+                _generation_payload_controls({"controls": {"duration": value}})
+        for value in ("no", 1, [], {}):
+            with self.subTest(value=value), self.assertRaises(prompt_optimizer.GenerationInputError):
+                _generation_payload_controls({"controls": {"fixed_camera": value}})
+        for value in (2, 15):
+            self.assertEqual(_generation_payload_controls({"controls": {"duration": value}})["duration"], str(value))
+
     def test_defaults_and_whitelists(self):
         result = _generation_payload_controls({})
         self.assertEqual(result["mode"], "t2va")
@@ -65,7 +91,7 @@ class PayloadControlsTests(unittest.TestCase):
 
     def test_invalid_values_fall_back(self):
         result = _generation_payload_controls({
-            "controls": {"mode": "hack", "lang": "fr", "duration": "999", "ratio": "ultrawide"},
+            "controls": {"mode": "hack", "lang": "fr", "duration": "15", "ratio": "ultrawide"},
         })
         self.assertEqual(result["mode"], "t2va")
         self.assertEqual(result["lang"], "zh")
@@ -108,6 +134,35 @@ class FormatEndpointTests(unittest.TestCase):
 
 
 class GenerateEndpointTests(unittest.TestCase):
+    def test_errors_never_echo_credentials(self):
+        sentinel = "private-key-sentinel"
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "prefix\n" + sentinel}), patch("h3pkg.llm_client.requests.post") as post:
+            response = _post(generate_prompt_api, {"prompt": "雨夜"})
+            self.assertEqual(response.status, 400)
+            self.assertNotIn(sentinel, response.text)
+            post.assert_not_called()
+        for error in (RuntimeError(sentinel), ValueError(sentinel)):
+            with patch("h3pkg.prompt_runtime.generate_prompt", side_effect=error):
+                response = _post(format_prompt_api, {"prompt": "雨夜"})
+                self.assertEqual(response.status, 400)
+                self.assertNotIn(sentinel, response.text)
+        upstream = types.SimpleNamespace(status_code=401, text=sentinel)
+        class Response:
+            def __enter__(self): return upstream
+            def __exit__(self, *args): pass
+        with patch("h3pkg.llm_client.requests.post", return_value=Response()):
+            response = _post(generate_prompt_api, {"prompt": "雨夜", "api_key": sentinel})
+            self.assertEqual(response.status, 400)
+            self.assertIn("401", response.text)
+            self.assertNotIn(sentinel, response.text)
+
+    def test_invalid_timeout_and_input_are_rejected(self):
+        for payload in ({"prompt": "x", "timeout": 601}, {"prompt": "x", "timeout": "(none)"},
+                        {"prompt": "x", "controls": {"duration": 30}}, {"prompt": ["x"]},
+                        {"prompt": "x" * 50001}, {"prompt": "x", "controls": []}):
+            with self.subTest(payload=str(payload)[:100]):
+                self.assertEqual(_post(generate_prompt_api, payload).status, 400)
+
     def test_generate_uses_client_and_returns_prompt(self):
         calls = {}
 
@@ -140,12 +195,28 @@ class GenerateEndpointTests(unittest.TestCase):
 
 
 class RunGenerationOperationTests(unittest.TestCase):
+    def test_all_boolean_options_reach_engine(self):
+        for enabled in (False, True):
+            controls = {name: enabled for name in prompt_optimizer._H3_GENERATION_CONTROLS}
+            with patch("h3pkg.prompt_runtime.generate_prompt", return_value={"prompt": "x"}) as generate:
+                _run_generation_operation({"prompt": "x", "controls": controls}, "format")
+            for name in controls:
+                self.assertIs(generate.call_args.args[2][name], enabled)
+
+    def test_real_engine_sound_options(self):
+        for enabled in (False, True):
+            result = _run_generation_operation({"prompt": base("女子站着。"), "controls": {
+                "enrich_soundscape": enabled, "enrich_music": enabled, "lang": "zh",
+            }}, "format")
+            self.assertEqual("贴合画面环境的环境声自然延续" in result["prompt"], enabled)
+            self.assertEqual("慢速而克制的钢琴独奏" in result["prompt"], enabled)
+
     def test_format_operation_passes_none_client(self):
         with patch("h3pkg.prompt_runtime.generate_prompt", return_value={"prompt": "x", "valid": True, "report": ""}) as gen:
             _run_generation_operation({"prompt": "t", "controls": {}}, "format")
             self.assertIsNone(gen.call_args[0][3])
 
-    def test_ai_operation_builds_client_with_timeout_clamp(self):
+    def test_ai_operation_builds_client_with_timeout(self):
         captured = {}
 
         def fake_make_client(provider, api_key="", endpoint="", model="", timeout=180, check_interrupt=None):
@@ -159,7 +230,7 @@ class RunGenerationOperationTests(unittest.TestCase):
 
         with patch("h3pkg.llm_client.make_client", side_effect=fake_make_client):
             result = _run_generation_operation(
-                {"prompt": "雨夜", "provider": "deepseek", "api_key": "sk", "timeout": 99999,
+                {"prompt": "雨夜", "provider": "deepseek", "api_key": "sk", "timeout": 600,
                  "controls": {"mode": "t2va"}},
                 "ai",
             )
@@ -170,6 +241,72 @@ class RunGenerationOperationTests(unittest.TestCase):
     def test_unknown_operation_rejected(self):
         with self.assertRaises(ValueError):
             _run_generation_operation({"prompt": "t"}, "template")
+
+
+class GenerationHttpTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+        routes = web.RouteTableDef()
+        with patch.object(prompt_optimizer, "PromptServer", types.SimpleNamespace(instance=types.SimpleNamespace(routes=routes))), patch.object(prompt_optimizer, "_ROUTES_REGISTERED", False):
+            self.assertTrue(prompt_optimizer.register_prompt_optimizer_routes())
+        app = web.Application()
+        app.add_routes(routes)
+        self.client = TestClient(TestServer(app))
+        await self.client.start_server()
+
+    async def asyncTearDown(self):
+        await self.client.close()
+        workers = list(prompt_optimizer._GENERATION_REQUESTS.values())
+        for _, event in workers:
+            event.set()
+        if workers:
+            await asyncio.wait_for(asyncio.gather(*(task for task, _ in workers), return_exceptions=True), 2)
+
+    async def test_registered_format_and_bad_json(self):
+        response = await self.client.post("/rh/minimax-h3/prompt-optimizer/format", json={"prompt": base("女子站着。")})
+        self.assertEqual(response.status, 200)
+        self.assertTrue((await response.json())["valid"])
+        response = await self.client.post("/rh/minimax-h3/prompt-optimizer/generate", data="broken-json")
+        self.assertEqual(response.status, 400)
+
+    async def test_cancel_reaches_thread_and_capacity_is_bounded(self):
+        started, stopped = threading.Event(), threading.Event()
+        def slow(payload, operation, check_interrupt):
+            started.set()
+            try:
+                while not stopped.wait(0.005):
+                    check_interrupt()
+            finally:
+                stopped.set()
+        with patch.object(prompt_optimizer, "_run_generation_operation", side_effect=slow), patch.object(prompt_optimizer, "_MAX_GENERATION_REQUESTS", 1):
+            pending = asyncio.create_task(self.client.post("/rh/minimax-h3/prompt-optimizer/generate", json={"request_id": "cancel-test", "prompt": "x"}))
+            self.assertTrue(await asyncio.to_thread(started.wait, 2))
+            busy = await self.client.post("/rh/minimax-h3/prompt-optimizer/generate", json={"prompt": "x"})
+            self.assertEqual(busy.status, 429)
+            cancel = await self.client.post("/rh/minimax-h3/prompt-optimizer/cancel", json={"request_id": "cancel-test"})
+            self.assertTrue((await cancel.json())["cancelled"])
+            self.assertEqual((await pending).status, 409)
+            self.assertTrue(await asyncio.to_thread(stopped.wait, 2))
+        await asyncio.sleep(0)
+        self.assertNotIn("cancel-test", prompt_optimizer._GENERATION_REQUESTS)
+
+    async def test_disconnect_cancels_thread(self):
+        started, stopped = threading.Event(), threading.Event()
+        def slow(payload, operation, check_interrupt):
+            started.set()
+            try:
+                while not stopped.wait(0.005):
+                    check_interrupt()
+            finally:
+                stopped.set()
+        with patch.object(prompt_optimizer, "_run_generation_operation", side_effect=slow):
+            pending = asyncio.create_task(self.client.post("/rh/minimax-h3/prompt-optimizer/generate", json={"request_id": "disconnect-test", "prompt": "x"}))
+            self.assertTrue(await asyncio.to_thread(started.wait, 2))
+            pending.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await pending
+            self.assertTrue(await asyncio.to_thread(stopped.wait, 2))
 
 
 if __name__ == "__main__":

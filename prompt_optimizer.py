@@ -5,6 +5,7 @@ import base64
 from difflib import SequenceMatcher
 import gc
 import json
+import math
 import os
 import platform
 from pathlib import Path
@@ -13,6 +14,8 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1651,17 +1654,53 @@ _H3_GENERATION_CONTROLS = (
 _H3_GENERATION_MODES = {"t2va", "i2va", "fl2va", "l2va", "ref2va"}
 _H3_GENERATION_LANGS = {"zh", "mixed", "en"}
 _H3_GENERATION_RATIOS = {"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+_GENERATION_REQUESTS: dict[str, tuple[asyncio.Task, threading.Event]] = {}
+_MAX_GENERATION_REQUESTS = 4
+
+
+class GenerationInputError(ValueError):
+    pass
+
+
+class GenerationCancelled(RuntimeError):
+    pass
+
+
+def _generation_bool(value, name, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.lower() in {"true", "false"}:
+        return value.lower() == "true"
+    raise GenerationInputError(f"{name} 必须是布尔值")
+
+
+def _generation_number(value, name, default, minimum, maximum):
+    if value is None:
+        return default
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        number = float(value)
+        if not math.isfinite(number) or not minimum <= number <= maximum:
+            raise ValueError
+        return number
+    except (TypeError, ValueError, OverflowError):
+        raise GenerationInputError(f"{name} 必须是 {minimum}–{maximum} 范围内的数值") from None
 
 
 def _generation_payload_controls(payload: dict) -> dict:
-    """把弹窗请求体归一成引擎 controls；非法取值一律回退引擎默认。"""
+    """枚举使用兼容默认值；布尔值/数值拒绝脏数据，不静默改变时长。"""
+    if "controls" in payload and not isinstance(payload["controls"], dict):
+        raise GenerationInputError("controls 必须是 JSON 对象")
     controls = payload.get("controls") if isinstance(payload.get("controls"), dict) else {}
-    result = {name: bool(controls.get(name)) for name in _H3_GENERATION_CONTROLS}
+    result = {name: _generation_bool(controls.get(name), name) for name in _H3_GENERATION_CONTROLS}
     mode = str(controls.get("mode") or "t2va").lower()
     result["mode"] = mode if mode in _H3_GENERATION_MODES else "t2va"
     lang = str(controls.get("lang") or "zh").lower()
     result["lang"] = lang if lang in _H3_GENERATION_LANGS else "zh"
-    result["duration"] = str(max(2, min(15, int(controls.get("duration") or 5))))
+    result["duration"] = f'{_generation_number(controls.get("duration"), "duration", 5, 2, 15):g}'
     ratio = str(controls.get("ratio") or "16:9")
     result["ratio"] = ratio if ratio in _H3_GENERATION_RATIOS else "16:9"
     model = str(controls.get("model") or "").strip()
@@ -1670,52 +1709,103 @@ def _generation_payload_controls(payload: dict) -> dict:
     return result
 
 
-def _run_generation_operation(payload: dict, operation: str) -> dict:
+def _run_generation_operation(payload: dict, operation: str, check_interrupt=lambda: None) -> dict:
     from .llm_client import make_client
     from .prompt_runtime import generate_prompt
 
-    text = str(payload.get("prompt") or "")
+    text = payload.get("prompt", "")
+    if not isinstance(text, str) or not text.strip():
+        raise GenerationInputError("请先输入提示词（prompt 必须是非空文本）")
+    if len(text) > 50000:
+        raise GenerationInputError("提示词输入不能超过 50000 字符")
     controls = _generation_payload_controls(payload)
     client = None
     if operation == "ai":
-        timeout = int(payload.get("timeout") or 180)
-        timeout = max(15, min(600, timeout))
+        timeout = _generation_number(payload.get("timeout"), "timeout", 180, 15, 600)
         client = make_client(
             str(payload.get("provider") or "deepseek"),
             str(payload.get("api_key") or ""),
             str(payload.get("endpoint") or ""),
             str(payload.get("model") or ""),
             timeout,
+            check_interrupt,
         )
-    return generate_prompt(text, operation, controls, client)
+    check_interrupt()
+    result = generate_prompt(text, operation, controls, client, check_interrupt)
+    check_interrupt()
+    return result
 
 
 async def generate_prompt_api(request):
-    """面板「✨ AI 生成」：编辑器内容 → H3 提示词引擎（ai 路径，在线 LLM）。
-
-    quickjs 引擎与 LLM 流式请求都是阻塞调用：to_thread 执行，避免冻结
-    事件循环（与 M11 优化同一原则）；路由内没有活动节点，不消费中断标志。
-    """
-    try:
-        payload = await request.json()
-        if not isinstance(payload, dict):
-            raise ValueError("AI 生成请求体必须是 JSON 对象")
-        result = await asyncio.to_thread(_run_generation_operation, payload, "ai")
-        return web.json_response(result)
-    except Exception as error:
-        return web.json_response({"error": str(error)}, status=400)
+    return await _generation_api(request, "ai")
 
 
 async def format_prompt_api(request):
-    """面板「H3 格式整理（离线）」：编辑器内容 → 规范化（normalizePrompt）。"""
+    return await _generation_api(request, "format")
+
+
+async def _generation_api(request, operation):
+    from .llm_client import LLMConfigurationError, LLMServiceError
+
+    cancel_event = None
     try:
-        payload = await request.json()
+        try:
+            payload = await request.json()
+        except (ValueError, TypeError):
+            raise GenerationInputError("请求体必须是有效 JSON") from None
         if not isinstance(payload, dict):
-            raise ValueError("H3 格式整理请求体必须是 JSON 对象")
-        result = await asyncio.to_thread(_run_generation_operation, payload, "format")
-        return web.json_response(result)
-    except Exception as error:
+            raise GenerationInputError("请求体必须是 JSON 对象")
+        budget = _generation_number(payload.get("timeout"), "timeout", 180, 15, 600) if operation == "ai" else 15
+        request_id = payload.get("request_id") or str(uuid.uuid4())
+        if not isinstance(request_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,128}", request_id):
+            raise GenerationInputError("request_id 格式无效")
+        if request_id in _GENERATION_REQUESTS or request_id in _ACTIVE_REQUESTS:
+            return web.json_response({"error": "请求仍在执行，请等待或取消后重试"}, status=409)
+        if len(_GENERATION_REQUESTS) >= _MAX_GENERATION_REQUESTS:
+            return web.json_response({"error": "生成任务繁忙，请稍后重试"}, status=429)
+        cancel_event = threading.Event()
+        deadline = time.monotonic() + budget
+
+        def check_interrupt():
+            if cancel_event.is_set():
+                raise GenerationCancelled("生成已取消")
+            if time.monotonic() >= deadline:
+                raise TimeoutError("生成超时")
+
+        # Keep the slot until the thread actually exits, including after disconnect.
+        # Cancelling an asyncio.to_thread task alone does not stop its thread.
+        worker = asyncio.create_task(asyncio.to_thread(_run_generation_operation, payload, operation, check_interrupt))
+        _GENERATION_REQUESTS[request_id] = (worker, cancel_event)
+
+        def finished(task):
+            if _GENERATION_REQUESTS.get(request_id, (None,))[0] is task:
+                _GENERATION_REQUESTS.pop(request_id, None)
+            if not task.cancelled():
+                task.exception()  # consume errors after a disconnected handler exits
+
+        worker.add_done_callback(finished)
+        while True:
+            check_interrupt()
+            transport = getattr(request, "transport", None)
+            if hasattr(request, "transport") and (transport is None or transport.is_closing()):
+                raise GenerationCancelled("生成已取消")
+            done, _ = await asyncio.wait({worker}, timeout=0.1)
+            if done:
+                result = worker.result()
+                check_interrupt()
+                return web.json_response(result)
+    except GenerationCancelled:
+        return web.json_response({"error": "生成已取消"}, status=409)
+    except TimeoutError:
+        return web.json_response({"error": "生成超时，请缩短输入或调整超时设置"}, status=504)
+    except (GenerationInputError, LLMConfigurationError, LLMServiceError) as error:
         return web.json_response({"error": str(error)}, status=400)
+    except Exception:
+        # Unknown exceptions may contain an environment key, headers or upstream body.
+        return web.json_response({"error": "提示词处理失败，请检查输入、模型配置及服务状态"}, status=400)
+    finally:
+        if cancel_event is not None:
+            cancel_event.set()
 
 
 def _local_missing_dependencies() -> list[str]:
@@ -1866,6 +1956,9 @@ async def prompt_optimization_status(request):
 async def cancel_prompt_optimization(request):
     payload = await request.json()
     request_id = str(payload.get("request_id") or "")
+    generation = _GENERATION_REQUESTS.get(request_id)
+    if generation is not None:
+        generation[1].set()
     task = _ACTIVE_REQUESTS.pop(request_id, None)
     async_job = _ASYNC_OPTIMIZER_JOBS.pop(request_id, None)
     cancel_event = _ACTIVE_CANCEL_EVENTS.pop(request_id, None)
@@ -1881,7 +1974,7 @@ async def cancel_prompt_optimization(request):
             await _runninghub_cancel(*runninghub_task)
         except Exception:
             pass
-    return web.json_response({"cancelled": task is not None or async_job is not None or cancel_event is not None or runninghub_task is not None})
+    return web.json_response({"cancelled": generation is not None or task is not None or async_job is not None or cancel_event is not None or runninghub_task is not None})
 
 
 def register_prompt_optimizer_routes() -> bool:

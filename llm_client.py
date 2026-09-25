@@ -21,26 +21,34 @@ PROVIDERS = {
 }
 
 
+class LLMConfigurationError(ValueError):
+    """Safe, locally authored configuration message (never includes credentials)."""
+
+
+class LLMServiceError(RuntimeError):
+    """Safe transport error without upstream bodies or request headers."""
+
+
 def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_interrupt=lambda: None):
     preset = PROVIDERS.get(str(provider or "").strip().lower())
     if preset is None:
         known = ", ".join(sorted(PROVIDERS))
-        raise ValueError(f"未知的 AI 提供方 {provider!r}；可选：{known}，或选择 custom 并自行填写端点与模型")
+        raise LLMConfigurationError(f"未知的 AI 提供方；可选：{known}，或选择 custom 并自行填写端点与模型")
     default_url, default_model, env_name, extra = preset
     key = api_key.strip() or os.environ.get(env_name, "").strip() or os.environ.get("H3_LLM_API_KEY", "").strip()
     url = endpoint.strip() or default_url
     model = model.strip() or default_model
     if not key:
-        raise ValueError(f"请设置服务端 {env_name}，或填写 api_key")
-    if not key.isascii():
+        raise LLMConfigurationError(f"请设置服务端 {env_name}，或填写 api_key")
+    if not key.isascii() or any(ord(char) < 33 or ord(char) == 127 for char in key):
         # HTTP 头只允许 latin-1；环境变量被填成中文占位文字时给出可读的错误，
         # 而不是请求阶段的 'latin-1 codec can't encode' 崩溃。
-        raise ValueError(
-            f"环境变量 {env_name} 的值不是有效的 API Key（包含非 ASCII 字符），"
+        raise LLMConfigurationError(
+            f"API Key 无效（包含空白、控制字符或非 ASCII 字符；环境变量名：{env_name}），"
             "请替换为服务方签发的真实密钥，或从环境变量中移除后改填 api_key"
         )
     if urlsplit(url).scheme not in {"https", "http"} or not urlsplit(url).netloc or not model:
-        raise ValueError("请填写完整的 chat/completions URL 和模型名称")
+        raise LLMConfigurationError("请填写完整的 chat/completions URL 和模型名称")
     deadline = time.monotonic() + timeout
 
     def complete_once(system, user, remaining):
@@ -52,12 +60,7 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
                                stream=True, timeout=(min(60, remaining), min(60, remaining)),
                                allow_redirects=False) as response:
                 if response.status_code != 200:
-                    error_body = ""
-                    try:
-                        error_body = response.text[:300]
-                    except Exception:
-                        pass
-                    raise RuntimeError(f"AI 服务返回 HTTP {response.status_code}；请检查模型、额度及 Key。服务响应: {error_body}")
+                    raise LLMServiceError(f"AI 服务返回 HTTP {response.status_code}；请检查模型、额度及 Key。")
                 response.encoding = "utf-8"
                 chunks = []
                 finished = False
@@ -81,22 +84,22 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
                     if not isinstance(item, dict):
                         continue
                     if "error" in item:
-                        raise RuntimeError("AI 服务流式响应包含错误")
+                        raise LLMServiceError("AI 服务流式响应包含错误")
                     for choice in item.get("choices", []):
                         if choice.get("index", 0) != 0:
                             continue
                         reason = choice.get("finish_reason")
                         if reason in {"length", "content_filter"}:
-                            raise RuntimeError("AI 输出被截断或过滤，请缩短输入后重试")
+                            raise LLMServiceError("AI 输出被截断或过滤，请缩短输入后重试")
                         if reason == "stop":
                             finished = True
                         content = choice.get("delta", {}).get("content")
                         if isinstance(content, str):
                             chunks.append(content)
                 if not finished:
-                    raise RuntimeError("AI 连接提前结束，未返回完整结果")
+                    raise LLMServiceError("AI 连接提前结束，未返回完整结果")
                 if not chunks:
-                    raise RuntimeError("AI 返回内容为空")
+                    raise LLMServiceError("AI 返回内容为空")
                 return "".join(chunks)
 
     def complete(system, user):
@@ -108,11 +111,16 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
         # 一次抖动不应废弃前面已花费的调用。
         last_error = None
         for attempt in range(3):
+            check_interrupt()
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("AI 生成及纠正已超过总超时时间")
             try:
                 return complete_once(system, user, remaining)
+            except requests.RequestException:
+                # requests exceptions may include headers/URLs; never expose them.
+                check_interrupt()
+                raise LLMServiceError("AI 服务连接失败或超时，请检查网络及端点") from None
             except RuntimeError as error:
                 message = str(error)
                 last_error = error
@@ -121,7 +129,10 @@ def make_client(provider, api_key="", endpoint="", model="", timeout=180, check_
                              or "连接失败或超时" in message)
                 if not retryable or attempt == 2:
                     raise
-                time.sleep(min(8, 2 ** (attempt + 1)))
+                retry_at = min(deadline, time.monotonic() + min(8, 2 ** (attempt + 1)))
+                while time.monotonic() < retry_at:
+                    check_interrupt()
+                    time.sleep(min(0.1, max(0, retry_at - time.monotonic())))
         raise last_error or RuntimeError("AI 请求失败")
 
     return complete
