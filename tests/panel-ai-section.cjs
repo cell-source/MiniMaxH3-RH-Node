@@ -136,4 +136,45 @@ check(vm.runInContext('resolvedTaskType()', modeContext) === 'Ref2VA', 'empty re
 for (const kind of ['image', 'video', 'audio']) {
     check(vm.runInContext(`nextSlot("${kind}")`, modeContext) === `ref_${kind}_1`, 'reference slot: ' + kind);
 }
+
+/* 8. 批次 B：AI 生成弹窗（收编原 AI 区块）——按钮、开关、请求路径与填回语义 */
+check(js.includes('const aiGeneratePrompt = make("button", {}, "✨")'), 'AI generate button created');
+check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizePrompt, optimizerGear)'),
+    'AI generate button sits beside the polish tool');
+check(js.includes('aiGeneratePrompt.onclick = openAiGenerateDialog'), 'AI generate button wired to dialog');
+const dialogBody = js.slice(js.indexOf('function openAiGenerateDialog()'), js.indexOf('function lowImageData'));
+check(!!dialogBody, 'AI generate dialog defined');
+for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamps', 'ai_fixed_camera',
+    'ai_no_subtitles', 'ai_anti_pop', 'ai_strict_validation']) {
+    check(dialogBody.includes(`"${name}"`), 'dialog switch writes hidden widget: ' + name);
+}
+check(dialogBody.includes('const route = operation === "ai" ? "generate" : "format";')
+    && dialogBody.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'dialog posts to generate/format endpoints');
+check(dialogBody.indexOf('pushPromptUndo(promptSnapshot())') < dialogBody.indexOf('applyOptimizedPrompt(value, before)'),
+    'undo snapshot pushed before filling the editor (Ctrl+Z restores)');
+check(dialogBody.includes('language.onchange = () => setWidget(node, "ai_language", language.value)')
+    && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog folds language/timeout into widgets');
+
+/* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
+check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
+    'duplicated advanced rows removed (no_subtitle/soundscape/music)');
+check(js.includes('addAdvanced("strict_prompt_tags", "Strict prompt tags"'), 'strict prompt tags stays in advanced');
+check(!js.includes('"no_subtitle", "soundscape", "music"]'), 'visibility lists no longer reference removed rows');
+
+/* 10. 批次 B：服务端引擎出口——generate（在线）/format（离线）路由与引擎 controls 对齐 */
+const optimizerPy = fs.readFileSync(path.join(root, 'prompt_optimizer.py'), 'utf8');
+check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/generate")(generate_prompt_api)'),
+    'backend registers /generate route');
+check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/format")(format_prompt_api)'),
+    'backend registers /format route');
+const controlsNames = optimizerPy.match(/_H3_GENERATION_CONTROLS = \(([\s\S]*?)\)/);
+check(!!controlsNames, 'engine controls tuple defined');
+const controlsList = controlsNames[1].match(/"([a-z_]+)"/g).map(s => s.replace(/"/g, ''));
+check(JSON.stringify(controlsList) === JSON.stringify(['enrich_do_enrich', 'enrich_soundscape', 'enrich_music',
+    'auto_timestamps', 'fixed_camera', 'visual_stability', 'no_subtitles', 'anti_pop']),
+    'engine controls match the video_nodes ai path');
+check(optimizerPy.includes('await asyncio.to_thread(_run_generation_operation, payload, "ai")')
+    && optimizerPy.includes('await asyncio.to_thread(_run_generation_operation, payload, "format")'),
+    'generation runs off the event loop (to_thread)');
+
 console.log(`PASS: ${assertions} assertions (panel AI section consistency)`);

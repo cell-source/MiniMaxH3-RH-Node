@@ -266,6 +266,17 @@ const DOM_TRANSLATIONS = {
     "Optimizing": "优化中", "Restore before optimization": "恢复优化前", "Configure API": "配置API",
     "Prompt optimizer API is not configured. Open settings now?": "尚未配置提示词优化 API，是否立即打开设置？",
     "Confirm": "确定",
+    "AI generate prompt": "AI 生成（基于编辑器内容）",
+    "Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).": "基于编辑器当前内容生成 H3 提示词，结果填回编辑器（Ctrl+Z 可撤销）。",
+    "Generate and fill": "生成并填入",
+    "H3 format (offline)": "H3 格式整理（离线）",
+    "Generating": "生成中",
+    "Formatting": "整理中",
+    "Enter a prompt first": "请先输入提示词",
+    "Generation API key is missing. Open settings now?": "尚未配置生成模型 API Key，是否立即打开设置？",
+    "Generation prompt failed": "AI 生成失败",
+    "More settings": "更多设置",
+    "AI timeout": "AI 超时（秒）",
     "Output language": "输出语言",
     "Maximum output tokens": "最大输出 Tokens",
     "Optimization mode": "优化方式", "Online API": "在线 API", "Local vision model": "本地视觉模型",
@@ -576,6 +587,13 @@ function createPanel(node) {
       .mxv-toggle input:focus-visible+span{outline:2px solid #e8a33d;outline-offset:2px}
       .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
       .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
+      .mxv-gen-dialog{width:min(430px,calc(100vw - 30px))}
+      .mxv-gen-more{border:1px solid #383e46;border-radius:5px;margin-top:10px}
+      .mxv-gen-more>summary{cursor:pointer;color:#b3b1ac;padding:7px 10px;list-style:none}
+      .mxv-gen-more>summary::-webkit-details-marker{display:none}
+      .mxv-gen-more>summary:before{content:"▸";display:inline-block;margin-right:6px;transition:transform .12s}
+      .mxv-gen-more[open]>summary:before{transform:rotate(90deg)}
+      .mxv-gen-more-body{display:grid;gap:2px;padding:2px 10px 10px}
     `;
     root.appendChild(style);
     const size = make("div"); size.className = "mxv-size";
@@ -849,6 +867,7 @@ function createPanel(node) {
             : (savedMode === "all_reference" ? legacyPrompt : ""),
     };
     let optimizing = false;
+    let aiGenerating = false;
     let optimizerRequestId = null;
     let optimizerAbort = null;
     let optimizerTimer = null;
@@ -863,8 +882,9 @@ function createPanel(node) {
     const elapsedPrompt = make("span"); elapsedPrompt.className = "mxv-prompt-elapsed";
     const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
     const optimizePrompt = make("button", {}, "✦"); optimizePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
+    const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
-    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, optimizePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
+    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
     const syncPromptHighlightGeometry = () => {
         promptHighlightContent.style.width = `${prompt.clientWidth}px`;
     };
@@ -1170,15 +1190,8 @@ function nodeColorToCss(value) {
     addAdvanced("drive_audio_ordinal", "Drive audio", driveAudioOrdinalControl);
     addAdvanced("strict_prompt_tags", "Strict prompt tags", check("strict_prompt_tags"));
     addAdvanced("ref_image_size", "Reference image size", select("ref_image_size", ["match", "1.2x", "1.5x", "2x", "max"]));
-    const noSubtitleControl = check("no_subtitle");
-    noSubtitleControl.title = t("Injects a positive no-subtitle constraint after [Shot 1]: speech exists only as audible voice with lip sync and never appears as on-screen text. Disable to strip it from the prompt");
-    addAdvanced("no_subtitle", "No-subtitle constraint", noSubtitleControl);
-    const soundscapeControl = check("soundscape");
-    soundscapeControl.title = t("On: rewrite an N/A overall_soundscape with a default ambient description; the rest of the prompt stays untouched. Off: force N/A for a fully silent bed");
-    addAdvanced("soundscape", "Soundscape", soundscapeControl);
-    const musicControl = check("music");
-    musicControl.title = t("On: rewrite an N/A non_diegetic_music with a default score description; the rest of the prompt stays untouched. Off: force N/A (no score)");
-    addAdvanced("music", "Music", musicControl);
+    /* 无字幕约束/音景/配乐三行已移入 ✨ AI 生成弹窗（2026-09-25 收编）：
+       widget 保留隐藏序列化，运行期兼容不受影响；不再重复出现在高级选项。 */
     /* ===== 采样参数组（单节点整合新增，原生 widget 已隐藏，此处提供等价控件）===== */
     const stepsControl = number("steps", "1", "1", "1000");
     addAdvanced("steps", "Steps", stepsControl);
@@ -1321,8 +1334,8 @@ function nodeColorToCss(value) {
             driveAudioOrdinalControl.value = String(next);
         }
         const visible = state.mode === "text_keyframes"
-            ? ["audio_mode", "audio_denoise_strength", "strict_prompt_tags", "no_subtitle", "soundscape", "music"]
-            : ["audio_mode", "audio_denoise_strength", "ref_image_size", "strict_prompt_tags", "drive_audio_ordinal", "no_subtitle", "soundscape", "music"];
+            ? ["audio_mode", "audio_denoise_strength", "strict_prompt_tags"]
+            : ["audio_mode", "audio_denoise_strength", "ref_image_size", "strict_prompt_tags", "drive_audio_ordinal"];
         for (const [name, row] of advancedRows) {
             const isVisible = visible.includes(name);
             row.hidden = !isVisible;
@@ -1450,6 +1463,7 @@ function nodeColorToCss(value) {
         promptWrap.classList.toggle("external", external);
         prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
         optimizePrompt.disabled = external || localBlocked;
+        aiGeneratePrompt.disabled = external;
         resetPrompt.disabled = external;
     }
     const updateWorkflowState = running => {
@@ -1479,6 +1493,7 @@ function nodeColorToCss(value) {
         button.addEventListener("mouseleave", clear); button.addEventListener("pointerdown", clear);
     }
     delayedTooltip(optimizePrompt, () => t(optimizing ? "Optimizing click to cancel" : "Optimize prompt"));
+    delayedTooltip(aiGeneratePrompt, () => t("AI generate prompt"));
     delayedTooltip(resetPrompt, () => t("Restore before optimization"));
     delayedTooltip(optimizerGear, () => t("Configure API"));
     const stopPromptKeyBubble = event => event.stopPropagation();
@@ -2397,6 +2412,134 @@ function nodeColorToCss(value) {
         const close = () => overlay.remove(); cancel.onclick = close; confirm.onclick = () => { close(); openOptimizerSettings(); };
         document.body.append(overlay);
     }
+    /* ===== AI 生成弹窗（2026-09-25 收编）：基于编辑器当前内容生成/整理，结果填回编辑器 ===== */
+    function openAiGenerateDialog() {
+        if (aiGenerating) return;
+        const overlay = make("div"); overlay.className = "mxv-opt-overlay";
+        const dialog = make("div"); dialog.className = "mxv-opt-dialog mxv-gen-dialog"; overlay.append(dialog);
+        const title = make("div", {}, t("AI generation")); title.className = "mxv-opt-title"; dialog.append(title);
+        const hint = make("div"); hint.className = "mxv-opt-purpose";
+        hint.textContent = t("Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).");
+        dialog.append(hint);
+        // 开关直接读写隐藏 ai_* widget：与工作流序列化同源，运行期 ai/offline 兼容路径复用同一份取值。
+        const toggle = name => { const label = make("label"); label.className = "mxv-toggle"; const input = document.createElement("input"); input.type = "checkbox"; input.checked = !!widget(node, name)?.value; const track = make("span"); input.onchange = () => setWidget(node, name, input.checked); label.append(input, track); return label; };
+        const switches = make("div"); switches.className = "mxv-opt-checks";
+        const switchRow = (label, name) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), toggle(name)); switches.append(wrap); };
+        switchRow("Bounded enrichment", "ai_enrich");
+        switchRow("Soundscape", "ai_soundscape");
+        switchRow("Music", "ai_music");
+        switchRow("Auto timestamps", "ai_auto_timestamps");
+        switchRow("Fixed camera", "ai_fixed_camera");
+        switchRow("No-subtitle constraint", "ai_no_subtitles");
+        switchRow("Anti-pop inline dialogue", "ai_anti_pop");
+        switchRow("Strict validation", "ai_strict_validation");
+        dialog.append(switches);
+        const language = make("select"); language.className = "mxv-control";
+        for (const value of ["zh", "mixed", "en"]) language.append(new Option(t(value), value));
+        language.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
+        language.onchange = () => setWidget(node, "ai_language", language.value);
+        const timeout = document.createElement("input"); timeout.type = "number"; timeout.min = "15"; timeout.max = "600"; timeout.step = "5"; timeout.className = "mxv-control";
+        timeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_timeout")?.value) || 180)));
+        timeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(timeout.value) || 180)); timeout.value = String(value); setWidget(node, "ai_timeout", value); };
+        const more = make("details"); more.className = "mxv-gen-more";
+        const moreBody = make("div"); moreBody.className = "mxv-gen-more-body";
+        const moreRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); moreBody.append(wrap); };
+        moreRow("Output language", language);
+        moreRow("AI timeout", timeout);
+        more.append(make("summary", {}, t("More settings")), moreBody);
+        dialog.append(more);
+        const actions = make("div"); actions.className = "mxv-opt-actions";
+        const cancel = make("button", {}, t("Cancel"));
+        const formatButton = make("button", {}, t("H3 format (offline)"));
+        const runButton = make("button", {}, t("Generate and fill"));
+        actions.append(cancel, formatButton, runButton); dialog.append(actions);
+        const close = () => { if (aiGenerating) return; overlay.remove(); };
+        cancel.onclick = close;
+        overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
+        const generationMode = () => {
+            if (state.mode === "all_reference") return "ref2va";
+            const first = media.has("first_frame");
+            const last = media.has("last_frame");
+            return first && last ? "fl2va" : first ? "i2va" : last ? "l2va" : "t2va";
+        };
+        const generationBody = () => {
+            const provider = String(widget(node, "ai_provider")?.value || "deepseek");
+            const flag = name => !!widget(node, name)?.value;
+            return {
+                prompt: prompt.value,
+                provider,
+                api_key: getSharedKey(provider) || String(widget(node, "ai_api_key")?.value || ""),
+                endpoint: String(widget(node, "ai_endpoint")?.value ?? ""),
+                model: String(widget(node, "ai_model")?.value ?? ""),
+                timeout: Number(widget(node, "ai_timeout")?.value || 180),
+                controls: {
+                    mode: generationMode(),
+                    lang: language.value,
+                    duration: Number(durationWidget?.value || 5),
+                    ratio: String(widget(node, "aspect")?.value || "16:9"),
+                    model: provider,
+                    enrich_do_enrich: flag("ai_enrich"),
+                    enrich_soundscape: flag("ai_soundscape"),
+                    enrich_music: flag("ai_music"),
+                    auto_timestamps: flag("ai_auto_timestamps"),
+                    fixed_camera: flag("ai_fixed_camera"),
+                    no_subtitles: flag("ai_no_subtitles"),
+                    anti_pop: flag("ai_anti_pop"),
+                },
+            };
+        };
+        const applyGenerationResult = result => {
+            const value = String(result?.prompt ?? "");
+            if (!value.trim()) throw new Error(t("Generation prompt failed"));
+            const before = prompt.value;
+            // 先压栈再替换：Ctrl+Z 可回到生成前的编辑器内容。
+            pushPromptUndo(promptSnapshot());
+            applyOptimizedPrompt(value, before);
+            playOptimizerCompleteSound();
+            // 离线整理不改变内容时（如自由文本缺 H3 字段），把校验报告带给用户，
+            // 避免"点了按钮没反应"的困惑；ai 路径 strict_validation 关闭时同理。
+            if (result.valid === false && result.report) alert(result.report);
+        };
+        const runGeneration = async operation => {
+            if (aiGenerating) return;
+            if (!prompt.value.trim()) { alert(t("Enter a prompt first")); return; }
+            const provider = String(widget(node, "ai_provider")?.value || "deepseek");
+            if (operation === "ai" && !getSharedKey(provider) && !String(widget(node, "ai_api_key")?.value || "").trim()) {
+                if (confirm(t("Generation API key is missing. Open settings now?"))) openOptimizerSettings();
+                return;
+            }
+            aiGenerating = true;
+            const originalRun = runButton.textContent;
+            const originalFormat = formatButton.textContent;
+            runButton.disabled = formatButton.disabled = cancel.disabled = true;
+            runButton.textContent = operation === "ai" ? t("Generating") : originalRun;
+            formatButton.textContent = operation === "format" ? t("Formatting") : originalFormat;
+            try {
+                const route = operation === "ai" ? "generate" : "format";
+                const response = await api.fetchApi(`${OPTIMIZER_ROUTE}/${route}`, {
+                    method: "POST",
+                    body: new Blob([JSON.stringify(generationBody())], { type: "application/json" }),
+                });
+                const text = await response.text();
+                let data;
+                try { data = text ? JSON.parse(text) : {}; }
+                catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Generation prompt failed")); }
+                if (!response.ok) throw new Error(data.error || t("Generation prompt failed"));
+                applyGenerationResult(data);
+                overlay.remove();
+            } catch (error) {
+                alert(error.message);
+            } finally {
+                aiGenerating = false;
+                runButton.disabled = formatButton.disabled = cancel.disabled = false;
+                runButton.textContent = originalRun;
+                formatButton.textContent = originalFormat;
+            }
+        };
+        runButton.onclick = () => runGeneration("ai");
+        formatButton.onclick = () => runGeneration("format");
+        document.body.append(overlay);
+    }
     function lowImageData(url) {
         return new Promise((resolve, reject) => {
             const image = new Image(); image.crossOrigin = "anonymous";
@@ -2514,6 +2657,7 @@ function nodeColorToCss(value) {
         } catch {}
     }
     optimizerGear.onclick = openOptimizerSettings;
+    aiGeneratePrompt.onclick = openAiGenerateDialog;
     resetPrompt.onclick = () => {
         if (optimizerBefore == null || upstreamConnected()) return;
         if (optimizerCache?.originalPrompt === optimizerBefore) optimizerCache.result = prompt.value;
@@ -3552,11 +3696,10 @@ function nodeColorToCss(value) {
                 advanced.open = true;
                             // Hidden widgets are restored by LiteGraph after the panel was
                 // built; resync toggle visuals so they never contradict the
-                // values that actually get submitted. AI 区块已删除，凭据走统一弹窗。
-                for (const name of ["strict_prompt_tags", "no_subtitle", "soundscape", "music"]) {
-                    const box = advancedRows.get(name)?.querySelector("input[type=checkbox]");
-                    if (box) box.checked = !!widget(node, name)?.value;
-                }
+                // values that actually get submitted. 无字幕/音景/配乐已移入
+                // ✨ 生成弹窗（开关直接写 widget），此处只回读严格提示词标签。
+                const strictTagsBox = advancedRows.get("strict_prompt_tags")?.querySelector("input[type=checkbox]");
+                if (strictTagsBox) strictTagsBox.checked = !!widget(node, "strict_prompt_tags")?.value;
                 updateAdvancedVisibility();
                 render();
                 syncLayout(userHeight, true);

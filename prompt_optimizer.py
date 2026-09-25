@@ -1640,6 +1640,84 @@ async def get_prompt_optimizer_config(_request):
     return web.json_response(config)
 
 
+# ===== 面板「AI 生成 / H3 格式整理」：提示词引擎的 HTTP 出口（2026-09-25 收编）=====
+# AI 区块删除后，生成不再只发生在工作流执行期：面板弹窗基于编辑器当前内容
+# 调用同一套 quickjs 引擎（operation=ai / format），保证面板与运行期结果一致。
+
+_H3_GENERATION_CONTROLS = (
+    "enrich_do_enrich", "enrich_soundscape", "enrich_music", "auto_timestamps",
+    "fixed_camera", "visual_stability", "no_subtitles", "anti_pop",
+)
+_H3_GENERATION_MODES = {"t2va", "i2va", "fl2va", "l2va", "ref2va"}
+_H3_GENERATION_LANGS = {"zh", "mixed", "en"}
+_H3_GENERATION_RATIOS = {"16:9", "9:16", "1:1", "4:3", "3:4", "21:9"}
+
+
+def _generation_payload_controls(payload: dict) -> dict:
+    """把弹窗请求体归一成引擎 controls；非法取值一律回退引擎默认。"""
+    controls = payload.get("controls") if isinstance(payload.get("controls"), dict) else {}
+    result = {name: bool(controls.get(name)) for name in _H3_GENERATION_CONTROLS}
+    mode = str(controls.get("mode") or "t2va").lower()
+    result["mode"] = mode if mode in _H3_GENERATION_MODES else "t2va"
+    lang = str(controls.get("lang") or "zh").lower()
+    result["lang"] = lang if lang in _H3_GENERATION_LANGS else "zh"
+    result["duration"] = str(max(2, min(15, int(controls.get("duration") or 5))))
+    ratio = str(controls.get("ratio") or "16:9")
+    result["ratio"] = ratio if ratio in _H3_GENERATION_RATIOS else "16:9"
+    model = str(controls.get("model") or "").strip()
+    if model:
+        result["model"] = model
+    return result
+
+
+def _run_generation_operation(payload: dict, operation: str) -> dict:
+    from .llm_client import make_client
+    from .prompt_runtime import generate_prompt
+
+    text = str(payload.get("prompt") or "")
+    controls = _generation_payload_controls(payload)
+    client = None
+    if operation == "ai":
+        timeout = int(payload.get("timeout") or 180)
+        timeout = max(15, min(600, timeout))
+        client = make_client(
+            str(payload.get("provider") or "deepseek"),
+            str(payload.get("api_key") or ""),
+            str(payload.get("endpoint") or ""),
+            str(payload.get("model") or ""),
+            timeout,
+        )
+    return generate_prompt(text, operation, controls, client)
+
+
+async def generate_prompt_api(request):
+    """面板「✨ AI 生成」：编辑器内容 → H3 提示词引擎（ai 路径，在线 LLM）。
+
+    quickjs 引擎与 LLM 流式请求都是阻塞调用：to_thread 执行，避免冻结
+    事件循环（与 M11 优化同一原则）；路由内没有活动节点，不消费中断标志。
+    """
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("AI 生成请求体必须是 JSON 对象")
+        result = await asyncio.to_thread(_run_generation_operation, payload, "ai")
+        return web.json_response(result)
+    except Exception as error:
+        return web.json_response({"error": str(error)}, status=400)
+
+
+async def format_prompt_api(request):
+    """面板「H3 格式整理（离线）」：编辑器内容 → 规范化（normalizePrompt）。"""
+    try:
+        payload = await request.json()
+        if not isinstance(payload, dict):
+            raise ValueError("H3 格式整理请求体必须是 JSON 对象")
+        result = await asyncio.to_thread(_run_generation_operation, payload, "format")
+        return web.json_response(result)
+    except Exception as error:
+        return web.json_response({"error": str(error)}, status=400)
+
+
 def _local_missing_dependencies() -> list[str]:
     import importlib.util
     required = ("torch", "transformers", "PIL", "accelerate", "safetensors")
@@ -1822,6 +1900,8 @@ def register_prompt_optimizer_routes() -> bool:
     routes.post("/rh/minimax-h3/prompt-optimizer/start")(start_prompt_optimization)
     routes.get("/rh/minimax-h3/prompt-optimizer/status")(prompt_optimization_status)
     routes.post("/rh/minimax-h3/prompt-optimizer/cancel")(cancel_prompt_optimization)
+    routes.post("/rh/minimax-h3/prompt-optimizer/generate")(generate_prompt_api)
+    routes.post("/rh/minimax-h3/prompt-optimizer/format")(format_prompt_api)
     _ROUTES_REGISTERED = True
     return True
 
