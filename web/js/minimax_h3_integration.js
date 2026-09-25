@@ -249,26 +249,26 @@ const DOM_TRANSLATIONS = {
     "Up to 9 images": "最多9张图像",
     "Up to 3 videos": "最多3个视频",
     "Up to 3 audios": "最多3个音频",
-    "Optimize": "优化", "LLM Prompt Optimization Configuration": "LLM 配置（✦ 润色 / ✨ AI 生成）",
+    "Optimize": "润色", "LLM Prompt Optimization Configuration": "LLM 配置（润色 / AI 生成）",
     "Provider": "平台", "API key": "API Key", "Read visual references": "读取视觉素材",
     "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
     "Key shared with prompt optimizer": "与提示词优化器共享",
     "Generation provider": "生成平台", "Generation model": "生成模型", "Generation endpoint": "生成端点",
     "Default: provider preset model": "留空使用平台预设模型",
-    "One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.": "一个入口配全部用途：✦ 润色用优化模型——只改写表达；✨ AI 生成用下方生成平台——按官方 H3 结构重新生成（也供运行时提示词生成）。",
+    "One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.": "一个入口配全部用途：润色用优化模型——勾选自动润色随运行执行，或点下方 ✦ 立即改写表达；AI 生成用生成平台——按官方 H3 结构重新生成（也供运行时提示词生成）。",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
     "Save": "保存", "Cancel": "取消", "Custom": "自定义",
     "API URL": "API 地址", "Model": "模型", "Protocol": "协议",
     "Prompt is connected to an upstream node; the internal prompt is disabled!": "提示词已连接上游节点，内部提示词已禁用！",
-    "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Optimizing click to cancel": "润色中 点击取消",
-    "Optimizing": "润色中", "Restore before optimization": "恢复润色前", "Configure API": "配置模型与选项（润色与 AI 生成共用）",
+    "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Optimizing": "润色中", "Restore before optimization": "恢复润色前", "Configure API": "配置模型与选项（润色与 AI 生成共用）",
     "Prompt optimizer API is not configured. Open settings now?": "尚未配置润色 API，是否立即打开设置？",
     "Confirm": "确定",
     "AI generate prompt": "AI 生成：把当前内容交给生成平台，套用官方 H3 结构（镜头/音景/配乐/时间戳）生成完整提示词并填回",
     "Generates from the editor's current content and fills the result back into the editor (Ctrl+Z to undo).": "基于编辑器当前内容生成 H3 提示词，结果填回编辑器（Ctrl+Z 可撤销）。",
     "Generate and fill": "生成并填入",
+    "Polish": "✦ 润色",
     "H3 format (offline)": "H3 格式整理（离线）",
     "Generating": "生成中",
     "Formatting": "整理中",
@@ -878,10 +878,11 @@ function createPanel(node) {
     const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "mxv-prompt-tool mxv-prompt-reset";
     const elapsedPrompt = make("span"); elapsedPrompt.className = "mxv-prompt-elapsed";
     const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
-    const optimizePrompt = make("button", {}, "✦"); optimizePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
-    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
+    // 润色不再占用工具条按钮（2026-09-25）：由配置界面的「运行前自动润色」开关与
+    // 界面内 ✦ 润色按钮承担，进度由左侧 elapsed 指示器展示。
+    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
     const syncPromptHighlightGeometry = () => {
         promptHighlightContent.style.width = `${prompt.clientWidth}px`;
     };
@@ -1459,7 +1460,6 @@ function nodeColorToCss(value) {
         prompt.readOnly = external;
         promptWrap.classList.toggle("external", external);
         prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
-        optimizePrompt.disabled = external || localBlocked;
         aiGeneratePrompt.disabled = external;
         resetPrompt.disabled = external;
     }
@@ -1489,7 +1489,6 @@ function nodeColorToCss(value) {
         });
         button.addEventListener("mouseleave", clear); button.addEventListener("pointerdown", clear);
     }
-    delayedTooltip(optimizePrompt, () => t(optimizing ? "Optimizing click to cancel" : "Optimize prompt"));
     delayedTooltip(aiGeneratePrompt, () => t("AI generate prompt"));
     delayedTooltip(resetPrompt, () => t("Restore before optimization"));
     delayedTooltip(optimizerGear, () => t("Configure API"));
@@ -2402,11 +2401,14 @@ function nodeColorToCss(value) {
             genRow("AI timeout", genTimeout);
             const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
+            // ✦ 润色动作收进配置界面（工具条不再有独立按钮）。
+            const polishButton = make("button", {}, t("Polish")); polishButton.title = t("Optimize prompt");
             const formatButton = make("button", {}, t("H3 format (offline)"));
             const runButton = make("button", {}, t("Generate and fill"));
-            actions.append(cancel, save, formatButton, runButton); dialog.append(actions);
+            actions.append(cancel, save, polishButton, formatButton, runButton); dialog.append(actions);
             const close = () => { if (aiGenerating) return; overlay.remove(); }; cancel.onclick = close; overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
-            save.onclick = async () => {
+            /* 保存/润色共用：把界面当前取值写入 optimizerSettings 与生成侧 widget（所见即所请求）。 */
+            const applyDialogConfig = () => {
                 const outputLanguage = language.querySelector("input:checked")?.value || "中文";
                 const preset = optimizerProviders[provider.value];
                 const selectedModel = (provider.value === "runninghub" || provider.value === "runninghub_overseas") ? runninghubModel.value : model.value;
@@ -2426,12 +2428,18 @@ function nodeColorToCss(value) {
                 body.has_api_key = !!body.api_key;
                 optimizerSettings = body;
                 // ===== 生成侧写回：一个弹窗配好两个用途 =====
-                const genProviderValue = genProvider.value;
-                setWidget(node, "ai_provider", genProviderValue);
+                setWidget(node, "ai_provider", genProvider.value);
                 setWidget(node, "ai_model", genModel.value.trim());
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
                 // Key 的写回已由 keyOwner 归属逻辑完成（commitKeyToOwner/provider change/save）。
-                refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
+                refreshOptimizerName(); refreshPromptConnection(); persistState();
+            };
+            save.onclick = () => { applyDialogConfig(); close(); };
+            polishButton.onclick = () => {
+                if (aiGenerating || optimizing) return;
+                // 先按界面当前值落盘再执行：改了平台/模型不点保存也能按新配置润色。
+                applyDialogConfig(); close();
+                runPromptOptimization();
             };
             /* ===== AI 生成动作：与配置同界面；生成前先把界面取值写入 widget，保证请求即所见 ===== */
             const commitGenerationConfig = () => {
@@ -2722,7 +2730,7 @@ function nodeColorToCss(value) {
             const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext);
             if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             optimizing = true; optimizerRequestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`; optimizerAbort = new AbortController();
-            optimizePrompt.classList.add("mxv-prompt-loading"); elapsedPrompt.classList.add("visible");
+            elapsedPrompt.classList.add("visible");
             const started = performance.now();
             const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Optimizing")}：${Math.floor((performance.now() - started) / 1000)} s`; };
             refreshElapsed(); optimizerTimer = setInterval(refreshElapsed, 1000);
@@ -2756,13 +2764,9 @@ function nodeColorToCss(value) {
         }
         finally {
             clearInterval(optimizerTimer); optimizerTimer = null; optimizerAbort = null; optimizerRequestId = null; optimizing = false;
-            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = ""; optimizePrompt.classList.remove("mxv-prompt-loading"); refreshPromptConnection();
+            elapsedPrompt.classList.remove("visible"); elapsedPrompt.textContent = ""; refreshPromptConnection();
         }
     }
-    optimizePrompt.onclick = async () => {
-        if (optimizing) { await cancelOptimization(); return; }
-        await runPromptOptimization();
-    };
     const autoOptimizeBeforeQueue = () => runPromptOptimization({ automatic: true });
     autoOptimizerHandlers.add(autoOptimizeBeforeQueue);
     installAutoOptimizerQueueHook();

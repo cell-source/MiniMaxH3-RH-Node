@@ -139,12 +139,15 @@ for (const kind of ['image', 'video', 'audio']) {
 
 /* 8. 批次 B：AI 生成弹窗（收编原 AI 区块）——按钮、开关、请求路径与填回语义 */
 check(js.includes('const aiGeneratePrompt = make("button", {}, "✨")'), 'AI generate button created');
-check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizePrompt, optimizerGear)'),
-    'AI generate button sits beside the polish tool');
+check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiGeneratePrompt, optimizerGear)'),
+    'toolbar keeps only ✨/⚙/↻ (polish button folded into config)');
+check(!js.includes('const optimizePrompt'), 'polish toolbar button removed');
 check(js.includes('aiGeneratePrompt.onclick = openOptimizerSettings'), '✨ opens the unified config dialog');
 check(!js.includes('function openAiGenerateDialog'), 'separate AI generation dialog removed');
 const dialogBody = js.slice(js.indexOf('function openOptimizerSettings()'), js.indexOf('function showOptimizerConfigPrompt()'));
 check(!!dialogBody, 'unified config dialog defined');
+check(js.includes('polishButton.onclick = () => {') && dialogBody.includes('applyDialogConfig(); close();'),
+    'polish action lives in the config dialog and commits settings first');
 for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamps', 'ai_fixed_camera',
     'ai_no_subtitles', 'ai_anti_pop', 'ai_strict_validation']) {
     check(dialogBody.includes(`"${name}"`), 'config dialog switch writes hidden widget: ' + name);
@@ -155,12 +158,13 @@ check(dialogBody.indexOf('pushPromptUndo(promptSnapshot())') < dialogBody.indexO
     'undo snapshot pushed before filling the editor (Ctrl+Z restores)');
 check(dialogBody.includes('genRow("Generation language", genLanguage)') && dialogBody.includes('genRow("AI timeout", genTimeout)'),
     'generation language/timeout laid out flat in the unified dialog');
-check(dialogBody.includes('actions.append(cancel, save, formatButton, runButton)'),
-    'config dialog hosts save + generate/format actions together');
+check(dialogBody.includes('actions.append(cancel, save, polishButton, formatButton, runButton)'),
+    'config dialog hosts save + polish + generate/format actions together');
 check(dialogBody.includes('genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value)')
     && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog keeps language/timeout in widgets');
 check(!js.includes('mxv-gen-more') && !dialogBody.includes('make("details")'),
     'no collapse wrapper inside the config dialog');
+check(!dialogBody.includes('optimizePrompt'), 'dialog does not reference the removed toolbar button');
 
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
