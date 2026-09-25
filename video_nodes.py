@@ -76,35 +76,6 @@ def _all_outputs(value):
     return (value,)
 
 
-def _schedule_background_model_cleanup() -> None:
-    """Unload ComfyUI models after AV decode has returned its outputs.
-
-    This is intentionally detached from node execution: decoded tensors are
-    already materialized, while downstream nodes remain free to continue. A
-    tiny grace period lets ComfyUI publish the node outputs before the global
-    model cache is released.
-    """
-    def cleanup() -> None:
-        try:
-            time.sleep(0.05)
-            unload_all = getattr(model_management, "unload_all_models", None)
-            if callable(unload_all):
-                unload_all()
-            empty_cache = getattr(model_management, "soft_empty_cache", None)
-            if callable(empty_cache):
-                empty_cache(force=True)
-            gc.collect()
-            logging.info("MiniMax H3 AV decode background model cleanup completed")
-        except Exception:
-            logging.exception("MiniMax H3 AV decode background model cleanup failed")
-
-    threading.Thread(
-        target=cleanup,
-        name="minimax-h3-av-decode-cleanup",
-        daemon=True,
-    ).start()
-
-
 def _files(content_type: str):
     return sorted(folder_paths.filter_files_content_types(os.listdir(folder_paths.get_input_directory()), [content_type]))
 
@@ -254,7 +225,12 @@ def _serialized_first_visual_name(gh_state_json, mode):
         state = json.loads(gh_state_json)
     except (TypeError, ValueError, json.JSONDecodeError):
         return None
-    media = dict(state.get("media", [])) if isinstance(state, dict) else {}
+    media = state.get("media", []) if isinstance(state, dict) else []
+    # media 既可能是面板写入的二元组列表，也可能是旧版本/手编的 dict：统一拉平成键值对再消费。
+    if isinstance(media, dict):
+        media = list(media.items())
+    elif not isinstance(media, list):
+        return None
     if mode == "text_keyframes":
         ordered_slots = ["first_frame", "last_frame"]
     else:
@@ -264,7 +240,7 @@ def _serialized_first_visual_name(gh_state_json, mode):
             *(f"ref_image_{i}" for i in range(1, 10)),
         ]
     for slot in ordered_slots:
-        entry = media.get(slot)
+        entry = next((item_entry for item_slot, item_entry in media if item_slot == slot), None)
         if not isinstance(entry, dict) or entry.get("kind") not in {"image", "video"}:
             continue
         name = entry.get("name")
@@ -281,6 +257,11 @@ def _serialized_muted_video_slots(gh_state_json):
     except (TypeError, ValueError, json.JSONDecodeError):
         return set()
     media = state.get("media", []) if isinstance(state, dict) else []
+    # 与 _serialized_first_visual_name 同款防护：dict/畸形项直接跳过（审查 M4）。
+    if isinstance(media, dict):
+        media = list(media.items())
+    elif not isinstance(media, list):
+        return set()
     return {
         slot for slot, entry in media
         if isinstance(slot, str) and slot.startswith("ref_video_")
@@ -297,6 +278,10 @@ def _serialized_audio_trim_ranges(gh_state_json):
     except (TypeError, ValueError, json.JSONDecodeError):
         return {}
     media = state.get("media", []) if isinstance(state, dict) else []
+    if isinstance(media, dict):
+        media = list(media.items())
+    elif not isinstance(media, list):
+        return {}
     ranges = {}
     for item in media:
         if not isinstance(item, (list, tuple)) or len(item) != 2:
@@ -913,7 +898,13 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
             noise, guider, sampler_obj, sigmas, result[1]))
         # ===== AV 解码（原 MiniMaxH3AVDecodeT8RH 内联）=====
         decoded = decode_av_latent(sampled[0], video_vae, audio_vae)
-        _schedule_background_model_cleanup()
+        # 审查 S4：不再后台线程 50ms 全局 unload_all_models——这是全局操作，
+        # 会击中同工作流后续分支/队列中下一任务的模型加载（CUDA 崩溃）。
+        # 只做进程级 gc + 软清缓存（不释放权重），显存交由 ComfyUI LRU 管理。
+        gc.collect()
+        soft_cache = getattr(model_management, "soft_empty_cache", None)
+        if callable(soft_cache):
+            soft_cache()
         # 音频输出口按音频模式自动选择：锁定原声用源音轨（mux），否则用生成音轨。
         # 与原工作流两种接法（默认接 generated_audio / 锁定原声接 mux_audio）语义一致。
         mux_audio = result[2]

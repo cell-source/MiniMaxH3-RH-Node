@@ -244,7 +244,36 @@ def _model_records(paths: list[tuple[Path, Path]]) -> list[tuple[Path, Path, str
     ]
 
 
-def _scan_visual_models() -> list[dict]:
+# 模型扫描缓存（审查 M11）：rglob 全目录开销大且 /config 每次打开弹窗都会触发，
+# 按目录指纹（各根目录直接子项的 mtime/size 聚合）缓存，未变化时零 IO。
+_SCAN_CACHE: dict[str, tuple[tuple, list[dict]]] = {}
+
+
+def _llm_roots_fingerprint(roots) -> tuple:
+    fingerprint = []
+    for root in roots:
+        try:
+            entries = tuple(
+                (item.name, int(item.stat().st_mtime), int(item.stat().st_size))
+                for item in sorted(root.iterdir(), key=lambda item: item.name.lower())
+            )
+        except OSError:
+            entries = ()
+        fingerprint.append((str(root), entries))
+    return tuple(fingerprint)
+
+
+def _cached_scan(cache_key: str, roots, compute):
+    fingerprint = _llm_roots_fingerprint(roots)
+    cached = _SCAN_CACHE.get(cache_key)
+    if cached and cached[0] == fingerprint:
+        return cached[1]
+    result = compute()
+    _SCAN_CACHE[cache_key] = (fingerprint, result)
+    return result
+
+
+def _compute_visual_models() -> list[dict]:
     result = []
     roots = _llm_roots()
     transformer_paths = []
@@ -277,7 +306,12 @@ def _scan_visual_models() -> list[dict]:
     return result
 
 
-def _scan_mmproj_models() -> list[dict]:
+def _scan_visual_models() -> list[dict]:
+    roots = _llm_roots()
+    return _cached_scan("visual", roots, lambda: _compute_visual_models())
+
+
+def _compute_mmproj_models() -> list[dict]:
     paths = []
     for root in _llm_roots():
         if not root.is_dir():
@@ -289,6 +323,11 @@ def _scan_mmproj_models() -> list[dict]:
         {"name": path.name, "path": str(path), "relative_path": relative}
         for _root, path, relative in _model_records(paths)
     ]
+
+
+def _scan_mmproj_models() -> list[dict]:
+    roots = _llm_roots()
+    return _cached_scan("mmproj", roots, lambda: _compute_mmproj_models())
 
 
 def _find_visual_model(selected: str) -> dict | None:
@@ -576,7 +615,21 @@ def _cuda_tag() -> str | None:
     return f"cu{match.group(1)}{match.group(2)}" if match else None
 
 
+_GGUF_DEPENDENCY_STATUS_CACHE: dict | None = None
+
+
 def _gguf_dependency_status() -> dict:
+    global _GGUF_DEPENDENCY_STATUS_CACHE
+    if _GGUF_DEPENDENCY_STATUS_CACHE is not None:
+        # llama_cpp 可用性/平台信息进程生命周期内不变；GitHub 探测结果一并缓存
+        # （匿名 API 60 次/小时限流，审查 M11）。
+        return dict(_GGUF_DEPENDENCY_STATUS_CACHE)
+    status = _compute_gguf_dependency_status()
+    _GGUF_DEPENDENCY_STATUS_CACHE = dict(status)
+    return status
+
+
+def _compute_gguf_dependency_status() -> dict:
     system = platform.system().lower()
     machine = platform.machine().lower()
     python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
@@ -1579,10 +1632,11 @@ async def _request_async(config: dict, payload: dict) -> str:
 
 async def get_prompt_optimizer_config(_request):
     config = _public_config(DEFAULT_CONFIG)
-    config["models"] = _scan_visual_models()
-    config["mmproj_models"] = _scan_mmproj_models()
-    config["missing_dependencies"] = _local_missing_dependencies()
-    config["gguf_dependency"] = _gguf_dependency_status()
+    # 扫描可能触发全目录 rglob（模型目录大时数秒）：to_thread 防止冻结事件循环（审查 M11）。
+    config["models"] = await asyncio.to_thread(_scan_visual_models)
+    config["mmproj_models"] = await asyncio.to_thread(_scan_mmproj_models)
+    config["missing_dependencies"] = await asyncio.to_thread(_local_missing_dependencies)
+    config["gguf_dependency"] = await asyncio.to_thread(_gguf_dependency_status)
     return web.json_response(config)
 
 
@@ -1594,10 +1648,10 @@ def _local_missing_dependencies() -> list[str]:
 
 async def list_prompt_optimizer_models(_request):
     return web.json_response({
-        "models": _scan_visual_models(),
-        "mmproj_models": _scan_mmproj_models(),
-        "missing_dependencies": _local_missing_dependencies(),
-        "gguf_dependency": _gguf_dependency_status(),
+        "models": await asyncio.to_thread(_scan_visual_models),
+        "mmproj_models": await asyncio.to_thread(_scan_mmproj_models),
+        "missing_dependencies": await asyncio.to_thread(_local_missing_dependencies),
+        "gguf_dependency": await asyncio.to_thread(_gguf_dependency_status),
     })
 
 
