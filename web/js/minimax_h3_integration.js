@@ -2223,10 +2223,27 @@ function nodeColorToCss(value) {
                 genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
             };
             syncGenRows();
+            // Key 输入框归属跟踪：两个平台下拉共用一个输入框，切换前先把现值
+            // 回存到原归属槽位，再加载新平台的 Key——防止跨平台串写（审查 S3）。
+            let keyOwner = provider.value;
+            const commitKeyToOwner = () => {
+                const current = key.value.trim();
+                if (keyOwner === genProvider.value) {
+                    // 归属生成侧：直接写生成 widget 与钥匙串。
+                    setWidget(node, "ai_api_key", current);
+                    aiKey.value = current;
+                    setSharedKey(genProvider.value, current);
+                } else {
+                    providerApiKeys[keyOwner] = current;
+                    setSharedKey(keyOwner, current);
+                }
+            };
             genProvider.onchange = () => {
                 syncGenRows();
-                // 平台切换：Key 跟随共享钥匙串（与优化器同源）。
-                key.value = providerApiKeys[genProvider.value] || getSharedKey(genProvider.value) || key.value;
+                // 平台切换：先回存原归属，再加载新平台的共享 Key（无则清空）。
+                commitKeyToOwner();
+                keyOwner = genProvider.value;
+                key.value = providerApiKeys[genProvider.value] || getSharedKey(genProvider.value) || "";
             };
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
@@ -2434,11 +2451,21 @@ function nodeColorToCss(value) {
             url.value = current.api_url || ""; model.value = current.model || ""; protocol.value = current.protocol || "openai";
             provider.addEventListener("change", () => {
                 const previousProvider = provider.dataset.previousValue || current.provider || "runninghub";
-                providerApiKeys[previousProvider] = key.value;
+                // Key 输入框可能归属生成侧（用户刚为生成平台填的 Key）：
+                // 先按归属回存，不能无差别写进优化平台的槽位（审查 S3 串写）。
+                if (keyOwner === genProvider.value) {
+                    setWidget(node, "ai_api_key", key.value.trim());
+                    aiKey.value = key.value.trim();
+                    setSharedKey(genProvider.value, key.value.trim());
+                } else {
+                    providerApiKeys[previousProvider] = key.value;
+                    setSharedKey(previousProvider, key.value.trim());
+                }
                 if (previousProvider === "runninghub" || previousProvider === "runninghub_overseas") {
                     providerModels[previousProvider] = runninghubModel.value;
                 }
-                key.value = providerApiKeys[provider.value] || "";
+                keyOwner = provider.value;
+                key.value = providerApiKeys[provider.value] || getSharedKey(provider.value) || "";
                 provider.dataset.previousValue = provider.value;
                 if (provider.value === "runninghub" || provider.value === "runninghub_overseas") {
                     const preserve = providerModels[provider.value] || optimizerProviders[provider.value].model;
@@ -2454,26 +2481,31 @@ function nodeColorToCss(value) {
                 const outputLanguage = language.querySelector("input:checked")?.value || "中文";
                 const preset = optimizerProviders[provider.value];
                 const selectedModel = (provider.value === "runninghub" || provider.value === "runninghub_overseas") ? runninghubModel.value : model.value;
-                providerApiKeys[provider.value] = key.value;
+                // 按归属写回 Key：输入框当前值属于 keyOwner 平台（优化或生成）。
+                if (keyOwner === genProvider.value) {
+                    setWidget(node, "ai_api_key", key.value.trim());
+                    aiKey.value = key.value.trim();
+                    setSharedKey(genProvider.value, key.value.trim());
+                    providerApiKeys[keyOwner] = providerApiKeys[keyOwner] ?? key.value.trim();
+                } else {
+                    providerApiKeys[provider.value] = key.value;
+                    setSharedKey(provider.value, key.value.trim());
+                }
                 providerModels[provider.value] = selectedModel;
                 normalizeMaxTokens();
                 const body = { mode: mode.value, provider: provider.value, api_url: provider.value === "custom" ? url.value : preset?.url || url.value, model: selectedModel, protocol: provider.value === "custom" ? protocol.value : preset?.protocol || protocol.value, read_media: readMedia.checked, output_language: outputLanguage, local_model: localModel.value, local_mmproj: localMmproj.value, local_device: localDevice.value, max_tokens: Number(maxTokens.value), auto_optimize: autoOptimize.checked, api_keys: { ...providerApiKeys }, provider_models: { ...providerModels } };
-                body.api_key = key.value;
-                body.has_api_key = !!key.value;
+                body.api_key = providerApiKeys[provider.value] || "";
+                body.has_api_key = !!body.api_key;
                 optimizerSettings = body;
                 // ===== 生成侧写回：一个弹窗配好两个用途 =====
                 const genProviderValue = genProvider.value;
-                const genKey = key.value;
                 setWidget(node, "ai_provider", genProviderValue);
                 aiProvider.value = genProviderValue;
                 setWidget(node, "ai_model", genModel.value.trim());
                 aiModel.value = genModel.value.trim();
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
                 aiEndpoint.value = genEndpoint.value.trim();
-                // Key 为空同样写回：清空凭据时 widget 与钥匙串必须一致，避免旧 Key 残留生效。
-                setWidget(node, "ai_api_key", genKey);
-                aiKey.value = genKey;
-                setSharedKey(genProviderValue, genKey);
+                // Key 的写回已由 keyOwner 归属逻辑完成（commitKeyToOwner/provider change/save）。
                 refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
             document.body.append(overlay);

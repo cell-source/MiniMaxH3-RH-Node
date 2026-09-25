@@ -448,7 +448,13 @@ async def _runninghub_video(source_name: str, duration: float, output_path: Path
     process = await asyncio.create_subprocess_exec(
         *command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    _stdout, stderr = await process.communicate()
+    try:
+        # 超时保护：取消/异常时 kill 子进程，避免 ffmpeg 孤儿进程占死 worker。
+        _stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise RuntimeError("RunningHub 参考视频预处理超时（120 秒），已终止 FFmpeg")
     if process.returncode:
         raise RuntimeError("RunningHub 参考视频预处理失败: " + stderr.decode("utf-8", "replace")[-1000:])
 

@@ -420,6 +420,7 @@ def _load_audio_file(value):
                     encoding="utf-8",
                     errors="replace",
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    timeout=120,  # 损坏媒体可让 ffmpeg 挂死：超时中断，不占死 worker
                 )
                 if process.returncode != 0 or not os.path.isfile(wav_path):
                     details = (process.stderr or "").strip()[-1200:]
@@ -430,6 +431,10 @@ def _load_audio_file(value):
                     os.path.basename(source_path),
                 )
                 return {"waveform": waveform.unsqueeze(0), "sample_rate": sample_rate}
+        except subprocess.TimeoutExpired as timeout_error:
+            raise RuntimeError(
+                f"音频解码超时（120 秒）: {os.path.basename(str(source_path))}。文件可能损坏或过大。"
+            ) from timeout_error
         except Exception as fallback_error:
             raise RuntimeError(
                 f"无法解码音频 {os.path.basename(str(source_path))}。"
@@ -504,11 +509,46 @@ def _sample_video_frames(frames, source_fps, target_frames):
     return frames[source_indices][:target_frames]
 
 
+# 参考视频解码内存上限（字节）：1080p 一帧 ≈ 6.2MB，约 320 帧满窗；
+# 超出窗口的内容与"只取前 target_frames 帧"的语义无关，提前裁窗防 OOM。
+_MAX_VIDEO_DECODE_BYTES = 2 * 1024 * 1024 * 1024
+_VIDEO_WINDOW_SECONDS = 30  # 解码窗口上限（秒），覆盖最大 target_frames（360 帧 @24fps = 15s）富余
+
+
+def _probe_video_meta(path):
+    """Best-effort 元数据探测：返回 (width, height, fps, duration)。失败返回 None。"""
+    try:
+        import av
+        with av.open(str(path)) as container:
+            stream = container.streams.video[0]
+            fps = float(stream.average_fps) if stream.average_fps else 0.0
+            duration = float(stream.duration or 0)
+            if stream.duration is None and container.duration:
+                duration = container.duration / 1_000_000
+            return (stream.codec_context.width, stream.codec_context.height, fps, duration)
+    except Exception:
+        return None
+
+
 def _load_video_frames(value, target_frames):
     if not value or value == "(none)":
         return None, None
     path = folder_paths.get_annotated_filepath(value)
-    components = VideoFromFile(path).get_components()
+    # OOM 防护：先探元数据估算全量解码内存；超限则用解码窗口（秒）截取，
+    # 只解码会被采样的前段——窗口外的内容与 24fps 采样语义无关。
+    meta = _probe_video_meta(path)
+    decode_kwargs = {}
+    if meta is not None:
+        width, height, fps, duration = meta
+        if width and height and duration > 0:
+            estimated = width * height * 3 * max(1, round(duration * (fps or 24)))
+            if estimated > _MAX_VIDEO_DECODE_BYTES:
+                # 超限：只解码前 _VIDEO_WINDOW_SECONDS 秒（strict_duration=False
+                # 时不足窗口按实际时长解码，不报错）。窗口外内容与 24fps
+                # 采样语义无关（节点只取前 target_frames 帧）。
+                decode_kwargs = {"duration": min(_VIDEO_WINDOW_SECONDS, duration)}
+    video_input = VideoFromFile(path, **decode_kwargs)
+    components = video_input.get_components()
     frames = components.images
     frames = _sample_video_frames(frames, components.frame_rate, target_frames)
     return frames, components.audio
