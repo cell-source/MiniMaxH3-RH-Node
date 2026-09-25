@@ -25,20 +25,20 @@ for (const name of ['prompt_source', 'ai_text', 'ai_language', 'ai_mode', 'ai_en
 }
 check(hiddenNames.length === 18, 'hidden list size = 18 (prompt_source + 17 ai_*)');
 
-/* 2. 面板区块为每个隐藏 widget 建立了控件绑定 */
+/* 2. AI 区块已删除：ai_* widget 保持隐藏序列化，配置由统一弹窗/生成弹窗承担 */
+check(!js.includes('details.mxv-ai') && !js.includes('addAi('), 'AI block removed from panel');
 for (const name of hiddenNames) {
-    check(js.includes(`addAi("${name}",`),
-        'panel binds ' + name);
+    check(js.includes(`"${name}"`), 'widget kept in hidden list: ' + name);
 }
 
-/* 3. 两个 details 区块都挂在面板根上 */
-check(js.includes('root.appendChild(aiDetails)'), 'ai details mounted');
+/* 3. 面板区块挂载（AI 区块已删除） */
 check(js.includes('root.appendChild(advanced)'), 'advanced details mounted');
 check(js.includes('root.appendChild(promptWrap)'), 'prompt wrap mounted');
+check(!js.includes('root.appendChild(aiDetails)'), 'ai details no longer mounted');
 
-/* 4. provider 清单前后端同步 */
-const feProviders = js.match(/const AI_PROVIDERS = \[([^\]]*)\]/);
-check(!!feProviders, 'frontend AI_PROVIDERS defined');
+/* 4. provider 清单前后端同步（AI 区块已删，清单由统一弹窗的 generationProviders 承担） */
+const feProviders = js.match(/const generationProviders = \[([^\]]*)\]/);
+check(!!feProviders, 'frontend generationProviders defined');
 const feList = feProviders[1].match(/"([^"]+)"/g).map(s => s.replace(/"/g, '')).sort();
 const pyBlock = py.match(/PROVIDERS = \{([\s\S]*?)\n\};?\n/);
 check(!!pyBlock, 'llm_client PROVIDERS block found');
@@ -50,8 +50,7 @@ check(JSON.stringify(feList) === JSON.stringify(pyList),
 check(js.includes('display: "flex"') && js.includes('flexFlow: "column"'), 'panel root is column flex');
 check(js.includes('measureContentHeight') && js.includes('node.setSize([WIDTH, nextHeight])'),
     'panel height auto-fits content (no scrollbar design)');
-check(js.includes('advanced.open = true;') && js.includes('aiDetails.open = true;'),
-    'accordions default to fully expanded');
+check(js.includes('advanced.open = true;'), 'advanced accordion defaults to fully expanded');
 check(js.includes('.mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23'),
     'details cards use mxv warm-charcoal baseline');
 check(js.includes('.mxv-prompt-wrap.focused{border-color:#e8a33d'), 'prompt editor shows amber focus border');
@@ -102,30 +101,23 @@ for (const name of ['prompt_source', 'ai_language', 'ai_mode', 'ai_provider']) {
     }
 }
 
-/* 工作流恢复后必须显示恢复值，并重新计算来源联动。 */
-const restoredControls = {
-    prompt_source: { type: 'select-one', value: 'panel' },
-    ai_text: { type: 'textarea', value: '' },
-    ai_enrich: { type: 'checkbox', checked: true },
-    ai_timeout: { type: 'number', value: '180' },
-};
-const restoredValues = { prompt_source: 'ai', ai_text: 'restored idea', ai_enrich: false, ai_timeout: 300 };
-let resynced = 0;
-const restoreContext = vm.createContext({
-    aiRows: new Map(Object.entries(restoredControls).map(([name, control]) => [name, { querySelector: () => control }])),
-    node: {}, widget: (_, name) => ({ value: restoredValues[name] }), syncAiRows: () => resynced++,
-});
+/* AI 区块已删除：隐藏 widget（ai_*）恢复完全依赖 ComfyUI 原生序列化，
+   syncAiControls 保留为空实现供 onConfigure 兼容调用，且不得抛错。 */
 const restoreFunction = js.match(/const syncAiControls = \(\) => \{[\s\S]*?\n    \};/);
-check(!!restoreFunction, 'AI restore synchronization exists');
-vm.runInContext(restoreFunction[0] + '\nsyncAiControls();', restoreContext);
-check(restoredControls.prompt_source.value === 'ai', 'restored source visible');
-check(restoredControls.ai_text.value === 'restored idea', 'restored idea visible');
-check(restoredControls.ai_enrich.checked === false, 'restored false toggle visible');
-check(restoredControls.ai_timeout.value === '300', 'restored timeout visible');
-check(resynced === 1, 'restored source visibility refreshed');
+check(!!restoreFunction, 'AI restore compatibility stub exists');
+let restoreThrew = null;
+try {
+    vm.runInContext(restoreFunction[0] + '\nsyncAiControls();', vm.createContext({}));
+} catch (error) {
+    restoreThrew = error;
+}
+check(restoreThrew === null, 'restore compatibility stub is side-effect free');
+check(js.includes('syncAiControls()'), 'onConfigure still calls the restore stub');
+check(!js.includes('aiRows'), 'deleted AI row registry stays deleted');
 
 const modeContext = vm.createContext({
-    state: { mode: 'text_keyframes' }, media: new Map(), aiMode: { value: 'auto' },
+    state: { mode: 'text_keyframes' }, media: new Map(), node: {},
+    widget: (_, name) => ({ value: name === 'ai_mode' ? 'auto' : '' }),
     imageSlots: ['first_frame', 'last_frame', 'ref_image_1'], videoSlots: ['ref_video_1'],
     audioSlots: ['hybrid_audio', 'ref_audio_1'],
 });
@@ -137,7 +129,7 @@ for (const [slots, task] of [[[], 'T2VA'], [['first_frame'], 'I2VA'], [['last_fr
 }
 modeContext.media = new Map();
 check(vm.runInContext('nextSlot("audio")', modeContext) === 'hybrid_audio', 'keyframe audio stays visible');
-modeContext.aiMode.value = 'l2va';
+modeContext.widget = (_, name) => ({ value: name === 'ai_mode' ? 'l2va' : '' });
 check(vm.runInContext('nextSlot("image")', modeContext) === 'last_frame', 'last-frame mode routes images');
 modeContext.state.mode = 'all_reference';
 check(vm.runInContext('resolvedTaskType()', modeContext) === 'Ref2VA', 'empty reference mode stays reference');

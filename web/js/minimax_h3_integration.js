@@ -1357,15 +1357,6 @@ function nodeColorToCss(value) {
         advancedSummary.textContent = t("Advanced options");
         for (const label of advancedLabels.values()) label.textContent = t(label.dataset.mxvTranslation);
         localizedSelects.forEach(control => control._mxvSyncOptions?.());
-        for (const row of aiRows.values()) {
-            const label = row.querySelector("label[data-mxv-translation]");
-            if (label) label.textContent = t(label.dataset.mxvTranslation);
-        }
-        aiText.placeholder = t("Idea / prompt to rewrite");
-        aiKey.placeholder = t("API key (cleared when sharing the workflow)");
-        aiEndpoint.placeholder = t("endpoint override");
-        aiModel.placeholder = t("model override");
-        syncAiRows();
         updateAdvancedVisibility();
         render();
     }
@@ -1373,74 +1364,9 @@ function nodeColorToCss(value) {
     // the UI after a real settings change, but no periodic polling is needed.
     window.addEventListener("storage", applyLocale);
     advanced.addEventListener("toggle", () => { persistState(); syncLayout(false, true); });
+    root.appendChild(advanced);
     root.appendChild(promptWrap);
-    /* ===== AI 生成区块：接管隐藏的 prompt_source/ai_* widget（与隐藏列表一一对应）===== */
-    const aiDetails = make("details"); aiDetails.className = "mxv-advanced mxv-ai";
-    const aiSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 7px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("AI generation"));
-    aiDetails.appendChild(aiSummary);
-    const aiBody = make("div", { display: "grid", gap: "5px", padding: "5px 12px 4px" }); aiBody.className = "mxv-advanced-body";
-    aiDetails.appendChild(aiBody);
-    const aiRows = new Map();
-    const addAi = (name, label, control) => {
-        const row = make("div"); row.className = "mxv-advanced-row";
-        const labelEl = make("label", {}, t(label)); labelEl.dataset.mxvTranslation = label;
-        row.appendChild(labelEl); row.appendChild(control);
-        aiBody.appendChild(row); aiRows.set(name, row);
-    };
-    const aiSelect = select;
-    const aiCheck = (name) => {
-        const label = make("label"); label.className = "mxv-toggle";
-        const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value;
-        const track = make("span"); c.onchange = () => setWidget(node, name, c.checked);
-        label.append(c, track); return label;
-    };
-    const aiText = document.createElement("textarea"); aiText.className = "mxv-control";
-    aiText.rows = 3; aiText.placeholder = t("Idea / prompt to rewrite");
-    aiText.style.width = "100%"; aiText.style.boxSizing = "border-box"; aiText.style.resize = "vertical";
-    aiText.value = String(widget(node, "ai_text")?.value ?? "");
-    aiText.oninput = () => setWidget(node, "ai_text", aiText.value);
-    const aiKey = document.createElement("input"); aiKey.className = "mxv-control"; aiKey.type = "password";
-    aiKey.style.width = "100%"; aiKey.style.boxSizing = "border-box";
-    aiKey.placeholder = t("API key (cleared when sharing the workflow)");
-    aiKey.value = String(widget(node, "ai_api_key")?.value ?? "");
-    aiKey.oninput = () => setWidget(node, "ai_api_key", aiKey.value);
-    const aiSource = aiSelect("prompt_source", ["panel", "ai", "offline", "format"]);
-    const AI_PROVIDERS = ["custom", "dashscope", "deepseek", "glm", "openai", "openrouter", "siliconflow"]; // keep in sync with llm_client.PROVIDERS
-    const aiProvider = aiSelect("ai_provider", AI_PROVIDERS);
-    const aiLanguage = aiSelect("ai_language", ["zh", "mixed", "en"]);
-    const aiMode = aiSelect("ai_mode", ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]);
-    aiMode.onchange = () => {
-        setWidget(node, "ai_mode", aiMode.value);
-        switchMode(aiMode.value === "ref2va" ? "all_reference" : aiMode.value === "auto" ? state.mode : "text_keyframes", true);
-    };
-    const aiEndpoint = document.createElement("input"); aiEndpoint.className = "mxv-control"; aiEndpoint.type = "text";
-    aiEndpoint.style.width = "100%"; aiEndpoint.style.boxSizing = "border-box";
-    aiEndpoint.placeholder = t("endpoint override");
-    aiEndpoint.value = String(widget(node, "ai_endpoint")?.value ?? "");
-    aiEndpoint.oninput = () => setWidget(node, "ai_endpoint", aiEndpoint.value);
-    const aiModel = document.createElement("input"); aiModel.className = "mxv-control"; aiModel.type = "text";
-    aiModel.style.width = "100%"; aiModel.style.boxSizing = "border-box";
-    aiModel.placeholder = t("model override");
-    aiModel.value = String(widget(node, "ai_model")?.value ?? "");
-    aiModel.oninput = () => setWidget(node, "ai_model", aiModel.value);
-    addAi("prompt_source", "Source", aiSource);
-    addAi("ai_text", "Idea / prompt to rewrite", aiText);
-    addAi("ai_language", "Output language", aiLanguage);
-    addAi("ai_mode", "H3 mode", aiMode);
-    addAi("ai_provider", "Provider", aiProvider);
-    addAi("ai_api_key", "API key", aiKey);
-    addAi("ai_endpoint", "Endpoint override", aiEndpoint);
-    addAi("ai_model", "Model override", aiModel);
-    addAi("ai_enrich", "Bounded enrichment", aiCheck("ai_enrich"));
-    addAi("ai_soundscape", "Soundscape", aiCheck("ai_soundscape"));
-    addAi("ai_music", "Music", aiCheck("ai_music"));
-    addAi("ai_auto_timestamps", "Auto timestamps", aiCheck("ai_auto_timestamps"));
-    addAi("ai_fixed_camera", "Fixed camera", aiCheck("ai_fixed_camera"));
-    addAi("ai_visual_stability", "Visual stability", aiCheck("ai_visual_stability"));
-    addAi("ai_no_subtitles", "No-subtitle constraint", aiCheck("ai_no_subtitles"));
-    addAi("ai_anti_pop", "Anti-pop inline dialogue", aiCheck("ai_anti_pop"));
-    addAi("ai_strict_validation", "Strict validation", aiCheck("ai_strict_validation"));
-    addAi("ai_timeout", "AI timeout (seconds)", number("ai_timeout", "1", "15", "600"));
+    /* ===== AI 生成：统一入口（原 AI 区块已删除，配置在 ⚙ 统一弹窗，生成结果填入编辑器）===== */
     /* 共享钥匙串：与优化器配置共用同一份 per-provider API Key（一处填写，两处可用）。 */
     const sharedKeychain = () => {
         const keys = optimizerSettings?.api_keys;
@@ -1453,51 +1379,10 @@ function nodeColorToCss(value) {
         if (optimizerSettings.provider === provider) optimizerSettings.api_key = key;
         persistState();
     };
-    /* 来源联动：panel 时 ai_text 及全部生成参数仅保留来源可见（隐藏其余行）；
-       凭据（平台/Key/模型）统一在「LLM 提示词优化配置」弹窗配置。 */
-    const aiPanelRows = ["ai_text", "ai_language", "ai_mode", "ai_provider", "ai_api_key",
-        "ai_endpoint", "ai_model", "ai_timeout", "ai_enrich", "ai_soundscape", "ai_music",
-        "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability",
-        "ai_no_subtitles", "ai_anti_pop", "ai_strict_validation"];
-    const syncAiRows = () => {
-        const source = String(aiSource.value || "panel");
-        for (const name of aiPanelRows) {
-            const row = aiRows.get(name);
-            if (!row) continue;
-            let show;
-            if (source === "panel") {
-                show = false; // panel：使用提示词编辑器内容，AI 参数整组收起
-            } else if (name === "ai_provider" || name === "ai_api_key" || name === "ai_endpoint" || name === "ai_model") {
-                show = false; // 凭据 4 行收进「生成凭据」摘要行（弹窗内编辑，避免与优化器设置观感重复）
-            } else if (source === "ai") {
-                show = true;
-            } else {
-                // offline/format：不需要创意输入与生成开关，只保留语言/模式/校验等
-                show = ["ai_language", "ai_mode", "ai_strict_validation"].includes(name);
-            }
-            row.style.display = show ? "" : "none";
-        }
-        aiSummary.textContent = `${t("AI generation")} — ${t("Source")}: ${t(source)}`;
-        // syncLayout/measureContentHeight 定义在面板装配后期；此函数在装配早期
-        // 就会被首次调用（TDZ 限制），故延迟到下一帧执行。
-        if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => syncLayout(false, true));
-    };
-    aiSource.onchange = () => { setWidget(node, "prompt_source", aiSource.value); syncAiRows(); };
-    aiProvider.onchange = () => { setWidget(node, "ai_provider", aiProvider.value); syncAiRows(); };
-    syncAiRows();
-    aiDetails.addEventListener("toggle", () => { syncLayout(false, true); });
     const syncAiControls = () => {
-        for (const [name, row] of aiRows) {
-            const control = row.querySelector("input, select, textarea");
-            const value = widget(node, name)?.value;
-            if (!control || value == null) continue;
-            if (control.type === "checkbox") control.checked = !!value;
-            else control.value = String(value);
-        }
-        syncAiRows();
+        // AI 区块已删除；隐藏 widget 恢复依赖 ComfyUI 原生序列化，无需 UI 同步。
+        // 保留空实现供恢复路径调用（onConfigure 中 syncAiControls()）。
     };
-    root.appendChild(aiDetails);
-    root.appendChild(advanced);
     const commitPromptEditorInput = () => {
         const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
         promptPlainText = editorText();
@@ -1765,7 +1650,7 @@ function nodeColorToCss(value) {
             syncLayout(false, true);
         });
     });
-    for (const element of [root, size, modes, promptWrap, aiDetails, advanced]) {
+    for (const element of [root, size, modes, promptWrap, advanced]) {
         panelResizeObserver.observe(element);
     }
     const previousOnResize = node.onResize;
@@ -1877,7 +1762,7 @@ function nodeColorToCss(value) {
     syncMediaWidgets();
     function nextSlot(kind) {
         const slots = state.mode === "text_keyframes"
-            ? (kind === "image" ? (aiMode.value === "l2va" ? ["last_frame", "first_frame"] : ["first_frame", "last_frame"]) : kind === "audio" ? ["hybrid_audio"] : [])
+            ? (kind === "image" ? (String(widget(node, "ai_mode")?.value) === "l2va" ? ["last_frame", "first_frame"] : ["first_frame", "last_frame"]) : kind === "audio" ? ["hybrid_audio"] : [])
             : kind === "image" ? imageSlots.slice(2) : kind === "video" ? videoSlots : audioSlots.slice(1);
         return slots.find(s => !media.has(s));
     }
@@ -1945,8 +1830,6 @@ function nodeColorToCss(value) {
         const task = resolvedTaskType();
         const label = taskLabel(task);
         taskStatus.textContent = `${task} · ${label}`;
-        const automatic = aiMode.querySelector('option[value="auto"]');
-        if (automatic) automatic.textContent = `${t("auto")} — ${label}`;
         dimensions.textContent = canvas(aspectInternalValue(aspect?.value), mp?.value, adaptiveRatio);
         setWidget(node, "task_type", "auto");
     }
@@ -2231,7 +2114,6 @@ function nodeColorToCss(value) {
                 if (keyOwner === genProvider.value) {
                     // 归属生成侧：直接写生成 widget 与钥匙串。
                     setWidget(node, "ai_api_key", current);
-                    aiKey.value = current;
                     setSharedKey(genProvider.value, current);
                 } else {
                     providerApiKeys[keyOwner] = current;
@@ -2455,7 +2337,6 @@ function nodeColorToCss(value) {
                 // 先按归属回存，不能无差别写进优化平台的槽位（审查 S3 串写）。
                 if (keyOwner === genProvider.value) {
                     setWidget(node, "ai_api_key", key.value.trim());
-                    aiKey.value = key.value.trim();
                     setSharedKey(genProvider.value, key.value.trim());
                 } else {
                     providerApiKeys[previousProvider] = key.value;
@@ -2484,7 +2365,6 @@ function nodeColorToCss(value) {
                 // 按归属写回 Key：输入框当前值属于 keyOwner 平台（优化或生成）。
                 if (keyOwner === genProvider.value) {
                     setWidget(node, "ai_api_key", key.value.trim());
-                    aiKey.value = key.value.trim();
                     setSharedKey(genProvider.value, key.value.trim());
                     providerApiKeys[keyOwner] = providerApiKeys[keyOwner] ?? key.value.trim();
                 } else {
@@ -2500,11 +2380,8 @@ function nodeColorToCss(value) {
                 // ===== 生成侧写回：一个弹窗配好两个用途 =====
                 const genProviderValue = genProvider.value;
                 setWidget(node, "ai_provider", genProviderValue);
-                aiProvider.value = genProviderValue;
                 setWidget(node, "ai_model", genModel.value.trim());
-                aiModel.value = genModel.value.trim();
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
-                aiEndpoint.value = genEndpoint.value.trim();
                 // Key 的写回已由 keyOwner 归属逻辑完成（commitKeyToOwner/provider change/save）。
                 refreshOptimizerName(); refreshPromptConnection(); persistState(); close();
             };
@@ -3434,7 +3311,7 @@ function nodeColorToCss(value) {
     function render(preserveAdvancedSettings = false, preservePromptTags = false) {
         const signature = JSON.stringify([...media].map(([slot, entry]) => [slot, entry.name]));
         if (renderedMediaSignature !== null && signature !== renderedMediaSignature) {
-            aiMode.value = "auto"; setWidget(node, "ai_mode", "auto");
+            setWidget(node, "ai_mode", "auto");
         }
         renderedMediaSignature = signature;
         if (!preservePromptTags) normalizePromptTagFormat();
@@ -3442,7 +3319,7 @@ function nodeColorToCss(value) {
         root.querySelector(".mxv-dynamic")?.remove(); const box = make("div"); box.className = "mxv-box mxv-dynamic";
         if (state.mode === "text_keyframes") {
             const grid = make("div"); grid.className = "mxv-keygrid";
-            const selectedMode = aiMode.value;
+            const selectedMode = String(widget(node, "ai_mode")?.value || "auto");
             const slots = selectedMode === "t2va" ? [] : selectedMode === "i2va" ? ["first_frame"] : selectedMode === "l2va" ? ["last_frame"] : ["first_frame", "last_frame"];
             for (const s of ["first_frame", "last_frame"]) {
                 if (slots.includes(s) || media.has(s)) grid.appendChild(media.has(s) ? card(s, media.get(s), false) : addDrop(s));
@@ -3544,7 +3421,7 @@ function nodeColorToCss(value) {
     window.addEventListener("dragover", captureMaterialDrop, true);
     window.addEventListener("drop", captureMaterialDrop, true);
     function switchMode(nextMode, fromAiMode = false) {
-        if (!fromAiMode) { aiMode.value = "auto"; setWidget(node, "ai_mode", "auto"); }
+        if (!fromAiMode) { setWidget(node, "ai_mode", "auto"); }
         promptByMode[state.mode] = prompt.value;
         state.mode = nextMode;
         optimizerBefore = optimizerBeforeByMode[state.mode] ?? null;
@@ -3582,7 +3459,6 @@ function nodeColorToCss(value) {
     updateAdvancedVisibility();
     render();
     advanced.open = true;
-    aiDetails.open = true;
     for (const hook of ["onAdded", "onConfigure", "onGraphConfigured"]) {
         const old = node[hook];
         node[hook] = function(...args) {
@@ -3674,11 +3550,9 @@ function nodeColorToCss(value) {
                 modeRef.classList.toggle("active", state.mode === "all_reference");
                 // 完全展开设计：手风琴始终展开，不恢复历史收起状态。
                 advanced.open = true;
-                aiDetails.open = true;
-                // Hidden widgets are restored by LiteGraph after the panel was
+                            // Hidden widgets are restored by LiteGraph after the panel was
                 // built; resync toggle visuals so they never contradict the
-                // values that actually get submitted.
-                syncAiControls();
+                // values that actually get submitted. AI 区块已删除，凭据走统一弹窗。
                 for (const name of ["strict_prompt_tags", "no_subtitle", "soundscape", "music"]) {
                     const box = advancedRows.get(name)?.querySelector("input[type=checkbox]");
                     if (box) box.checked = !!widget(node, name)?.value;
@@ -3758,8 +3632,7 @@ function nodeColorToCss(value) {
             userHeight = Math.max(0, Number(savedState.height));
         }
         advanced.open = true;
-        aiDetails.open = true;
-        if (node.size?.[0] !== WIDTH || node.size?.[1] !== userHeight) node.setSize([WIDTH, userHeight]);
+            if (node.size?.[0] !== WIDTH || node.size?.[1] !== userHeight) node.setSize([WIDTH, userHeight]);
         syncLayout(userHeight, true);
         refreshPromptConnection();
         if (initialRestoreEpoch === restoreEpoch) {
