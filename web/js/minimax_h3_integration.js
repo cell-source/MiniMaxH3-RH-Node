@@ -1122,7 +1122,7 @@ function createPanel(node) {
         const providerName = ({
             runninghub: "RunningHub 国内版", runninghub_overseas: "RunningHub 海外版", openai: "OpenAI", gemini: "Google Gemini",
             openrouter: "OpenRouter", dashscope: "阿里云百炼", siliconflow: "SiliconFlow",
-            deepseek: "DeepSeek", glm: "智谱 GLM", custom: "API",
+            deepseek: t("deepseek"), glm: t("glm"), custom: "API",
         })[polishProviderValue()] || "API";
         return name ? `${providerName}: ${name}` : providerName;
     };
