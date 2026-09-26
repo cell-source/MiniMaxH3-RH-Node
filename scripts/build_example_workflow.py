@@ -6,11 +6,23 @@ Each mode ships `<mode>.workflow.json` (canvas) and `<mode>.api.json` (API promp
 format). Media slots that the mode requires carry SELECT_YOUR_* placeholder
 filenames so the intended wiring is obvious; users replace them with real
 uploads before running, exactly like the UNETLoader diffusion-model placeholder.
+
+2026-09-26（上线评估 A3）：
+- 画布示例此前只给节点 3/4 写 `widgets_values`，主节点与 UNETLoader 落成 `null`，
+  导入后是空节点；现在两节点都写入完整参数（含 `SELECT_YOUR_*` 占位）。
+- 画布示例的来源固定为 `panel`，并在 `prompt` 写入**引擎校验通过**的完整提示词：
+  面板的迁移 v2 会把任何非 `panel` 来源改写为 `panel`，沿用 `offline` 只会得到
+  “来源被改写 + 编辑器为空”。`offline`/`format` 仅保留给 API 示例（`.api.json`）。
 """
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from prompt_runtime import generate_prompt  # noqa: E402  （与运行期同一套 quickjs 引擎）
 
 # Ref2VA 不能用 offline（离线包装不生成六 section），示例按 README 指引使用
 # format 操作整理一份完整、可通过严格校验的六 section 提示词。
@@ -75,6 +87,65 @@ MODES = {
                           "ref_audio_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"}),
 }
 
+# ComfyUI 序列化 `widgets_values` 的顺序 = 节点 widget 的创建顺序。与本文件并列维护
+# （已对照运行中的节点 62 个 widget 逐个校验）；video_nodes.py 增删 widget 时
+# aio_widget_values() 会报错，提醒同步更新。
+AIO_WIDGET_ORDER = (
+    "main_mode", "clip_name", "video_vae_name", "audio_vae_name", "aspect", "megapixels",
+    "duration_seconds", "prompt", "task_type", "audio_mode", "audio_denoise_strength",
+    "drive_audio_ordinal", "strict_prompt_tags", "ref_image_size", "no_subtitle", "soundscape",
+    "music", "steps", "shift_video", "shift_audio", "noise_seed",
+    "control_after_generate",  # ComfyUI 为 seed 注入的控件
+    "prompt_source", "ai_text", "ai_language", "ai_mode", "ai_enrich", "ai_soundscape", "ai_music",
+    "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability", "ai_no_subtitles", "ai_anti_pop",
+    "ai_strict_validation", "ai_provider", "first_frame", "last_frame", "hybrid_audio",
+) + tuple(f"ref_image_{i}" for i in range(1, 10)) + tuple(
+    f"ref_video_{i}" for i in range(1, 4)) + tuple(
+    f"ref_audio_{i}" for i in range(1, 4)) + (
+    "gh_state_json", "sampler_name", "scheduler", "ai_api_key", "ai_endpoint", "ai_model", "ai_timeout",
+    "mxv_panel",  # 面板注入的 DOM widget（serialize:false，占位空值）
+)
+
+# 不在 AIO_BASE / spec 内的 widget：取 schema 默认值（见 sampling.py）或前端注入值。
+AIO_WIDGET_DEFAULTS = {
+    "control_after_generate": "fixed",  # 示例固定种子，便于复现
+    "sampler_name": "dual_clock_euler",
+    "scheduler": "native_flow",
+    "mxv_panel": "",
+    **{f"ref_image_{i}": "" for i in range(1, 10)},
+    **{f"ref_video_{i}": "" for i in range(1, 4)},
+    **{f"ref_audio_{i}": "" for i in range(1, 4)},
+}
+
+
+def aio_widget_values(values: dict) -> list:
+    """按 ComfyUI 的 widget 顺序展开为 widgets_values；schema 变化时立即报错而非静默错位。"""
+    missing = sorted(name for name in AIO_WIDGET_ORDER if name not in values and name not in AIO_WIDGET_DEFAULTS)
+    if missing:
+        raise RuntimeError("AIO 节点的 widget 与 AIO_WIDGET_ORDER 不同步，请先同步脚本：" + ", ".join(missing))
+    ordered = [values[name] if name in values else AIO_WIDGET_DEFAULTS[name] for name in AIO_WIDGET_ORDER]
+    if len(ordered) != len(AIO_WIDGET_ORDER) or len(set(AIO_WIDGET_ORDER)) != len(AIO_WIDGET_ORDER):
+        raise RuntimeError("AIO_WIDGET_ORDER 存在重复项或长度异常")
+    return ordered
+
+
+def canvas_prompt(spec: dict) -> str:
+    """用运行期同一套引擎把示例文本整理成完整提示词（画布示例以编辑器内容为准）。"""
+    values = {**AIO_BASE, "ai_mode": spec["mode"], "main_mode": spec["main_mode"]}
+    controls = {
+        "mode": spec["mode"], "lang": values["ai_language"], "duration": str(values["duration_seconds"]),
+        "ratio": values["aspect"], "model": values["ai_provider"],
+        "enrich_do_enrich": values["ai_enrich"], "enrich_soundscape": values["ai_soundscape"],
+        "enrich_music": values["ai_music"], "auto_timestamps": values["ai_auto_timestamps"],
+        "fixed_camera": values["ai_fixed_camera"], "visual_stability": values["ai_visual_stability"],
+        "no_subtitles": values["ai_no_subtitles"], "anti_pop": values["ai_anti_pop"],
+    }
+    operation = spec.get("prompt_source", "offline")
+    result = generate_prompt(spec["text"], operation, controls, None, lambda: None)
+    if not result["valid"]:
+        raise RuntimeError(f"{spec['mode']} 的 {operation} 结果未通过引擎严格校验：{result['report']}")
+    return result["prompt"]
+
 
 def build_graph(spec):
     values = dict(AIO_BASE)
@@ -108,8 +179,18 @@ def build_graph(spec):
         4: [],
     }
     positions = {1: [0, 0], 2: [420, 0], 3: [1240, 0], 4: [1620, 0]}
-    sizes = {1: [315, 106], 2: [520, 780], 3: [315, 266], 4: [315, 266]}
-    widgets_by_node = {3: [24.0, "auto", "sRGB", "none"], 4: ["video/MiniMaxH3-RH", "mp4", "h264"]}
+    sizes = {1: [315, 106], 2: [520, 900], 3: [315, 266], 4: [315, 266]}
+    # 画布示例与 API 示例参数一致（评估 A3）：主节点与 UNETLoader 此前均为 null。
+    canvas_values = dict(values)
+    canvas_values["prompt_source"] = "panel"       # 面板迁移 v2 会把非 panel 来源改写为 panel
+    canvas_values["prompt"] = canvas_prompt(spec)  # 引擎校验过的完整提示词（编辑器内容）
+    canvas_values["ai_text"] = ""                  # panel 路径下 ai_text 只是编辑器镜像
+    widgets_by_node = {
+        1: [graph["1"]["inputs"]["unet_name"], graph["1"]["inputs"]["weight_dtype"]],
+        2: aio_widget_values(canvas_values),
+        3: [24.0, "auto", "sRGB", "none"],
+        4: ["video/MiniMaxH3-RH", "mp4", "h264"],
+    }
 
     nodes, links = [], []
     for node_id, output_defs in outputs_by_node.items():

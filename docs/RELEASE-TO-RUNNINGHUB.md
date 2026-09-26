@@ -46,8 +46,9 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
    接入节点 `model` 输入。
 3. 节点上选择已安装的 H3 文本编码器、视频 VAE、音频 VAE；按模式上传首帧/尾帧/参考素材
    （替换对应 `SELECT_YOUR_*` 占位）。
-4. `prompt_source` 选择提示词来源（`panel` 编辑器 / `ai` 在线生成 / `offline` 包装 / `format` 整理）；
-   `ai` 时在 `ai_*` 参数组填写创意输入与 LLM 配置。
+4. 提示词写进节点的**编辑器**（画布示例已填好各模式的完整提示词）；面板固定以编辑器内容为准。
+   仅在 API 调用或直接编辑工作流 JSON 时才用到 `prompt_source` 的 `ai` / `offline` / `format`
+   （见 `examples/*.api.json`），`ai` 时在 `ai_*` 参数组填写创意输入与 LLM 配置。
 5. 节点内部完成条件构建 → 双时钟采样 → 音视频解码；`frames`/`audio` → CreateVideo → SaveVideo。
 
 ## API 调用注意（工作流 API 用户）
@@ -58,8 +59,8 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
   （`DEEPSEEK_API_KEY` / `GLM_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` /
   `DASHSCOPE_API_KEY` / `SILICONFLOW_API_KEY` / 通用 `H3_LLM_API_KEY`）。
 - `ai_strict_validation` 默认开启：提示词校验失败节点抛错中止执行；需要拿到文本人工修正时置 false。
-- 一体化节点的 `no_subtitle`/`soundscape`/`music` 开关仅作用于 `prompt_source=panel` 的手写提示词；
-  `ai/offline/format` 来源时由 `ai_*` 参数组接替。
+- 面板界面只写 `prompt_source=panel`（以编辑器内容为准）；`ai`/`offline`/`format` 三种来源供 API 调度使用，
+  此时 `no_subtitle`/`soundscape`/`music` 开关由 `ai_*` 参数组接替。
 - 提示词优化器路由为 `/rh/minimax-h3/prompt-optimizer/...`，前端自动匹配，无需配置。
 
 ## 本机实测（2026-09-24，ComfyUI 0.37.0 / Python 3.10 / CPU 模式）

@@ -30,7 +30,10 @@
       "properties": {
         "Node name for S&R": "UNETLoader"
       },
-      "widgets_values": null
+      "widgets_values": [
+        "SELECT_YOUR_H3_DIFFUSION_MODEL.safetensors",
+        "default"
+      ]
     },
     {
       "id": 2,
@@ -41,7 +44,7 @@
       ],
       "size": [
         520,
-        780
+        900
       ],
       "flags": {},
       "order": 1,
@@ -86,7 +89,70 @@
       "properties": {
         "Node name for S&R": "MiniMaxH3IntegrationRH"
       },
-      "widgets_values": null
+      "widgets_values": [
+        "all_reference",
+        "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        "minimax_h3_video_vae_fp16.safetensors",
+        "minimax_h3_audio_vae_fp32.safetensors",
+        "16:9",
+        0.5,
+        5,
+        "subject_definitions:\n<Subject 1> is the woman in <Picture 1>, with long dark hair and a light-grey coat.\n\nsummary:\n[reference generation] The target video shows <Subject 1> standing still in the referenced scene.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - identity, hairstyle, and coat are retained.\n\ndetailed_description:\n[Shot 1] From the first frame through the final frame, deliver a clean picture master: every part of the image belongs to the depicted scene, including the full lower third, bottom edge, upper edge, and corners. Every spoken word, including dialogue, narration, announcements, and off-screen voices, is an audio performance only; dialogue quotations, language labels, and speaker identifiers in this prompt are instructions for the soundtrack alone. For visible speakers, show only the mouth movement and performance specified by the scene; off-screen speech keeps its established off-screen source and leaves visible mouths in their described state. Throughout each utterance and the pauses before and after it, the lower third and all frame edges continuously retain the existing scene detail, texture, depth, and lighting, just as they do during silence. The visual image evolves solely through the actions and camera behavior already specified, independently of the wording, language, timing, and rhythm of speech; preserve the existing composition and scene objects. Visible writing is limited to text explicitly established on physical objects in the scene, attached to those surfaces with their perspective and occlusion, retaining its scene-defined content independently of spoken words. Treat the soundtrack and picture as separate production channels: all spoken wording is delivered to the ear, while the eye receives only the scene itself, continuously for the entire clip.\n\n<Subject 1> stands still in the scene referenced from <Picture 1>.\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A",
+        "ref2va",
+        "native",
+        0.0,
+        0,
+        true,
+        "match",
+        true,
+        false,
+        false,
+        4,
+        12.0,
+        3.0,
+        42,
+        "fixed",
+        "panel",
+        "",
+        "en",
+        "ref2va",
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        true,
+        false,
+        true,
+        "deepseek",
+        "",
+        "",
+        "",
+        "SELECT_YOUR_REFERENCE_IMAGE_1.png",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "SELECT_YOUR_REFERENCE_VIDEO_1.mp4",
+        "",
+        "",
+        "SELECT_YOUR_REFERENCE_AUDIO_1.wav",
+        "",
+        "",
+        "",
+        "dual_clock_euler",
+        "native_flow",
+        "",
+        "",
+        "",
+        180,
+        ""
+      ]
     },
     {
       "id": 3,

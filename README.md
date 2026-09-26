@@ -27,7 +27,11 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 `<mode>.api.json` 是同一图的 API prompt 格式（用于 ComfyUI `/prompt` 的 `prompt` 字段；不是 RunningHub
 工作流调用接口的请求体）。
 
-| 示例 | 提示词来源 / 模式 | 节点上需要上传的素材 |
+画布示例（`.workflow.json`）已补齐 4 个节点的参数：主节点的提示词直接写进**编辑器**（面板恒以编辑器
+内容为准，`prompt_source` 写作 `panel`，文本由引擎整理并校验通过），素材与扩散模型为 `SELECT_YOUR_*`
+占位；API 示例（`.api.json`）保留 `offline`/`format` 来源（API 路径不经面板，后端仍支持这三种来源）。
+
+| 示例 | API 示例来源 / 模式 | 节点上需要上传的素材 |
 | --- | --- | --- |
 | `t2va.*` | offline / t2va | 无 |
 | `i2va.*` | offline / i2va | 首帧（first_frame） |
@@ -35,30 +39,32 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 | `l2va.*` | offline / l2va | 尾帧（last_frame） |
 | `ref2va.*` | format / ref2va | 参考图、参考视频、参考音频（按需） |
 
-`ref2va` 示例用 `format` 来源整理一份完整的六 section 提示词；离线包装不生成六 section，Ref2VA 建议
-用 AI 生成或对完整六 section 输入选择 format。示例中的 `SELECT_YOUR_*` 是占位文件名（扩散模型、
-首尾帧、参考素材），运行前替换为实际上传。每张图仅 4 个节点：
+`ref2va` 的 API 示例用 `format` 来源整理一份完整的六 section 提示词（画布示例的编辑器里就是同一份文本）；
+离线包装不生成六 section，Ref2VA 建议用 AI 生成或对完整六 section 输入选择 format。示例中的
+`SELECT_YOUR_*` 是占位文件名（扩散模型、首尾帧、参考素材），运行前替换为实际上传。每张图仅 4 个节点：
 
 1. 在 UNETLoader 选择实际 H3 扩散模型（占位 `SELECT_YOUR_H3_DIFFUSION_MODEL.safetensors`），接入节点 `model`。
 2. 在节点上选择已安装的 H3 文本编码器、视频 VAE、音频 VAE；按模式上传素材。
-3. `prompt_source` 默认 `panel`（直接使用提示词编辑器内容）；示例用 `offline`（离线包装 `ai_text`），
-   可改 `ai`（AI 在线生成，需配置 LLM Key）或 `format`（整理完整 H3 提示词）。
+3. 提示词直接写在**编辑器**里（面板固定以编辑器内容为准，`prompt_source` 写入 `panel`）；画布示例已填好
+   各模式的完整提示词，可直接改用。`ai` / `offline` / `format` 三种来源仅对 API 调用与直接编辑工作流
+   JSON 的用户有效（见 `examples/*.api.json`）。
 4. 节点内部完成条件构建 → 双时钟采样 → 音视频解码，输出 `frames` / `audio` → CreateVideo → SaveVideo。
 5. 视频以 24fps 合成。`audio` 输出口按音频模式自动选择：锁定原声输出源音轨，否则输出生成音轨。
 
 节点只读取文字与上传素材；它不会自动读取未上传的图片或视频，请在提示词中写明参考内容和标签。
 面板保留参考项目的素材预览与手动优化器；提示词引擎在工作流执行时运行，支持无浏览器的 API 调度。
 
-提示词来源为 `panel` 时，编辑器自带的无字幕/音景/配乐开关用于给手写提示词追加约束；
-`ai/offline/format` 时这些选项由 `ai_*` 参数组接替。
+编辑器自带的无字幕/音景/配乐开关（以及高级选项）用于给手写/生成的提示词追加约束；API 调用使用
+`ai/offline/format` 来源时，对应的 `ai_*` 参数组接替这些开关。
 
 ## 提示词生成（节点内置）
 
-提示词生成已内置于 All-in-One 节点：`prompt_source` 选择 `ai` / `offline` / `format` 时生效。
+提示词生成已内置于 All-in-One 节点：API 调用把 `prompt_source` 设为 `ai` / `offline` / `format` 时生效；
+面板界面不再提供来源选择（恒为 `panel`，即编辑器内容）。
 
 | 参数 | 用途 |
 | --- | --- |
-| prompt_source | `panel` 用编辑器内容；`ai` 在线生成；`offline` 原文包装；`format` 整理已有完整 H3 提示词 |
+| prompt_source | 面板恒写入 `panel`（用编辑器内容）；API 调用可选 `ai` 在线生成 / `offline` 原文包装 / `format` 整理已有完整 H3 提示词 |
 | ai_text | 创意输入或待整理提示词 |
 | ai_language | `zh` 正文和对白中文；`en` 全英文；`mixed` 英文正文、对白保留原文 |
 | ai_mode | `auto` 随主模式；或固定 t2va/i2va/fl2va/l2va/ref2va |
