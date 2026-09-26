@@ -249,13 +249,13 @@ const DOM_TRANSLATIONS = {
     "Up to 3 videos": "最多3个视频",
     "Up to 3 audios": "最多3个音频",
     "Optimize": "润色", "LLM Prompt Optimization Configuration": "LLM 配置（润色 / AI 生成）",
-    "Provider": "润色平台（✦ 润色专用，需视觉模型）",
+    "Polish provider": "润色平台（需视觉模型）",
     "Generation provider": "生成平台（✨/≡/运行期专用，纯文本即可）", "API key": "API Key", "Read visual references": "读取视觉素材",
     "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
     "Key shared with prompt optimizer": "与提示词优化器共享",
     "Generation model": "生成模型", "Generation endpoint": "生成端点",
     "Default: provider preset model": "留空使用平台预设模型",
-    "One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.": "一个入口配全部用途：润色用优化模型——勾选自动润色随运行执行，或点下方 ✦ 立即改写表达；AI 生成用生成平台——按官方 H3 结构重新生成（也供运行时提示词生成）。",
+    "AI generation is the core feature: it covers the toolbar \u2728 generate, \u2261 format, and run-time prompt processing. Prompt polishing (\u2726) is a sub-feature configured below.": "AI 生成是主题功能：涵盖工具条 \u2728 生成、\u2261 整理与运行期提示词处理；润色（\u2726）是其子功能，配置见下方。",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
@@ -276,7 +276,8 @@ const DOM_TRANSLATIONS = {
     "Generation prompt failed": "AI 生成失败",
     "AI generation options": "AI 生成选项",
     "Polish settings": "润色（✦ 润色按钮使用）",
-    "AI generation settings": "AI 生成（✨ 生成 / ≡ 整理 / 运行期生成共用）",
+    "AI generation": "AI 生成（主题功能）",
+    "Prompt polishing (sub-feature)": "润色（✦ 子功能：改写表达，可读取素材画面）",
     "Generation language": "生成语言（✨/≡/运行期生成专用）",
     "AI timeout": "AI 超时（秒）",
     "Cancel processing": "取消处理",
@@ -2181,30 +2182,105 @@ function nodeColorToCss(value) {
             const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
             const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
             const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); return control; };
-            // 分区容器（2026-09-26 可用性重构）：同一配置界面内的两个归组标签，
-            // 标题与 body 始终挂 dialog 根；sectionBox 只决定 row 的归属。
+            // 分区容器（2026-09-26 层级重构）：AI 生成是主题功能，润色是其子功能——
+            // 主分区在前，润色作为子分组（缩进弱化）后置；sectionBox 只决定 row 的归属。
             let sectionBox = dialog;
-            const beginSection = title => {
-                const head = make("div", {}, t(title)); head.className = "mxv-opt-section"; dialog.append(head);
-                const body = make("div"); body.className = "mxv-opt-section-body"; dialog.append(body);
+            const beginSection = (title, kind = "main") => {
+                const head = make("div", {}, t(title)); head.className = kind === "sub" ? "mxv-opt-subsection" : "mxv-opt-section"; dialog.append(head);
+                const body = make("div"); body.className = kind === "sub" ? "mxv-opt-subsection-body" : "mxv-opt-section-body"; dialog.append(body);
                 return body;
             };
             const purpose = make("div"); purpose.className = "mxv-opt-purpose";
-            purpose.textContent = t("One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.");
+            purpose.textContent = t("AI generation is the core feature: it covers the toolbar ✨ generate, ≡ format, and run-time prompt processing. Prompt polishing (✦) is a sub-feature configured below.");
             dialog.append(purpose);
-            const polishSection = beginSection("Polish settings");
-            sectionBox = polishSection;
-            const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
-            const provider = row("Provider", make("select"));
-            for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
-            provider.value = current.provider || "runninghub";
+            const mainSection = beginSection("AI generation");
+            sectionBox = mainSection;
+            const polishSection = beginSection("Prompt polishing (sub-feature)", "sub");
+            sectionBox = mainSection;
+            // 共享钥匙串/模型池声明：两个分区的 Key 行都写这里。
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
-            // 生成侧 Key 独立输入（同属一把共享钥匙串）：打开配置时先从 widget 回填。
             const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
             if (!Object.hasOwn(providerApiKeys, savedGenProvider)) providerApiKeys[savedGenProvider] = cleanPrompt(widget(node, "ai_api_key")?.value);
             const providerModels = { ...(current.provider_models || {}) };
             if (current.model && !providerModels[current.provider || "runninghub"]) providerModels[current.provider || "runninghub"] = current.model;
+            const genProvider = row("Generation provider", make("select"));
+            for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
+            genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
+            const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_api_key")?.value);
+            genKey.onchange = () => {
+                // 分区 Key 行即时写回共享钥匙串与生成 widget（与润色 Key 行同语义）。
+                providerApiKeys[genProvider.value] = genKey.value.trim();
+                setSharedKey(genProvider.value, genKey.value.trim());
+                setWidget(node, "ai_api_key", genKey.value.trim());
+            };
+            const genModel = row("Generation model", make("input"));
+            genModel.placeholder = t("model override");
+            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
+            const genEndpoint = row("Generation endpoint", make("input"));
+            genEndpoint.placeholder = t("endpoint override");
+            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
+            const syncGenRows = () => {
+                const custom = genProvider.value === "custom";
+                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
+                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
+                genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
+            };
+            genProvider.onchange = () => {
+                syncGenRows();
+                // 平台切换：加载新平台的共享 Key（无则清空）；旧平台 Key 已即时写回钥匙串。
+                genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
+            };
+            syncGenRows();
+            const source = row("Source", make("select"));
+            for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
+            source.value = String(widget(node, "prompt_source")?.value || "panel");
+            // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：不再单独维护"创意"文本，
+            // ai_text 由 mirrorSourceIdea 自动镜像编辑器，来源仅在配置界面显式切换。
+            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); };
+            const sourceHint = make("div", {}, t("The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is."));
+            sourceHint.className = "mxv-opt-purpose"; sectionBox.append(sourceHint);
+            const genMode = row("H3 mode", make("select"));
+            for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
+            genMode.value = String(widget(node, "ai_mode")?.value || "auto");
+            genMode.onchange = () => { setWidget(node, "ai_mode", genMode.value); persistState(); };
+            // 开关直接读写隐藏 ai_* widget：与工作流序列化同源，运行期 ai/offline 兼容路径复用同一份取值。
+            const genChecks = make("div"); genChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
+            const genSwitchRow = (label, name) => {
+                const wrap = make("label"); wrap.className = "mxv-opt-gen-item";
+                const input = document.createElement("input"); input.type = "checkbox"; input.className = "mxv-opt-check";
+                input.checked = !!widget(node, name)?.value;
+                input.onchange = () => { setGenerationOption(name, input.checked); persistState(); };
+                wrap.append(input, make("span", {}, t(label))); genChecks.append(wrap);
+            };
+            genSwitchRow("Bounded enrichment", "ai_enrich");
+            genSwitchRow("Soundscape", "ai_soundscape");
+            genSwitchRow("Music", "ai_music");
+            genSwitchRow("Auto timestamps", "ai_auto_timestamps");
+            genSwitchRow("Fixed camera", "ai_fixed_camera");
+            genSwitchRow("Visual stability", "ai_visual_stability");
+            genSwitchRow("No-subtitle constraint", "ai_no_subtitles");
+            genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
+            genSwitchRow("Strict validation", "ai_strict_validation");
+            sectionBox.append(genChecks);
+            const soundHint = make("div", {}, t("Sound and subtitle options also apply when running editor prompts."));
+            soundHint.className = "mxv-opt-purpose"; sectionBox.append(soundHint);
+            const genLanguage = make("select"); genLanguage.className = "mxv-control";
+            for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
+            genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
+            genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value);
+            const genTimeout = document.createElement("input"); genTimeout.type = "number"; genTimeout.min = "15"; genTimeout.max = "600"; genTimeout.step = "5"; genTimeout.className = "mxv-control";
+            genTimeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_timeout")?.value) || 180)));
+            genTimeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(genTimeout.value) || 180)); genTimeout.value = String(value); setWidget(node, "ai_timeout", value); };
+            const genRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); };
+            genRow("Generation language", genLanguage);
+            genRow("AI timeout", genTimeout);
+            /* ===== 润色（✦）＝AI 生成的子功能：配置以子分组呈现，渲染在后 ===== */
+            sectionBox = polishSection;
+            const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
+            const provider = row("Polish provider", make("select"));
+            for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
+            provider.value = current.provider || "runninghub";
             const key = row("API key", make("input")); key.type = "password"; key.value = providerApiKeys[provider.value] || "";
             key.onchange = () => { providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim()); };
             const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "mxv-opt-check";
@@ -2420,79 +2496,6 @@ function nodeColorToCss(value) {
                 sync();
             }); mode.addEventListener("change", sync); sync();
             provider.dataset.previousValue = provider.value;
-            /* ===== AI 生成区：平台/模型/Key/来源/开关全部归入本区（2026-09-26 分区重构）===== */
-            sectionBox = beginSection("AI generation settings");
-            const genProvider = row("Generation provider", make("select"));
-            for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
-            genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
-            const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_api_key")?.value);
-            genKey.onchange = () => {
-                // 分区 Key 行即时写回共享钥匙串与生成 widget（与润色 Key 行同语义）。
-                providerApiKeys[genProvider.value] = genKey.value.trim();
-                setSharedKey(genProvider.value, genKey.value.trim());
-                setWidget(node, "ai_api_key", genKey.value.trim());
-            };
-            const genModel = row("Generation model", make("input"));
-            genModel.placeholder = t("model override");
-            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
-            const genEndpoint = row("Generation endpoint", make("input"));
-            genEndpoint.placeholder = t("endpoint override");
-            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
-            const syncGenRows = () => {
-                const custom = genProvider.value === "custom";
-                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
-                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
-                genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
-            };
-            genProvider.onchange = () => {
-                syncGenRows();
-                // 平台切换：加载新平台的共享 Key（无则清空）；旧平台 Key 已即时写回钥匙串。
-                genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
-            };
-            syncGenRows();
-            const source = row("Source", make("select"));
-            for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
-            source.value = String(widget(node, "prompt_source")?.value || "panel");
-            // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：不再单独维护"创意"文本，
-            // ai_text 由 mirrorSourceIdea 自动镜像编辑器，来源仅在配置界面显式切换。
-            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); };
-            const sourceHint = make("div", {}, t("The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is."));
-            sourceHint.className = "mxv-opt-purpose"; dialog.append(sourceHint);
-            const genMode = row("H3 mode", make("select"));
-            for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
-            genMode.value = String(widget(node, "ai_mode")?.value || "auto");
-            genMode.onchange = () => { setWidget(node, "ai_mode", genMode.value); persistState(); };
-            // 开关直接读写隐藏 ai_* widget：与工作流序列化同源，运行期 ai/offline 兼容路径复用同一份取值。
-            const genChecks = make("div"); genChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
-            const genSwitchRow = (label, name) => {
-                const wrap = make("label"); wrap.className = "mxv-opt-gen-item";
-                const input = document.createElement("input"); input.type = "checkbox"; input.className = "mxv-opt-check";
-                input.checked = !!widget(node, name)?.value;
-                input.onchange = () => { setGenerationOption(name, input.checked); persistState(); };
-                wrap.append(input, make("span", {}, t(label))); genChecks.append(wrap);
-            };
-            genSwitchRow("Bounded enrichment", "ai_enrich");
-            genSwitchRow("Soundscape", "ai_soundscape");
-            genSwitchRow("Music", "ai_music");
-            genSwitchRow("Auto timestamps", "ai_auto_timestamps");
-            genSwitchRow("Fixed camera", "ai_fixed_camera");
-            genSwitchRow("Visual stability", "ai_visual_stability");
-            genSwitchRow("No-subtitle constraint", "ai_no_subtitles");
-            genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
-            genSwitchRow("Strict validation", "ai_strict_validation");
-            sectionBox.append(genChecks);
-            const soundHint = make("div", {}, t("Sound and subtitle options also apply when running editor prompts."));
-            soundHint.className = "mxv-opt-purpose"; sectionBox.append(soundHint);
-            const genLanguage = make("select"); genLanguage.className = "mxv-control";
-            for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
-            genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
-            genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value);
-            const genTimeout = document.createElement("input"); genTimeout.type = "number"; genTimeout.min = "15"; genTimeout.max = "600"; genTimeout.step = "5"; genTimeout.className = "mxv-control";
-            genTimeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_timeout")?.value) || 180)));
-            genTimeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(genTimeout.value) || 180)); genTimeout.value = String(value); setWidget(node, "ai_timeout", value); };
-            const genRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); };
-            genRow("Generation language", genLanguage);
-            genRow("AI timeout", genTimeout);
             const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
             // 配置界面纯配置（2026-09-26）：✦ 润色与 ≡/✨ 一样是工具条一键直出动作。
