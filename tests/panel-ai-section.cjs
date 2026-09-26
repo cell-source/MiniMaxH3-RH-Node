@@ -85,6 +85,13 @@ for (const match of js.matchAll(/(?:addAi|addAdvanced)\("[^"]+", "([^"]+)"|(?:ro
     context.label = match[1] || match[2];
     check(vm.runInContext('Object.hasOwn(DOM_TRANSLATIONS, label)', context), 'translated indirect label: ' + context.label);
 }
+/* beginSection 的分区标题同样必须走 t()：防止英文标题漏翻译再次上线。 */
+for (const match of js.matchAll(/beginSection\("([^"]+)"\)/g)) {
+    context.label = match[1];
+    check(vm.runInContext('Object.hasOwn(DOM_TRANSLATIONS, label)', context), 'translated section title: ' + context.label);
+}
+check(!js.includes('beginSection("Polish settings (') && !js.includes('beginSection("AI generation settings ('),
+    'section titles stay short (zone hint lives in the translation)');
 const nodeDefs = JSON.parse(fs.readFileSync(path.join(root, 'locales/zh/nodeDefs.json'), 'utf8'));
 const definition = Object.values(nodeDefs).find(d => d.inputs?.prompt_source);
 check(!!definition, 'localized integration node found');

@@ -275,6 +275,8 @@ const DOM_TRANSLATIONS = {
     "Generation API key is missing. Open settings now?": "尚未配置生成模型 API Key，是否立即打开设置？",
     "Generation prompt failed": "AI 生成失败",
     "AI generation options": "AI 生成选项",
+    "Polish settings": "润色（✦ 润色按钮使用）",
+    "AI generation settings": "AI 生成（✨ 生成 / ≡ 整理 / 运行期生成共用）",
     "Generation language": "生成语言（✨/≡/运行期生成专用）",
     "AI timeout": "AI 超时（秒）",
     "Cancel processing": "取消处理",
@@ -594,7 +596,7 @@ function createPanel(node) {
       .mxv-toggle input:focus-visible+span{outline:2px solid #e8a33d;outline-offset:2px}
       .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
       .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
-      .mxv-opt-section{font-size:11px;color:#e8e6e1;margin:12px 0 2px;padding-top:9px;border-top:1px solid #383e46}
+      .mxv-opt-section{font-size:10px;color:#8c8983;margin:10px 0 2px;padding-top:8px;border-top:1px dashed #2e3238}
       .mxv-opt-section:first-child{margin-top:0;border-top:0;padding-top:0}
       .mxv-opt-section-body{display:flex;flex-direction:column}
       .mxv-opt-section-body>.mxv-opt-purpose{margin:2px 0 6px}
@@ -2179,19 +2181,18 @@ function nodeColorToCss(value) {
             const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
             const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
             const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); return control; };
-            // 分区容器（2026-09-26 可用性重构）：按「润色 / AI 生成」归组行，消除两套配置混排的迷失感。
+            // 分区容器（2026-09-26 可用性重构）：同一配置界面内的两个归组标签，
             // 标题与 body 始终挂 dialog 根；sectionBox 只决定 row 的归属。
             let sectionBox = dialog;
             const beginSection = title => {
-                dialog.append(make("div", {}, t(title)));
-                dialog.lastChild.className = "mxv-opt-section";
+                const head = make("div", {}, t(title)); head.className = "mxv-opt-section"; dialog.append(head);
                 const body = make("div"); body.className = "mxv-opt-section-body"; dialog.append(body);
                 return body;
             };
             const purpose = make("div"); purpose.className = "mxv-opt-purpose";
             purpose.textContent = t("One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.");
             dialog.append(purpose);
-            const polishSection = beginSection("Polish settings (✦)");
+            const polishSection = beginSection("Polish settings");
             sectionBox = polishSection;
             const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
             const provider = row("Provider", make("select"));
@@ -2420,12 +2421,13 @@ function nodeColorToCss(value) {
             }); mode.addEventListener("change", sync); sync();
             provider.dataset.previousValue = provider.value;
             /* ===== AI 生成区：平台/模型/Key/来源/开关全部归入本区（2026-09-26 分区重构）===== */
-            sectionBox = beginSection("AI generation settings (✨/≡)");
+            sectionBox = beginSection("AI generation settings");
             const genProvider = row("Generation provider", make("select"));
             for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
             genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
             const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_api_key")?.value);
             genKey.onchange = () => {
+                // 分区 Key 行即时写回共享钥匙串与生成 widget（与润色 Key 行同语义）。
                 providerApiKeys[genProvider.value] = genKey.value.trim();
                 setSharedKey(genProvider.value, genKey.value.trim());
                 setWidget(node, "ai_api_key", genKey.value.trim());
@@ -2448,9 +2450,6 @@ function nodeColorToCss(value) {
                 genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
             };
             syncGenRows();
-            const genPurpose = make("div"); genPurpose.className = "mxv-opt-purpose";
-            genPurpose.textContent = t("These options configure AI generation and run-time prompt processing; the input always comes from the prompt editor.");
-            sectionBox.append(genPurpose);
             const source = row("Source", make("select"));
             for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
             source.value = String(widget(node, "prompt_source")?.value || "panel");
