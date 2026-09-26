@@ -184,6 +184,20 @@ check(dialogBody.includes('polishCheckRow("Read visual references", readMedia)')
     && dialogBody.includes('polishCheckRow("Automatic optimization before run", autoOptimize)'),
     'polish behavior toggles stay in the config dialog');
 
+/* 8c. 润色请求正确性（2026-09-26 审查修复）：协议按平台映射、custom 守卫、缓存签名读真实配置源 */
+check(polishBody.includes('protocol: polishProvider === "gemini" ? "gemini" : "openai"'),
+    'polish protocol maps per provider (gemini no longer hardcoded openai)');
+check(polishBody.includes('polishProvider === "custom" && (!polishEndpoint || !polishModel)'),
+    'custom polish guard requires both endpoint and model');
+const signatureBody = js.slice(js.indexOf('function optimizerContextSignature('), js.indexOf('function optimizerTaskContext('));
+check(signatureBody.includes('String(widget(node, "ai_provider")?.value || "")')
+    && signatureBody.includes('cleanPrompt(widget(node, "ai_model")?.value)')
+    && signatureBody.includes('cleanPrompt(widget(node, "ai_endpoint")?.value)')
+    && signatureBody.includes('String(widget(node, "ai_language")?.value || "zh")')
+    && !signatureBody.includes('optimizerSettings.provider')
+    && !signatureBody.includes('optimizerSettings.model'),
+    'polish cache signature reads generation widgets (not stale optimizerSettings)');
+
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
     'duplicated advanced rows removed (no_subtitle/soundscape/music)');
@@ -192,6 +206,11 @@ check(!js.includes('"no_subtitle", "soundscape", "music"]'), 'visibility lists n
 
 /* 10. 批次 B：服务端引擎出口——generate（在线）/format（离线）路由与引擎 controls 对齐 */
 const optimizerPy = fs.readFileSync(path.join(root, 'prompt_optimizer.py'), 'utf8');
+check(optimizerPy.includes('"deepseek": ("https://api.deepseek.com", "deepseek-flash", "openai")')
+    && optimizerPy.includes('"glm": ("https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash", "openai")'),
+    'polish backend has deepseek/glm presets aligned with llm_client');
+check(optimizerPy.includes('(preset[0] if preset else "")') && optimizerPy.includes('(preset[1] if preset else "")'),
+    'unknown provider no longer falls back to the runninghub endpoint/model');
 check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/generate")(generate_prompt_api)'),
     'backend registers /generate route');
 check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/format")(format_prompt_api)'),

@@ -309,5 +309,39 @@ class GenerationHttpTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(await asyncio.to_thread(stopped.wait, 2))
 
 
+class NormalizeConfigTests(unittest.TestCase):
+    """润色（✦）配置归一：面板端点/模型留空时按预设补齐；未知 provider 不回退 RunningHub。"""
+
+    def test_generation_provider_presets_resolve_when_widget_empty(self):
+        # 润色沿用主区生成平台：非 custom 平台 ai_endpoint/ai_model 常为空。
+        for provider, url, model, protocol in (
+            ("deepseek", "https://api.deepseek.com", "deepseek-flash", "openai"),
+            ("glm", "https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash", "openai"),
+            ("openai", "https://api.openai.com/v1", "gpt-4.1-mini", "openai"),
+            ("gemini", "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash", "gemini"),
+        ):
+            config = prompt_optimizer._normalize_config({"provider": provider, "api_key": "k", "protocol": "openai" if provider != "gemini" else None})
+            self.assertEqual(config["api_url"], url, provider)
+            self.assertEqual(config["model"], model, provider)
+            self.assertEqual(config["protocol"], protocol, provider)
+
+    def test_unknown_provider_keeps_empty_url_and_model(self):
+        # 回归：此前回退到 RunningHub 预设，把 DeepSeek 的 Key 发往 RunningHub。
+        config = prompt_optimizer._normalize_config({"provider": "no-such", "api_key": "k"})
+        self.assertEqual(config["api_url"], "")
+        self.assertEqual(config["model"], "")
+
+    def test_custom_explicit_url_and_model_pass_through(self):
+        config = prompt_optimizer._normalize_config({"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m1", "api_key": "k"})
+        self.assertEqual(config["api_url"], "https://example.invalid/v1")
+        self.assertEqual(config["model"], "m1")
+
+    def test_runninghub_preset_still_resolves(self):
+        config = prompt_optimizer._normalize_config({})
+        self.assertEqual(config["provider"], "runninghub")
+        self.assertEqual(config["api_url"], "https://www.runninghub.cn/openapi/v2")
+        self.assertEqual(config["model"], "openai/gpt-5.6-sol")
+
+
 if __name__ == "__main__":
     unittest.main()

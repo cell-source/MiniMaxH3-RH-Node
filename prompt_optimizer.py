@@ -47,6 +47,13 @@ PROVIDERS = {
     "openrouter": ("https://openrouter.ai/api/v1", "google/gemini-2.5-flash", "openai"),
     "dashscope": ("https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-vl-max", "openai"),
     "siliconflow": ("https://api.siliconflow.cn/v1", "Qwen/Qwen2.5-VL-72B-Instruct", "openai"),
+    # 润色（✦）沿用生成平台（llm_client.PROVIDERS 的 7 家）：面板端点/模型留空时
+    # 由这里的预设补齐。端点是 base URL——_endpoint() 会追加 /chat/completions；
+    # 缺预设会把 DeepSeek/GLM 的请求连同 Key 一起打到 RunningHub（2026-09-26 审查）。
+    # 模型与 llm_client 保持一致；DeepSeek/GLM 为文本模型，润色勾选读取素材时
+    # 图片部分不传（前端 label-only 回退），需要识图请改填 VL 模型名。
+    "deepseek": ("https://api.deepseek.com", "deepseek-flash", "openai"),
+    "glm": ("https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash", "openai"),
     "runninghub": ("https://www.runninghub.cn/openapi/v2", "openai/gpt-5.6-sol", "runninghub"),
     "runninghub_overseas": ("https://www.runninghub.ai/openapi/v2", "openai/gpt-5.6-sol", "runninghub"),
 }
@@ -361,10 +368,13 @@ def _normalize_config(data: dict | None) -> dict:
     config = {
         "mode": "local" if str(data.get("mode") or current.get("mode") or "api").lower() == "local" else "api",
         "provider": provider,
-        "api_url": str(data.get("api_url") or (preset[0] if preset else current["api_url"])).strip(),
+        # 未知 provider（如 custom）且未显式给端点/模型时保持为空，让
+        # _prepare_prompt_optimization 的守卫报「请先配置提示词优化 API」——
+        # 不能回退到 RunningHub 预设，否则其他平台的 Key 会发往 RunningHub。
+        "api_url": str(data.get("api_url") or (preset[0] if preset else "")).strip(),
         "api_key": str(api_key or ""),
         "api_keys": {str(key): str(value or "") for key, value in api_keys.items()},
-        "model": str(provider_model or data.get("model") or (preset[1] if preset else current["model"])).strip(),
+        "model": str(provider_model or data.get("model") or (preset[1] if preset else "")).strip(),
         "provider_models": {str(key): str(value or "") for key, value in provider_models.items()},
         "protocol": str(data.get("protocol") or (preset[2] if preset else current["protocol"])).lower(),
         "read_media": bool(data.get("read_media", current["read_media"])),

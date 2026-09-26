@@ -270,7 +270,7 @@ const DOM_TRANSLATIONS = {
     "AI generation options": "AI 生成选项",
     "Polish settings": "润色（✦ 润色按钮使用）",
     "AI generation": "AI 生成",
-    "Prompt polishing (sub-feature)": "润色（✦ 子功能：改写表达，可读取素材画面）",
+    "Prompt polishing (sub-feature)": "润色（改写表达，可读取素材画面）",
     "Generation language": "生成语言",
     "AI timeout": "AI 超时（秒）",
     "Cancel processing": "取消处理",
@@ -2393,7 +2393,10 @@ function nodeColorToCss(value) {
         return payload;
     }
     function optimizerContextSignature(specs, mode = state.mode, task = resolvedTaskType(), duration = Number(durationWidget?.value || 5), context = optimizerTaskContext(specs, mode)) {
-        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: optimizerSettings && [optimizerSettings.mode, optimizerSettings.provider, optimizerSettings.api_url, optimizerSettings.model, optimizerSettings.protocol, optimizerSettings.local_model, optimizerSettings.local_mmproj, optimizerSettings.local_device, optimizerSettings.read_media, optimizerSettings.output_language] });
+        // 润色配置自 0deb98b 起由生成 widget 推导（平台/模型/端点/语言）而非
+        // optimizerSettings——签名必须读真实输入源，否则改配置后仍命中旧缓存
+        // 返回旧模型的结果（2026-09-26 审查）。read_media 影响是否携带图片，一并入签。
+        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [String(widget(node, "ai_provider")?.value || ""), cleanPrompt(widget(node, "ai_model")?.value), cleanPrompt(widget(node, "ai_endpoint")?.value), String(widget(node, "ai_language")?.value || "zh"), optimizerSettings?.read_media !== false] });
     }
     function optimizerTaskContext(specs, mode = state.mode, audioMode = widget(node, "audio_mode")?.value || "native") {
         const keyframes = specs
@@ -2597,7 +2600,8 @@ function nodeColorToCss(value) {
             const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value);
             const polishModel = cleanPrompt(widget(node, "ai_model")?.value);
             const polishEndpoint = cleanPrompt(widget(node, "ai_endpoint")?.value);
-            if (!polishApiKey || (!polishEndpoint && !polishModel && polishProvider === "custom")) {
+            // custom 无预设：端点与模型都必须显式填写（缺端点时此前会静默打到 RunningHub）。
+            if (!polishApiKey || (polishProvider === "custom" && (!polishEndpoint || !polishModel))) {
                 if (!automatic) showOptimizerConfigPrompt();
                 return false;
             }
@@ -2610,7 +2614,9 @@ function nodeColorToCss(value) {
                 api_url: polishEndpoint,
                 api_key: polishApiKey,
                 model: polishModel,
-                protocol: "openai",
+                // 协议按平台映射：gemini 走 generateContent，其余（含 custom）openai
+                // 兼容 chat/completions。此前硬编码 openai 导致 gemini 润色请求格式错配。
+                protocol: polishProvider === "gemini" ? "gemini" : "openai",
                 read_media: optimizerSettings?.read_media !== false,
                 output_language: polishOutputLanguage,
                 max_tokens: 4096,
