@@ -2409,11 +2409,12 @@ function nodeColorToCss(value) {
         }
         return payload;
     }
-    function optimizerContextSignature(specs, mode = state.mode, task = resolvedTaskType(), duration = Number(durationWidget?.value || 5), context = optimizerTaskContext(specs, mode)) {
+    function optimizerContextSignature(specs, mode = state.mode, task = resolvedTaskType(), duration = Number(durationWidget?.value || 5), context = optimizerTaskContext(specs, mode), readMedia = optimizerSettings?.read_media !== false) {
         // 润色配置自 0deb98b 起由生成 widget 推导（平台/模型/端点/语言）而非
         // optimizerSettings——签名必须读真实输入源，否则改配置后仍命中旧缓存
-        // 返回旧模型的结果（2026-09-26 审查）。read_media 影响是否携带图片，一并入签。
-        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [polishProviderValue(), polishModelValue(), polishEndpointValue(), polishOutputLanguageValue(), optimizerSettings?.read_media !== false] });
+        // 返回旧模型的结果（2026-09-26 审查）。readMedia（含纯文本平台退化后的
+        // 实际值）影响是否携带图片，一并入签。
+        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [polishProviderValue(), polishModelValue(), polishEndpointValue(), polishOutputLanguageValue(), readMedia] });
     }
     function optimizerTaskContext(specs, mode = state.mode, audioMode = widget(node, "audio_mode")?.value || "native") {
         const keyframes = specs
@@ -2625,6 +2626,14 @@ function nodeColorToCss(value) {
             // 润色输出语言跟随主体生成语言：zh→中文，mixed/en→English（mixed 的对白
             // 保留原文语义与 English 输出一致）。
             const polishOutputLanguage = polishOutputLanguageValue();
+            // 纯文本平台（无视觉能力，与后端 _TEXT_ONLY_PROVIDERS 同源维护）：勾选了
+            // 「读取视觉素材」时不再直接拒绝，而是自动退化为 label-only——素材仍以
+            // 文字标注（“uploaded image reference”）参与润色，只是不传图像数据。
+            // 需要真实识图时改填视觉模型（模型名含 vl/vision/omni 会被放行）。
+            const textOnlyPlatform = polishProvider === "deepseek"
+                && !/(vl|vision|omni)/.test(polishModel.toLowerCase());
+            const wantsMedia = optimizerSettings?.read_media !== false;
+            const polishReadMedia = wantsMedia && !textOnlyPlatform;
             const polishConfig = {
                 mode: "api",
                 provider: polishProvider,
@@ -2634,12 +2643,12 @@ function nodeColorToCss(value) {
                 // 已知平台的协议由后端 PROVIDERS 预设决定（单一真源，避免两边各维护一份
                 // 映射）；只有 custom 无预设，才由前端指明 openai 兼容 chat/completions。
                 ...(polishProvider === "custom" ? { protocol: "openai" } : {}),
-                read_media: optimizerSettings?.read_media !== false,
+                read_media: polishReadMedia,
                 output_language: polishOutputLanguage,
                 max_tokens: 4096,
                 auto_optimize: !!optimizerSettings?.auto_optimize,
             };
-            const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext);
+            const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext, polishReadMedia);
             if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { pushPromptUndo(promptSnapshot()); applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             elapsedPrompt.classList.add("visible");
             const started = performance.now();
