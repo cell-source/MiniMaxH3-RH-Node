@@ -174,6 +174,7 @@ const DOM_TRANSLATIONS = {
     "Seed": "种子",
     "Unable to load prompt optimizer settings": "无法加载提示词优化器设置",
     "API key (cleared when sharing the workflow)": "API Key（分享工作流前请清空）",
+    "H3 structure": "H3 结构（生成提示词用哪种官方结构）",
     "H3 mode": "H3 模式",
     "Endpoint override": "覆盖端点（可选）",
     "Model override": "覆盖模型名（可选）",
@@ -188,12 +189,12 @@ const DOM_TRANSLATIONS = {
     "zh": "中文",
     "mixed": "English 正文 + 对白原文（官方）",
     "en": "English",
-    "auto": "自动（随主模式）",
-    "t2va": "文生视频",
-    "i2va": "首帧",
-    "fl2va": "首尾帧",
-    "l2va": "尾帧",
-    "ref2va": "全参考",
+    "auto": "自动（按面板模式与已传素材推断）",
+    "t2va": "文生视频（无参考图）",
+    "i2va": "首帧图生视频",
+    "fl2va": "首尾帧图生视频",
+    "l2va": "尾帧图生视频",
+    "ref2va": "全能参考（多图/视频参考）",
     "deepseek": "DeepSeek",
     "glm": "GLM 智谱",
     "openai": "OpenAI",
@@ -2206,7 +2207,7 @@ function nodeColorToCss(value) {
                 genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
             };
             syncGenRows();
-            const genMode = row("H3 mode", make("select"));
+            const genMode = row("H3 structure", make("select"));
             for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
             genMode.value = String(widget(node, "ai_mode")?.value || "auto");
             genMode.onchange = () => { setWidget(node, "ai_mode", genMode.value); persistState(); };

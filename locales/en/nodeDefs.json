@@ -76,14 +76,14 @@
         }
       },
       "ai_mode": {
-        "name": "H3 Mode",
+        "name": "H3 Structure",
         "options": {
-          "auto": "Auto (follow main mode)",
-          "t2va": "Text to Video",
-          "i2va": "First Frame",
-          "fl2va": "First & Last Frame",
-          "l2va": "Last Frame",
-          "ref2va": "All Reference"
+          "auto": "Auto (inferred from panel mode and supplied media)",
+          "t2va": "Text to Video (no reference image)",
+          "i2va": "First Frame to Video",
+          "fl2va": "First & Last Frame to Video",
+          "l2va": "Last Frame to Video",
+          "ref2va": "All-purpose Reference"
         }
       },
       "ai_enrich": {

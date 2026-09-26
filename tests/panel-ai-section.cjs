@@ -95,7 +95,7 @@ check(!js.includes('beginSection("Polish settings (') && !js.includes('beginSect
 const nodeDefs = JSON.parse(fs.readFileSync(path.join(root, 'locales/zh/nodeDefs.json'), 'utf8'));
 const definition = Object.values(nodeDefs).find(d => d.inputs?.prompt_source);
 check(!!definition, 'localized integration node found');
-for (const name of ['ai_language', 'ai_mode']) {
+for (const name of ['ai_language', 'ai_mode', 'ai_provider']) {
     for (const [value, label] of Object.entries(definition.inputs[name].options)) {
         context.label = value;
         check(vm.runInContext('t(label)', context) === label, name + ' localized option: ' + value);
