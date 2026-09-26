@@ -170,11 +170,17 @@ check(js.split('mirrorSourceIdea()').length - 1 >= 6, 'mirror runs on edit/undo/
 /* 8b. 润色（✦ 子功能）沿用主区生成配置（2026-09-26）：无独立平台/Key/语言配置 */
 const polishBody = js.slice(js.indexOf('async function runPromptOptimization('), js.indexOf('const autoOptimizeBeforeQueue ='));
 check(!!polishBody, 'polish runner defined');
-check(polishBody.includes('const polishProvider = String(widget(node, "ai_provider")?.value || "deepseek")')
-    && polishBody.includes('const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value)')
-    && polishBody.includes('const polishModel = cleanPrompt(widget(node, "ai_model")?.value)'),
+// 单一真源（2026-09-26 审查修复）：平台/模型/端点/语言只从生成 widget 读。
+check(js.includes('const polishProviderValue = () => String(widget(node, "ai_provider")?.value || "deepseek").toLowerCase()')
+    && js.includes('const polishModelValue = () => cleanPrompt(widget(node, "ai_model")?.value)')
+    && js.includes('const polishEndpointValue = () => cleanPrompt(widget(node, "ai_endpoint")?.value)')
+    && js.includes('const polishOutputLanguageValue = () => String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English"'),
+    'polish value helpers read the main generation widgets');
+check(polishBody.includes('const polishProvider = polishProviderValue()')
+    && polishBody.includes('const polishModel = polishModelValue()')
+    && polishBody.includes('const polishEndpoint = polishEndpointValue()'),
     'polish config built from the main generation widgets');
-check(polishBody.includes('const polishOutputLanguage = String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English"'),
+check(polishBody.includes('const polishOutputLanguage = polishOutputLanguageValue()'),
     'polish output language follows the main generation language');
 check(!dialogBody.includes('"Polish provider"') && !dialogBody.includes('row("Output language"'),
     'polish-only provider/language rows removed from the config dialog');
@@ -190,13 +196,20 @@ check(polishBody.includes('protocol: polishProvider === "gemini" ? "gemini" : "o
 check(polishBody.includes('polishProvider === "custom" && (!polishEndpoint || !polishModel)'),
     'custom polish guard requires both endpoint and model');
 const signatureBody = js.slice(js.indexOf('function optimizerContextSignature('), js.indexOf('function optimizerTaskContext('));
-check(signatureBody.includes('String(widget(node, "ai_provider")?.value || "")')
-    && signatureBody.includes('cleanPrompt(widget(node, "ai_model")?.value)')
-    && signatureBody.includes('cleanPrompt(widget(node, "ai_endpoint")?.value)')
-    && signatureBody.includes('String(widget(node, "ai_language")?.value || "zh")')
+check(signatureBody.includes('polishProviderValue(), polishModelValue(), polishEndpointValue(), polishOutputLanguageValue()')
     && !signatureBody.includes('optimizerSettings.provider')
     && !signatureBody.includes('optimizerSettings.model'),
     'polish cache signature reads generation widgets (not stale optimizerSettings)');
+/* 8d. 陈旧 optimizerSettings 不再参与润色（2026-09-26 审查） */
+const mediaPayloadBody = js.slice(js.indexOf('async function optimizerMediaPayload('), js.indexOf('function optimizerContextSignature('));
+check(mediaPayloadBody.includes('const runninghub = ["runninghub", "runninghub_overseas"].includes(polishProviderValue())')
+    && !mediaPayloadBody.includes('optimizerSettings?.provider'),
+    'runninghub media branch decided by the generation widget, not stale optimizerSettings');
+const optimizerNameBody = js.slice(js.indexOf('const configuredOptimizerName = () =>'), js.indexOf('const refreshOptimizerName = () =>'));
+check(optimizerNameBody.includes('const rawName = polishModelValue().split("/").pop()')
+    && optimizerNameBody.includes('})[polishProviderValue()] || "API"')
+    && !optimizerNameBody.includes('optimizerSettings'),
+    'toolbar model badge shows the actual polish provider/model');
 
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),

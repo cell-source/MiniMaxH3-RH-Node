@@ -50,8 +50,8 @@ PROVIDERS = {
     # 润色（✦）沿用生成平台（llm_client.PROVIDERS 的 7 家）：面板端点/模型留空时
     # 由这里的预设补齐。端点是 base URL——_endpoint() 会追加 /chat/completions；
     # 缺预设会把 DeepSeek/GLM 的请求连同 Key 一起打到 RunningHub（2026-09-26 审查）。
-    # 模型与 llm_client 保持一致；DeepSeek/GLM 为文本模型，润色勾选读取素材时
-    # 图片部分不传（前端 label-only 回退），需要识图请改填 VL 模型名。
+    # 模型与 llm_client 保持一致。DeepSeek 无视觉 API：勾选「读取视觉素材」时会
+    # 被 _reject_images_without_vision 提前拦截（GLM 可在 ai_model 填 glm-5v-turbo 等视觉模型）。
     "deepseek": ("https://api.deepseek.com", "deepseek-flash", "openai"),
     "glm": ("https://open.bigmodel.cn/api/paas/v4", "glm-5.3-flash", "openai"),
     "runninghub": ("https://www.runninghub.cn/openapi/v2", "openai/gpt-5.6-sol", "runninghub"),
@@ -1165,6 +1165,33 @@ def _user_parts(prompt: str, media: list[dict], read_media: bool) -> list[dict]:
     return parts
 
 
+# 无视觉能力的平台（与 PROVIDERS 同源维护）。
+_TEXT_ONLY_PROVIDERS = {"deepseek"}
+# 模型名标记：出现即认为用户显式选用了视觉模型（如 glm-5v-turbo、deepseek-vl2）。
+_VISUAL_MODEL_MARKERS = ("vl", "vision", "omni")
+
+
+def _reject_images_without_vision(config: dict, parts: list[dict]) -> None:
+    """纯文本平台收到图像分片时提前报错，给出可执行指引。
+
+    勾选「读取视觉素材」时图片会以 image_url 分片发出，无视觉能力的平台只能
+    以 400 拒绝，且上游报错完全看不出是配置问题（2026-09-26 审查）。模型名带
+    vl/vision/omni 时视为用户显式选了视觉模型，直接放行。
+    """
+    if not any(part.get("type") == "image_url" for part in parts):
+        return
+    provider = str(config.get("provider") or "").lower()
+    if provider not in _TEXT_ONLY_PROVIDERS:
+        return
+    model = str(config.get("model") or "").lower()
+    if any(marker in model for marker in _VISUAL_MODEL_MARKERS):
+        return
+    raise RuntimeError(
+        f"当前平台（{provider}）不支持图像理解：请在 ⚙ 配置中关闭「读取视觉素材」后重试，"
+        "或改填支持视觉的模型"
+    )
+
+
 def _strip_filenames(text: str) -> str:
     return re.sub(
         r"(?<![\w/\\])[\w .()\-\u4e00-\u9fff]+\.(?:png|jpe?g|webp|bmp|gif|mp4|mov|webm|mkv|avi|mp3|wav|flac|m4a|ogg|aac)(?!\w)",
@@ -1400,6 +1427,7 @@ def _request_parts(config: dict, payload: dict):
         user_prompt,
     )
     parts = _user_parts(user_prompt, media, bool(config.get("read_media")))
+    _reject_images_without_vision(config, parts)
     max_tokens = max(512, min(8192, int(config.get("max_tokens") or 4096)))
     headers = {"Content-Type": "application/json"}
     if config["protocol"] == "gemini":

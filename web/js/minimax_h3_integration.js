@@ -1099,10 +1099,17 @@ function createPanel(node) {
     promptHighlightResizeObserver.observe(prompt);
     renderPromptHighlights();
     if (optimizerBefore != null) resetPrompt.classList.add("visible");
+    /* 润色（✦）配置的唯一真源（2026-09-26 审查修复）：平台/模型/端点/语言一律取
+       生成 widget。optimizerSettings 自 0deb98b 起只剩行为开关（read_media/
+       auto_optimize），其 provider/model 仍是 /config 的 RunningHub 默认值——继续
+       读它会让工具栏徽标显示并未使用的模型，参考视频帧也会误走 RunningHub 分支被静默丢弃。 */
+    const polishProviderValue = () => String(widget(node, "ai_provider")?.value || "deepseek").toLowerCase();
+    const polishModelValue = () => cleanPrompt(widget(node, "ai_model")?.value);
+    const polishEndpointValue = () => cleanPrompt(widget(node, "ai_endpoint")?.value);
+    const polishOutputLanguageValue = () => String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English";
     const configuredOptimizerName = () => {
-        if (!optimizerSettings) return "";
-        // 润色（✦ 子功能）沿用主区生成平台：名称直接展示生成模型。
-        const rawName = String(optimizerSettings.model || "").trim().split("/").pop();
+        // 展示实际参与润色的生成模型（真源同上）：未填模型时只显示平台名。
+        const rawName = polishModelValue().split("/").pop();
         const name = rawName
             .replace(/^gpt(?=[-_.\d])/i, "GPT")
             .replace(/^grok(?=[-_.\d])/i, "Grok")
@@ -1115,9 +1122,9 @@ function createPanel(node) {
         const providerName = ({
             runninghub: "RunningHub 国内版", runninghub_overseas: "RunningHub 海外版", openai: "OpenAI", gemini: "Google Gemini",
             openrouter: "OpenRouter", dashscope: "阿里云百炼", siliconflow: "SiliconFlow",
-            custom: "API",
-        })[optimizerSettings.provider] || "API";
-        return name ? `${providerName}: ${name}` : "";
+            deepseek: "DeepSeek", glm: "智谱 GLM", custom: "API",
+        })[polishProviderValue()] || "API";
+        return name ? `${providerName}: ${name}` : providerName;
     };
     const refreshOptimizerName = () => {
         const text = configuredOptimizerName();
@@ -2371,7 +2378,9 @@ function nodeColorToCss(value) {
     }
     async function optimizerMediaPayload(specs) {
         const payload = [];
-        const runninghub = optimizerSettings?.mode !== "local" && ["runninghub", "runninghub_overseas"].includes(optimizerSettings?.provider);
+        // 平台判定同样取生成 widget（真源见 polishProviderValue）：optimizerSettings.provider
+        // 可能是 /config 的 RunningHub 默认值，而 RunningHub 已不在生成平台可选列表内。
+        const runninghub = ["runninghub", "runninghub_overseas"].includes(polishProviderValue());
         let runninghubImages = 0;
         let runninghubVideo = false;
         for (const spec of specs) {
@@ -2396,7 +2405,7 @@ function nodeColorToCss(value) {
         // 润色配置自 0deb98b 起由生成 widget 推导（平台/模型/端点/语言）而非
         // optimizerSettings——签名必须读真实输入源，否则改配置后仍命中旧缓存
         // 返回旧模型的结果（2026-09-26 审查）。read_media 影响是否携带图片，一并入签。
-        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [String(widget(node, "ai_provider")?.value || ""), cleanPrompt(widget(node, "ai_model")?.value), cleanPrompt(widget(node, "ai_endpoint")?.value), String(widget(node, "ai_language")?.value || "zh"), optimizerSettings?.read_media !== false] });
+        return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [polishProviderValue(), polishModelValue(), polishEndpointValue(), polishOutputLanguageValue(), optimizerSettings?.read_media !== false] });
     }
     function optimizerTaskContext(specs, mode = state.mode, audioMode = widget(node, "audio_mode")?.value || "native") {
         const keyframes = specs
@@ -2595,11 +2604,11 @@ function nodeColorToCss(value) {
             await loadOptimizerSettings();
             if (!promptOperationCurrent(pending)) return false;
             if (automatic && !optimizerSettings?.auto_optimize) return false;
-            // 润色（✦ 子功能）沿用主区生成配置：平台/Key/模型/端点直接取生成 widget。
-            const polishProvider = String(widget(node, "ai_provider")?.value || "deepseek");
+            // 润色（✦ 子功能）沿用主区生成配置：平台/Key/模型/端点直接取生成 widget（真源见 polishProviderValue）。
+            const polishProvider = polishProviderValue();
             const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value);
-            const polishModel = cleanPrompt(widget(node, "ai_model")?.value);
-            const polishEndpoint = cleanPrompt(widget(node, "ai_endpoint")?.value);
+            const polishModel = polishModelValue();
+            const polishEndpoint = polishEndpointValue();
             // custom 无预设：端点与模型都必须显式填写（缺端点时此前会静默打到 RunningHub）。
             if (!polishApiKey || (polishProvider === "custom" && (!polishEndpoint || !polishModel))) {
                 if (!automatic) showOptimizerConfigPrompt();
@@ -2607,7 +2616,7 @@ function nodeColorToCss(value) {
             }
             // 润色输出语言跟随主体生成语言：zh→中文，mixed/en→English（mixed 的对白
             // 保留原文语义与 English 输出一致）。
-            const polishOutputLanguage = String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English";
+            const polishOutputLanguage = polishOutputLanguageValue();
             const polishConfig = {
                 mode: "api",
                 provider: polishProvider,

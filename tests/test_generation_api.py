@@ -343,5 +343,41 @@ class NormalizeConfigTests(unittest.TestCase):
         self.assertEqual(config["model"], "openai/gpt-5.6-sol")
 
 
+class TextOnlyProviderMediaTests(unittest.TestCase):
+    """纯文本平台 + 图像素材：提前给出可执行报错，而不是把上游 400 原样回传。"""
+
+    IMAGE = {"kind": "image", "label": "<picture 1>", "images": ["data:image/jpeg;base64,AAAA"]}
+
+    def parts(self, provider, read_media, model=""):
+        config = prompt_optimizer._normalize_config(
+            {"provider": provider, "api_key": "k", "model": model, "read_media": read_media}
+        )
+        return prompt_optimizer._request_parts(
+            config, {"prompt": "雨夜", "task": "T2VA", "duration": 5, "media": [self.IMAGE]}
+        )
+
+    def test_deepseek_with_images_is_rejected_with_guidance(self):
+        with self.assertRaises(RuntimeError) as caught:
+            self.parts("deepseek", True)
+        self.assertIn("读取视觉素材", str(caught.exception))
+
+    def test_label_only_media_passes_for_text_only_provider(self):
+        url, _, body = self.parts("deepseek", False)
+        self.assertTrue(url.endswith("/chat/completions"))
+        content = body["messages"][1]["content"]
+        self.assertFalse(any(part.get("type") == "image_url" for part in content))
+        self.assertTrue(any("<picture 1>" in part.get("text", "") for part in content))
+
+    def test_explicit_visual_model_override_is_allowed(self):
+        _, _, body = self.parts("deepseek", True, model="deepseek-vl2")
+        content = body["messages"][1]["content"]
+        self.assertTrue(any(part.get("type") == "image_url" for part in content))
+
+    def test_openai_family_keeps_images(self):
+        _, _, body = self.parts("openai", True)
+        content = body["messages"][1]["content"]
+        self.assertTrue(any(part.get("type") == "image_url" for part in content))
+
+
 if __name__ == "__main__":
     unittest.main()
