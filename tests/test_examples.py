@@ -46,6 +46,8 @@ class ExampleConsistencyTests(unittest.TestCase):
                 mapped = dict(zip(order, values))
                 self.assertEqual(mapped["prompt_source"], "panel")
                 self.assertEqual(mapped["ai_api_key"], "")
+                self.assertEqual(mapped["prompt_override"], "",
+                                 "forceInput 输入的槽位必须保留空值，否则尾部整段偏移")
                 self.assertTrue(mapped["prompt"], "画布示例必须把完整提示词写进编辑器")
                 self.assertFalse([v for v in values if v is None], "画布示例不得有 null 参数")
                 self.assertEqual(unet["widgets_values"],

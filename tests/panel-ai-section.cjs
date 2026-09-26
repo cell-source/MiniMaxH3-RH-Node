@@ -171,11 +171,11 @@ check(js.split('mirrorSourceIdea()').length - 1 >= 6, 'mirror runs on edit/undo/
 const polishBody = js.slice(js.indexOf('async function runPromptOptimization('), js.indexOf('const autoOptimizeBeforeQueue ='));
 check(!!polishBody, 'polish runner defined');
 // 单一真源（2026-09-26 审查修复）：平台/模型/端点/语言只从生成 widget 读。
-check(js.includes('const polishProviderValue = () => String(widget(node, "ai_provider")?.value || "deepseek").toLowerCase()')
-    && js.includes('const polishModelValue = () => cleanPrompt(widget(node, "ai_model")?.value)')
-    && js.includes('const polishEndpointValue = () => cleanPrompt(widget(node, "ai_endpoint")?.value)')
-    && js.includes('const polishOutputLanguageValue = () => String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English"'),
-    'polish value helpers read the main generation widgets');
+check(js.includes('const polishText = value => (typeof value === "string" ? cleanPrompt(value) : "")')
+    && js.includes('const polishProviderValue = () => (polishText(widget(node, "ai_provider")?.value) || "deepseek").toLowerCase()')
+    && js.includes('const polishModelValue = () => polishText(widget(node, "ai_model")?.value)')
+    && js.includes('const polishEndpointValue = () => polishText(widget(node, "ai_endpoint")?.value)'),
+    'polish value helpers read the main generation widgets and ignore non-string values');
 check(polishBody.includes('const polishProvider = polishProviderValue()')
     && polishBody.includes('const polishModel = polishModelValue()')
     && polishBody.includes('const polishEndpoint = polishEndpointValue()'),

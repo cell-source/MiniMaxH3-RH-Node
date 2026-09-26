@@ -87,9 +87,13 @@ MODES = {
                           "ref_audio_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"}),
 }
 
-# ComfyUI 序列化 `widgets_values` 的顺序 = 节点 widget 的创建顺序。与本文件并列维护
-# （已对照运行中的节点 62 个 widget 逐个校验）；video_nodes.py 增删 widget 时
-# aio_widget_values() 会报错，提醒同步更新。
+# ComfyUI 序列化 `widgets_values` 的位置对应节点 widget 的创建顺序。
+# 2026-09-26 实测（浏览器端以哨兵数组逐个校准）：
+# - `prompt_override` 是 forceInput 输入，**加载时会占一个槽位**（面板上不出现 widget，
+#   但值必须保留在数组里）；缺了它，从其位置起的整段（sampler_name/scheduler/ai_*）会+1 偏移，
+#   实测表现为 ai_model 拿到 ai_timeout 的值。
+# - `mxv_panel` 是面板注入的 DOM widget（serialize:false），**不属于** widgets_values。
+# video_nodes.py 增删 widget 时 aio_widget_values() 会报错，提醒同步更新。
 AIO_WIDGET_ORDER = (
     "main_mode", "clip_name", "video_vae_name", "audio_vae_name", "aspect", "megapixels",
     "duration_seconds", "prompt", "task_type", "audio_mode", "audio_denoise_strength",
@@ -102,16 +106,17 @@ AIO_WIDGET_ORDER = (
 ) + tuple(f"ref_image_{i}" for i in range(1, 10)) + tuple(
     f"ref_video_{i}" for i in range(1, 4)) + tuple(
     f"ref_audio_{i}" for i in range(1, 4)) + (
-    "gh_state_json", "sampler_name", "scheduler", "ai_api_key", "ai_endpoint", "ai_model", "ai_timeout",
-    "mxv_panel",  # 面板注入的 DOM widget（serialize:false，占位空值）
+    "gh_state_json",
+    "prompt_override",  # forceInput 输入占位（面板不显示 widget，但必须占数组位置）
+    "sampler_name", "scheduler", "ai_api_key", "ai_endpoint", "ai_model", "ai_timeout",
 )
 
 # 不在 AIO_BASE / spec 内的 widget：取 schema 默认值（见 sampling.py）或前端注入值。
 AIO_WIDGET_DEFAULTS = {
     "control_after_generate": "fixed",  # 示例固定种子，便于复现
+    "prompt_override": "",  # forceInput：永不连接时保持空字符串
     "sampler_name": "dual_clock_euler",
     "scheduler": "native_flow",
-    "mxv_panel": "",
     **{f"ref_image_{i}": "" for i in range(1, 10)},
     **{f"ref_video_{i}": "" for i in range(1, 4)},
     **{f"ref_audio_{i}": "" for i in range(1, 4)},

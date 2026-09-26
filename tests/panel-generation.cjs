@@ -57,7 +57,7 @@ function host(overrides = {}) {
         section('const sharedGenerationOptions =', 'const commitPromptEditorInput ='),
         section('const promptSnapshot =', 'const setEditorSelection ='),
         // 润色配置真源（2026-09-26 审查）：runPromptOptimization 依赖这几个 helper。
-        section('const polishProviderValue =', 'const configuredOptimizerName ='),
+        section('const polishText =', 'const configuredOptimizerName ='),
         section('const generationMode = () => {', 'optimizerGear.onclick = openOptimizerSettings;'),
         section('function applyOptimizedPrompt(', 'function playOptimizerCompleteSound('),
         section('async function cancelOptimization()', 'function resemblesOfficialPrompt('),

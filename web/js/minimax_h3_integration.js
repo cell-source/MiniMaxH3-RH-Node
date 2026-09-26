@@ -1103,10 +1103,15 @@ function createPanel(node) {
        生成 widget。optimizerSettings 自 0deb98b 起只剩行为开关（read_media/
        auto_optimize），其 provider/model 仍是 /config 的 RunningHub 默认值——继续
        读它会让工具栏徽标显示并未使用的模型，参考视频帧也会误走 RunningHub 分支被静默丢弃。 */
-    const polishProviderValue = () => String(widget(node, "ai_provider")?.value || "deepseek").toLowerCase();
-    const polishModelValue = () => cleanPrompt(widget(node, "ai_model")?.value);
-    const polishEndpointValue = () => cleanPrompt(widget(node, "ai_endpoint")?.value);
-    const polishOutputLanguageValue = () => String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English";
+    /* 非字符串的 widget 值只可能来自加载时的位置串位（ComfyUI 会把 forceInput 输入
+       `prompt_override` 算进 widgets_values 位置；串位时尾部整段偏移，实测 ai_model
+       会拿到 ai_timeout 的数值），一律按未设置处理：既避免 String 方法抛错，
+       也避免把数值当成模型名发给上游。 */
+    const polishText = value => (typeof value === "string" ? cleanPrompt(value) : "");
+    const polishProviderValue = () => (polishText(widget(node, "ai_provider")?.value) || "deepseek").toLowerCase();
+    const polishModelValue = () => polishText(widget(node, "ai_model")?.value);
+    const polishEndpointValue = () => polishText(widget(node, "ai_endpoint")?.value);
+    const polishOutputLanguageValue = () => (polishText(widget(node, "ai_language")?.value) || "zh") === "zh" ? "中文" : "English";
     const configuredOptimizerName = () => {
         // 展示实际参与润色的生成模型（真源同上）：未填模型时只显示平台名。
         const rawName = polishModelValue().split("/").pop();
@@ -2609,7 +2614,7 @@ function nodeColorToCss(value) {
             if (automatic && !optimizerSettings?.auto_optimize) return false;
             // 润色（✦ 子功能）沿用主区生成配置：平台/Key/模型/端点直接取生成 widget（真源见 polishProviderValue）。
             const polishProvider = polishProviderValue();
-            const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value);
+            const polishApiKey = getSharedKey(polishProvider) || polishText(widget(node, "ai_api_key")?.value);
             const polishModel = polishModelValue();
             const polishEndpoint = polishEndpointValue();
             // custom 无预设：端点与模型都必须显式填写（缺端点时此前会静默打到 RunningHub）。
