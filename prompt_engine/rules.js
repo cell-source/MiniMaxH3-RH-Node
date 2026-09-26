@@ -2525,6 +2525,32 @@ async function runAiEnrich(raw) {
         break;
       }
     }
+    /* DIALOGUE_COUNT 控制行是对白计数的硬契约：缺失时最多自动纠正两次。模型偶尔
+       忽略首行控制指令，不纠正会把本来合格的结果判成 invalid（缺少对白计数控制行）。 */
+    for (let countAttempt = 0; countAttempt < 2 && !aiStopped && !aiTimedOut && content.trim(); countAttempt++) {
+      const countControl = extractAiControl(content.trim());
+      if (Number.isInteger(countControl.dialogueCount) && countControl.dialogueCount >= 0) break;
+      const countCleaned = normalizePrompt(mode, countControl.prompt.trim());
+      if (!countCleaned) break;
+      lastCompleteResult = countCleaned;
+      repairing = true;
+      fullText = '';
+      received = 0;
+      $('statLine').textContent = '🔁 对白计数控制行缺失，正在自动纠正（' + (countAttempt + 1) + '/2）…';
+      const countRepairUser = effectiveOfficialUser + '\n\nDIALOGUE_COUNT REPAIR (mandatory): The previous response did not begin with the required control line. Rewrite the COMPLETE output from scratch. The VERY FIRST line must be exactly "DIALOGUE_COUNT: N" where N is the number of distinct spoken utterances in the user input (0 when there is no dialogue), followed by a blank line, then the complete H3 prompt. Keep every utterance exactly once; keep all user facts, field order, structure, and selected options unchanged. Previous rejected response:\n' + countCleaned;
+      content = await callLLM(effectiveSystemPrompt, countRepairUser, key, function(delta) {
+        fullText += delta;
+        received += delta.length;
+        out.value = stripStreamingControl(fullText);
+        $('statLine').textContent = '🔁 正在自动纠正对白计数（' + (countAttempt + 1) + '/2）… 已接收 ' + received + ' 字符';
+      }, m.endpoint, m.model, aiAbortCtrl.signal, () => aiStopped || aiTimedOut);
+      if (repairing && (aiStopped || aiTimedOut || !content.trim())) {
+        out.value = lastCompleteResult;
+        if (!aiStopped && !aiTimedOut) throw new Error('纠正返回为空，已保留上一份完整结果');
+        content = '';
+        break;
+      }
+    }
     if (aiStopped) {
       // 用户主动停止：保留已生成内容（可能为空），不回退模板
       if (content.trim()) {

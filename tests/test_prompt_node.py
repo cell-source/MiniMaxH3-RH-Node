@@ -49,6 +49,23 @@ class PromptTests(unittest.TestCase):
         result = generate_prompt("女子站着。", "ai", controls(), lambda s, u: "DIALOGUE_COUNT: 0\n" + base("A woman stands still."))
         self.assertFalse(result["valid"])
 
+    def test_ai_dialogue_count_repair_and_failure(self):
+        # 模型偶尔漏掉首行 DIALOGUE_COUNT 控制行：引擎应自动纠错重试而不是直接判无效。
+        calls = []
+        def llm(system, user):
+            calls.append(user)
+            if len(calls) == 1:
+                return base("女子站着。")  # 中文正文正确，仅缺控制行
+            return "DIALOGUE_COUNT: 0\n" + base("女子站着。")
+        result = generate_prompt("女子站着。", "ai", controls(), llm)
+        self.assertTrue(result["valid"], result)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("DIALOGUE_COUNT REPAIR", calls[1])
+        # 两次纠正后仍缺失：保持 invalid，报告给出具体原因。
+        result = generate_prompt("女子站着。", "ai", controls(), lambda s, u: base("女子站着。"))
+        self.assertFalse(result["valid"])
+        self.assertIn("DIALOGUE_COUNT", result["report"])
+
     def test_option_isolation_and_dialogue(self):
         source = base("女子 (S1) 说：<d>[Chinese] 你好。</d>")
         enabled = controls()
