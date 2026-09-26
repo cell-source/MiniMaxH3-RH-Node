@@ -2085,7 +2085,10 @@ function nodeColorToCss(value) {
     };
     const migrateLegacyOptimizerDefault = settings => {
         settings = migrateProviderApiKeys(settings);
-        if (!settings || settings.mode === "local") return settings;
+        if (!settings) return settings;
+        // 本地视觉模型模式已从面板下线，润色固定走 API（polishConfig.mode = "api"）：
+        // 把遗留 mode:"local" 归一为 "api"，避免存档状态与实际行为不一致（审查 L7）。
+        if (settings.mode === "local") settings = { ...settings, mode: "api" };
         const provider = String(settings.provider || "").toLowerCase();
         const model = String(settings.model || "").toLowerCase();
         const apiUrl = String(settings.api_url || "").replace(/\/$/, "").toLowerCase();
@@ -2623,9 +2626,9 @@ function nodeColorToCss(value) {
                 api_url: polishEndpoint,
                 api_key: polishApiKey,
                 model: polishModel,
-                // 协议按平台映射：gemini 走 generateContent，其余（含 custom）openai
-                // 兼容 chat/completions。此前硬编码 openai 导致 gemini 润色请求格式错配。
-                protocol: polishProvider === "gemini" ? "gemini" : "openai",
+                // 已知平台的协议由后端 PROVIDERS 预设决定（单一真源，避免两边各维护一份
+                // 映射）；只有 custom 无预设，才由前端指明 openai 兼容 chat/completions。
+                ...(polishProvider === "custom" ? { protocol: "openai" } : {}),
                 read_media: optimizerSettings?.read_media !== false,
                 output_language: polishOutputLanguage,
                 max_tokens: 4096,

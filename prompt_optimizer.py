@@ -5,6 +5,7 @@ import base64
 from difflib import SequenceMatcher
 import gc
 import json
+import logging
 import math
 import os
 import platform
@@ -24,6 +25,38 @@ import aiohttp
 from aiohttp import web
 import folder_paths
 from server import PromptServer
+
+_LOGGER = logging.getLogger("minimax_h3.prompt_optimizer")
+
+# 上游把凭据放在查询串时（Gemini 的 ?key=），异常文本与响应正文都会带上它，因此
+# 任何准备写入日志或返回前端的文本都必须先脱敏（审查 M4）。
+_CREDENTIAL_QUERY = re.compile(r"(?<![A-Za-z0-9_])(key|api_key|api-key|access_token|token)=[^&\s'\"]+", re.IGNORECASE)
+# 短错误标签保留（脱敏 + 截断），完整响应正文只进日志。
+_UPSTREAM_LABEL_LIMIT = 200
+# 按状态码给出可执行提示，避免依赖上游正文才能定位问题。
+_UPSTREAM_HTTP_HINTS = {
+    400: "上游拒绝了请求（模型名或参数不受支持）",
+    401: "鰴权失败：API Key 无效",
+    403: "鰴权失败：Key 无权限或未开通该模型",
+    404: "端点或模型不存在",
+    422: "上游不接受请求格式",
+    429: "触发上游限流或额度不足",
+}
+
+
+def _redact_credentials(text: object) -> str:
+    return _CREDENTIAL_QUERY.sub(r"\1=***", str(text))
+
+
+def _upstream_label(value: object) -> str:
+    """短错误标签（如 errorMessage/msg）：服务方已概括过的原因，脱敏截断后可用。"""
+    return " ".join(_redact_credentials(value).split())[:_UPSTREAM_LABEL_LIMIT]
+
+
+def _logged_upstream_error(public: str, detail: object) -> RuntimeError:
+    """上游细节只进服务端日志，返回前端的只有自撰文案（审查 M4）。"""
+    _LOGGER.warning("%s | upstream detail: %s", public, _redact_credentials(detail)[:1000])
+    return RuntimeError(public)
 
 
 DEFAULT_CONFIG = {
@@ -376,7 +409,10 @@ def _normalize_config(data: dict | None) -> dict:
         "api_keys": {str(key): str(value or "") for key, value in api_keys.items()},
         "model": str(provider_model or data.get("model") or (preset[1] if preset else "")).strip(),
         "provider_models": {str(key): str(value or "") for key, value in provider_models.items()},
-        "protocol": str(data.get("protocol") or (preset[2] if preset else current["protocol"])).lower(),
+        # 平台预设优先于请求体里的 protocol：前端不必知道协议细节，也不必与后端
+        # 预设保持一致（审查 L6）。无预设（custom/未知 provider）时才用请求值，
+        # 且不再继承 RunningHub 默认协议——否则自定义端点会被误路由到 RunningHub。
+        "protocol": str((preset[2] if preset else None) or data.get("protocol") or "openai").lower(),
         "read_media": bool(data.get("read_media", current["read_media"])),
         "output_language": "中文" if str(data.get("output_language") or current.get("output_language") or "中文").lower() in {"中文", "chinese", "zh"} else "English",
         "local_model": str(data.get("local_model") or current.get("local_model") or "").strip(),
@@ -530,10 +566,10 @@ async def _runninghub_upload(session: aiohttp.ClientSession, api_key: str, *, pa
     ) as response:
         body = await response.text()
         if response.status >= 400:
-            raise RuntimeError(f"RunningHub 素材上传失败 ({response.status}): {body[:1000]}")
+            raise _logged_upstream_error(f"RunningHub 素材上传失败（HTTP {response.status}）", body)
         data = json.loads(body)
     if data.get("code") not in (0, "0", None):
-        raise RuntimeError(f"RunningHub 素材上传失败: {data.get('message') or data.get('msg') or data}")
+        raise _logged_upstream_error(f"RunningHub 素材上传失败：{_upstream_label(data.get('message') or data.get('msg') or data)}", data)
     result = data.get("data") or {}
     value = result.get("fileName") or result.get("download_url")
     if not value:
@@ -1573,10 +1609,10 @@ async def _request_runninghub(config: dict, payload: dict) -> str:
             ) as response:
                 body = await response.text()
                 if response.status >= 400:
-                    raise RuntimeError(f"RunningHub 应用启动失败 ({response.status}): {body[:1000]}")
+                    raise _logged_upstream_error(f"RunningHub 应用启动失败（HTTP {response.status}）", body)
                 started = json.loads(body)
             if started.get("code") not in (0, "0", None):
-                raise RuntimeError(f"RunningHub 应用启动失败: {started.get('msg') or started}")
+                raise _logged_upstream_error(f"RunningHub 应用启动失败：{_upstream_label(started.get('msg') or started)}", started)
             start_data = started.get("data") if isinstance(started.get("data"), dict) else started
             task_id = str(start_data.get("taskId") or "")
             if not task_id:
@@ -1585,10 +1621,10 @@ async def _request_runninghub(config: dict, payload: dict) -> str:
                 error_message = str(start_data.get("errorMessage") or started.get("errorMessage") or "").strip()
                 if error_code or error_message:
                     details = ": ".join(part for part in (error_code, error_message) if part)
-                    raise RuntimeError(f"RunningHub {edition}应用启动失败：{details}")
-                raise RuntimeError(
-                    f"RunningHub {edition}应用启动响应缺少 taskId；请确认使用的是{edition}专用 API Key。"
-                    f"服务端响应: {body[:800]}"
+                    raise _logged_upstream_error(f"RunningHub {edition}应用启动失败：{_upstream_label(details)}", details)
+                raise _logged_upstream_error(
+                    f"RunningHub {edition}应用启动响应缺少 taskId；请确认使用的是{edition}专用 API Key。",
+                    body,
                 )
             if request_id:
                 _ACTIVE_RH_TASKS[request_id] = (api_key, task_id, rh_host)
@@ -1606,17 +1642,17 @@ async def _request_runninghub(config: dict, payload: dict) -> str:
                 ) as response:
                     body = await response.text()
                     if response.status >= 400:
-                        raise RuntimeError(f"RunningHub 任务查询失败 ({response.status}): {body[:1000]}")
+                        raise _logged_upstream_error(f"RunningHub 任务查询失败（HTTP {response.status}）", body)
                     queried = json.loads(body)
                 if queried.get("code") not in (0, "0", None):
-                    raise RuntimeError(f"RunningHub 任务查询失败: {queried.get('msg') or queried}")
+                    raise _logged_upstream_error(f"RunningHub 任务查询失败：{_upstream_label(queried.get('msg') or queried)}", queried)
                 query_data = queried.get("data") if isinstance(queried.get("data"), dict) else queried
                 status = str(query_data.get("status") or query_data.get("taskStatus") or "").upper()
                 if status == "SUCCESS":
                     return await _runninghub_result_text(session, query_data.get("results") or [])
                 if status in {"FAILED", "CANCELLED", "CANCELED"}:
                     message = query_data.get("errorMessage") or query_data.get("failedReason") or status
-                    raise RuntimeError(f"RunningHub 提示词优化失败: {message}")
+                    raise _logged_upstream_error(f"RunningHub 提示词优化失败：{_upstream_label(message)}", message)
     except asyncio.CancelledError:
         active = _ACTIVE_RH_TASKS.get(request_id)
         if active:
@@ -1655,12 +1691,16 @@ async def _request_async(config: dict, payload: dict) -> str:
             async with session.post(url, headers=headers, json=body) as response:
                 text = await response.text()
                 if response.status >= 400:
-                    raise RuntimeError(f"API request failed ({response.status}): {text[:1000]}")
+                    hint = _UPSTREAM_HTTP_HINTS.get(response.status) or (
+                        "上游服务异常" if response.status >= 500 else "上游拒绝了请求"
+                    )
+                    raise _logged_upstream_error(f"提示词优化失败：{hint}（HTTP {response.status}）", text)
                 data = json.loads(text)
     except asyncio.CancelledError:
         raise
     except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as error:
-        raise RuntimeError(f"API request failed: {error}") from error
+        # 异常文本可能含完整 URL（Gemini 的 Key 在查询串）→ 只进日志，不回传。
+        raise _logged_upstream_error("提示词优化失败：无法连接上游，或返回内容无法解析", error) from error
     if config["protocol"] == "gemini":
         try:
             return "".join(part.get("text", "") for part in data["candidates"][0]["content"]["parts"]).strip()

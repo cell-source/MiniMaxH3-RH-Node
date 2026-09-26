@@ -331,6 +331,21 @@ class NormalizeConfigTests(unittest.TestCase):
         self.assertEqual(config["api_url"], "")
         self.assertEqual(config["model"], "")
 
+    def test_preset_protocol_wins_over_client_value(self):
+        # 审查 L6：预设优先，未如平台不再继承 RunningHub 协议。
+        config = prompt_optimizer._normalize_config({"provider": "openai", "api_key": "k", "protocol": "runninghub"})
+        self.assertEqual(config["protocol"], "openai")
+
+    def test_custom_without_protocol_defaults_to_openai(self):
+        config = prompt_optimizer._normalize_config(
+            {"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m", "api_key": "k"}
+        )
+        self.assertEqual(config["protocol"], "openai")
+
+    def test_unknown_provider_without_protocol_never_routes_to_runninghub(self):
+        config = prompt_optimizer._normalize_config({"provider": "no-such", "api_key": "k"})
+        self.assertEqual(config["protocol"], "openai")
+
     def test_custom_explicit_url_and_model_pass_through(self):
         config = prompt_optimizer._normalize_config({"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m1", "api_key": "k"})
         self.assertEqual(config["api_url"], "https://example.invalid/v1")
@@ -377,6 +392,63 @@ class TextOnlyProviderMediaTests(unittest.TestCase):
         _, _, body = self.parts("openai", True)
         content = body["messages"][1]["content"]
         self.assertTrue(any(part.get("type") == "image_url" for part in content))
+
+
+class UpstreamErrorHygieneTests(unittest.TestCase):
+    """审查 M4：上游正文/异常文本不得回传前端，凭证不得进入文案。"""
+
+    def test_credential_in_query_is_redacted(self):
+        url = "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=AIzaSySECRET&x=1"
+        self.assertNotIn("AIzaSySECRET", prompt_optimizer._redact_credentials(url))
+        self.assertIn("key=***", prompt_optimizer._redact_credentials(url))
+
+    def test_error_message_excludes_the_upstream_body(self):
+        error = prompt_optimizer._logged_upstream_error("提示词优化失败：鰴权失败（HTTP 401）", 'body with key=SECRET and prompt text')
+        self.assertIn("HTTP 401", str(error))
+        self.assertNotIn("SECRET", str(error))
+        self.assertNotIn("prompt text", str(error))
+
+    def test_upstream_label_is_short_and_redacted(self):
+        label = prompt_optimizer._upstream_label("failed\n\nkey=SECRET " + "x" * 500)
+        self.assertLessEqual(len(label), prompt_optimizer._UPSTREAM_LABEL_LIMIT)
+        self.assertNotIn("SECRET", label)
+
+    def test_http_status_error_does_not_echo_the_response(self):
+        class Response:
+            status = 429
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def text(self):
+                return '{"error":{"message":"quota exhausted for key=SECRET"}}'
+
+        class Session:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            def post(self, *args, **kwargs):
+                return Response()
+
+        config = prompt_optimizer._normalize_config({"provider": "openai", "api_key": "k", "read_media": False})
+        payload = {"prompt": "雨夜", "task": "T2VA", "duration": 5, "media": []}
+        with patch.object(prompt_optimizer.aiohttp, "ClientTimeout", lambda **kwargs: None), \
+                patch.object(prompt_optimizer.aiohttp, "ClientSession", Session):
+            with self.assertRaises(RuntimeError) as caught:
+                asyncio.run(prompt_optimizer._request_async(config, payload))
+        message = str(caught.exception)
+        self.assertIn("HTTP 429", message)
+        self.assertNotIn("SECRET", message)
+        self.assertNotIn("quota exhausted", message)
 
 
 if __name__ == "__main__":

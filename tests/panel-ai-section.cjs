@@ -190,9 +190,10 @@ check(dialogBody.includes('polishCheckRow("Read visual references", readMedia)')
     && dialogBody.includes('polishCheckRow("Automatic optimization before run", autoOptimize)'),
     'polish behavior toggles stay in the config dialog');
 
-/* 8c. 润色请求正确性（2026-09-26 审查修复）：协议按平台映射、custom 守卫、缓存签名读真实配置源 */
-check(polishBody.includes('protocol: polishProvider === "gemini" ? "gemini" : "openai"'),
-    'polish protocol maps per provider (gemini no longer hardcoded openai)');
+/* 8c. 润色请求正确性（2026-09-26 审查修复）：协议预设优先、custom 守卫、缓存签名读真实配置源 */
+check(polishBody.includes('...(polishProvider === "custom" ? { protocol: "openai" } : {})'),
+    'protocol is left to the backend preset except for custom');
+check(!/protocol:\s*polishProvider ===/.test(polishBody), 'polish no longer ships its own protocol map');
 check(polishBody.includes('polishProvider === "custom" && (!polishEndpoint || !polishModel)'),
     'custom polish guard requires both endpoint and model');
 const signatureBody = js.slice(js.indexOf('function optimizerContextSignature('), js.indexOf('function optimizerTaskContext('));
@@ -224,6 +225,14 @@ check(optimizerPy.includes('"deepseek": ("https://api.deepseek.com", "deepseek-f
     'polish backend has deepseek/glm presets aligned with llm_client');
 check(optimizerPy.includes('(preset[0] if preset else "")') && optimizerPy.includes('(preset[1] if preset else "")'),
     'unknown provider no longer falls back to the runninghub endpoint/model');
+check(optimizerPy.includes('str((preset[2] if preset else None) or data.get("protocol") or "openai")'),
+    'preset protocol wins over the client value (unknown provider defaults to openai)');
+check(optimizerPy.includes('_logged_upstream_error') && !/\{(?:body|text)\[:\d+\]/.test(optimizerPy),
+    'upstream response bodies are logged, not returned to the client');
+/* 8e. 遗留本地视觉模型模式归一（2026-09-26 审查 L7） */
+const optimizerDefaultMigration = js.slice(js.indexOf('const migrateLegacyOptimizerDefault ='), js.indexOf('const loadOptimizerSettings ='));
+check(optimizerDefaultMigration.includes('if (settings.mode === "local") settings = { ...settings, mode: "api" }'),
+    'legacy local optimizer mode is normalized to api');
 check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/generate")(generate_prompt_api)'),
     'backend registers /generate route');
 check(optimizerPy.includes('routes.post("/rh/minimax-h3/prompt-optimizer/format")(format_prompt_api)'),
