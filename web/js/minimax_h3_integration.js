@@ -247,14 +247,13 @@ const DOM_TRANSLATIONS = {
     "Up to 9 images": "最多9张图像",
     "Up to 3 videos": "最多3个视频",
     "Up to 3 audios": "最多3个音频",
-    "Optimize": "润色", "LLM Prompt Optimization Configuration": "LLM 配置（润色 / AI 生成）",
+    "Optimize": "润色", "LLM Prompt Optimization Configuration": "配置",
     "Polish provider": "润色平台（需视觉模型）",
     "Generation provider": "生成平台（✨/≡/运行期专用，纯文本即可）", "API key": "API Key", "Read visual references": "读取视觉素材",
     "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
     "Key shared with prompt optimizer": "与提示词优化器共享",
     "Generation model": "生成模型", "Generation endpoint": "生成端点",
     "Default: provider preset model": "留空使用平台预设模型",
-    "AI generation is the core feature: it covers the toolbar \u2728 generate, \u2261 format, and run-time prompt processing. Prompt polishing (\u2726) is a sub-feature configured below.": "AI 生成是主题功能：涵盖工具条 \u2728 生成、\u2261 整理与运行期提示词处理；润色（\u2726）是其子功能，配置见下方。",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
@@ -274,7 +273,7 @@ const DOM_TRANSLATIONS = {
     "Generation prompt failed": "AI 生成失败",
     "AI generation options": "AI 生成选项",
     "Polish settings": "润色（✦ 润色按钮使用）",
-    "AI generation": "AI 生成（主题功能）",
+    "AI generation": "AI 生成",
     "Prompt polishing (sub-feature)": "润色（✦ 子功能：改写表达，可读取素材画面）",
     "Generation language": "生成语言（✨/≡/运行期生成专用）",
     "AI timeout": "AI 超时（秒）",
@@ -282,8 +281,6 @@ const DOM_TRANSLATIONS = {
     "Prompt changed; result was not applied": "提示词或模式已改变，未覆盖当前内容",
     "Generation supports 2–15 seconds": "提示词生成仅支持 2–15 秒，请先调整视频时长",
     "Generation timed out": "生成超时，请缩短输入或调整超时设置",
-    "The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is.": "「AI 在线生成 / 离线原文包装 / 整理完整提示词」始终以编辑器内容为输入；「提示词编辑器」来源则原样使用编辑器文本。",
-    "Sound and subtitle options also apply when running editor prompts.": "音景、配乐和无字幕选项也用于编辑器提示词的运行处理。",
     "Automatic optimization before run": "运行前自动润色提示词", "No compatible local vision models found": "未找到可用的本地视觉模型",
     "Trim audio": "裁剪音频",
     "Audio trim": "音频截取",
@@ -2173,9 +2170,6 @@ function nodeColorToCss(value) {
                 const body = make("div"); body.className = kind === "sub" ? "mxv-opt-subsection-body" : "mxv-opt-section-body"; dialog.append(body);
                 return body;
             };
-            const purpose = make("div"); purpose.className = "mxv-opt-purpose";
-            purpose.textContent = t("AI generation is the core feature: it covers the toolbar ✨ generate, ≡ format, and run-time prompt processing. Prompt polishing (✦) is a sub-feature configured below.");
-            dialog.append(purpose);
             const mainSection = beginSection("AI generation");
             sectionBox = mainSection;
             // 共享钥匙串/模型池声明：润色（✦ 子功能）沿用主区的生成平台/Key/模型。
@@ -2219,8 +2213,6 @@ function nodeColorToCss(value) {
             // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：不再单独维护"创意"文本，
             // ai_text 由 mirrorSourceIdea 自动镜像编辑器，来源仅在配置界面显式切换。
             source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); };
-            const sourceHint = make("div", {}, t("The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is."));
-            sourceHint.className = "mxv-opt-purpose"; sectionBox.append(sourceHint);
             const genMode = row("H3 mode", make("select"));
             for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
             genMode.value = String(widget(node, "ai_mode")?.value || "auto");
@@ -2244,8 +2236,6 @@ function nodeColorToCss(value) {
             genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
             genSwitchRow("Strict validation", "ai_strict_validation");
             sectionBox.append(genChecks);
-            const soundHint = make("div", {}, t("Sound and subtitle options also apply when running editor prompts."));
-            soundHint.className = "mxv-opt-purpose"; sectionBox.append(soundHint);
             const genLanguage = make("select"); genLanguage.className = "mxv-control";
             for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
             genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
