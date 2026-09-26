@@ -52,6 +52,7 @@ function host(overrides = {}) {
     vm.createContext(ctx);
     vm.runInContext([
         section('function widget(node, name)', 'function hasOwn('),
+        section('const sharedKeychain =', 'const sharedGenerationOptions ='),
         section('const sharedGenerationOptions =', 'const commitPromptEditorInput ='),
         section('const promptSnapshot =', 'const setEditorSelection ='),
         section('const generationMode = () => {', 'optimizerGear.onclick = openOptimizerSettings;'),
@@ -98,21 +99,29 @@ if (require.main === module) (async () => {
     const keys = host();
     keys.optimizerSettings = { provider: 'deepseek', api_keys: { deepseek: 'old', openai: 'other' }, api_key: 'old', has_api_key: true };
     keys.providerApiKeys = { deepseek: 'old', openai: 'other' };
-    keys.keyOwner = 'deepseek'; keys.key = { value: 'replacement' };
-    run(keys, section('const sharedKeychain =', 'const sharedGenerationOptions ='));
-    run(keys, section('const commitKeyToOwner =', 'genProvider.onchange ='));
-    run(keys, 'commitKeyToOwner()');
-    assert.equal(keys.providerApiKeys.deepseek, 'replacement');
-    assert.equal(value(keys, 'ai_api_key'), 'replacement');
-    assert.equal(keys.optimizerSettings.api_keys.openai, 'other');
+    keys.key = { value: 'replacement' }; keys.genKey = { value: 'gen-key' };
+    keys.genProvider = { value: 'deepseek' }; keys.provider = { value: 'deepseek' };
+    // 分区 Key 行：各自 onchange 即时写回共享钥匙串与生成 widget（setSharedKey 已由 host 注入）。
+    run(keys, `
+        providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim());
+        providerApiKeys[genProvider.value] = genKey.value.trim(); setSharedKey(genProvider.value, genKey.value.trim());
+        setWidget(node, "ai_api_key", genKey.value.trim());
+    `);
+    assert.equal(keys.providerApiKeys.deepseek, 'gen-key');
+    assert.equal(keys.optimizerSettings.api_keys.deepseek, 'gen-key');
+    assert.equal(value(keys, 'ai_api_key'), 'gen-key');
+    assert.equal(keys.optimizerSettings.api_keys.openai, 'other'); // other platform untouched
     keys.key.value = '';
-    run(keys, 'commitKeyToOwner()');
+    run(keys, `providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim());`);
+    // 润色行清空同一平台槽位：即时写回，deepseek 槽随之清空（两行都指向 deepseek 时以最后操作为准）。
+    assert.equal(keys.optimizerSettings.api_keys.deepseek, '');
+    keys.genKey.value = '';
+    run(keys, `
+        providerApiKeys[genProvider.value] = genKey.value.trim(); setSharedKey(genProvider.value, genKey.value.trim());
+        setWidget(node, "ai_api_key", genKey.value.trim());
+    `);
     assert.equal(value(keys, 'ai_api_key'), '');
     assert.equal(keys.optimizerSettings.has_api_key, false);
-    keys.genProvider.value = 'openai'; keys.key.value = 'deepseek-owned';
-    run(keys, 'commitKeyToOwner()');
-    assert.equal(keys.providerApiKeys.deepseek, 'deepseek-owned');
-    assert.equal(keys.optimizerSettings.api_keys.openai, 'other');
 
     const strict = host();
     let pending = run(strict, 'runGeneration("ai")');

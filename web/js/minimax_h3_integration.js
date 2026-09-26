@@ -595,6 +595,9 @@ function createPanel(node) {
       .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
       .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
       .mxv-opt-section{font-size:11px;color:#e8e6e1;margin:12px 0 2px;padding-top:9px;border-top:1px solid #383e46}
+      .mxv-opt-section:first-child{margin-top:0;border-top:0;padding-top:0}
+      .mxv-opt-section-body{display:flex;flex-direction:column}
+      .mxv-opt-section-body>.mxv-opt-purpose{margin:2px 0 6px}
       .mxv-opt-gen-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-top:6px}
       .mxv-opt-gen-item{display:flex;align-items:center;gap:7px;min-height:28px;color:#b3b1ac;font-size:11px;white-space:nowrap;cursor:pointer}
       .mxv-opt-gen-item input{width:auto;flex:0 0 auto;accent-color:#e8a33d}
@@ -2175,57 +2178,34 @@ function nodeColorToCss(value) {
             const overlay = make("div"); overlay.className = "mxv-opt-overlay";
             const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
             const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
-            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); dialog.append(wrap); return control; };
+            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); return control; };
+            // 分区容器（2026-09-26 可用性重构）：按「润色 / AI 生成」归组行，消除两套配置混排的迷失感。
+            // 标题与 body 始终挂 dialog 根；sectionBox 只决定 row 的归属。
+            let sectionBox = dialog;
+            const beginSection = title => {
+                dialog.append(make("div", {}, t(title)));
+                dialog.lastChild.className = "mxv-opt-section";
+                const body = make("div"); body.className = "mxv-opt-section-body"; dialog.append(body);
+                return body;
+            };
             const purpose = make("div"); purpose.className = "mxv-opt-purpose";
             purpose.textContent = t("One place for everything: optimize model powers \u2726 prompt polishing; generation provider powers \u2728 AI generation below and run-time prompt generation.");
             dialog.append(purpose);
+            const polishSection = beginSection("Polish settings (✦)");
+            sectionBox = polishSection;
             const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
             const provider = row("Provider", make("select"));
             for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
             provider.value = current.provider || "runninghub";
-            // 生成侧（工作流执行）：独立平台与模型，Key 与优化器共享钥匙串。
-            const genProvider = row("Generation provider", make("select"));
-            for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
-            const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
-            genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
-            const genModel = row("Generation model", make("input"));
-            genModel.placeholder = t("model override");
-            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
-            const genEndpoint = row("Generation endpoint", make("input"));
-            genEndpoint.placeholder = t("endpoint override");
-            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
-            const syncGenRows = () => {
-                const custom = genProvider.value === "custom";
-                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
-                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
-                genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
-            };
-            syncGenRows();
-            // Key 输入框归属跟踪：两个平台下拉共用一个输入框，切换前先把现值
-            // 回存到原归属槽位，再加载新平台的 Key——防止跨平台串写（审查 S3）。
-            let keyOwner = provider.value;
-            const commitKeyToOwner = () => {
-                const current = key.value.trim();
-                providerApiKeys[keyOwner] = current;
-                setSharedKey(keyOwner, current);
-                if (keyOwner === genProvider.value) {
-                    // 归属生成侧：直接写生成 widget 与钥匙串。
-                    setWidget(node, "ai_api_key", current);
-                }
-            };
-            genProvider.onchange = () => {
-                syncGenRows();
-                // 平台切换：先回存原归属，再加载新平台的共享 Key（无则清空）。
-                commitKeyToOwner();
-                keyOwner = genProvider.value;
-                key.value = providerApiKeys[genProvider.value] || getSharedKey(genProvider.value) || "";
-            };
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
+            // 生成侧 Key 独立输入（同属一把共享钥匙串）：打开配置时先从 widget 回填。
+            const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
             if (!Object.hasOwn(providerApiKeys, savedGenProvider)) providerApiKeys[savedGenProvider] = cleanPrompt(widget(node, "ai_api_key")?.value);
             const providerModels = { ...(current.provider_models || {}) };
             if (current.model && !providerModels[current.provider || "runninghub"]) providerModels[current.provider || "runninghub"] = current.model;
             const key = row("API key", make("input")); key.type = "password"; key.value = providerApiKeys[provider.value] || "";
+            key.onchange = () => { providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim()); };
             const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "mxv-opt-check";
             const language = make("div"); language.className = "mxv-opt-language";
             for (const value of ["English", "中文"]) {
@@ -2295,7 +2275,7 @@ function nodeColorToCss(value) {
             row("Local model", localModelGroup);
             const localMmproj = row("Vision model (mmproj)", make("select"));
             const localDevice = row("Local device", make("select")); localDevice.append(new Option(t("Auto"), "auto"), new Option("GPU", "cuda"), new Option("CPU", "cpu")); localDevice.value = current.local_device || "cuda";
-            const dependencyStatus = make("div"); dependencyStatus.className = "mxv-opt-dependencies"; dialog.append(dependencyStatus);
+            const dependencyStatus = make("div"); dependencyStatus.className = "mxv-opt-dependencies"; sectionBox.append(dependencyStatus);
             const maxTokens = row("Maximum output tokens", make("input"));
             maxTokens.type = "number"; maxTokens.min = "512"; maxTokens.max = "8192"; maxTokens.step = "512";
             maxTokens.value = String(Math.max(512, Math.min(8192, Number(current.max_tokens) || 4096)));
@@ -2309,7 +2289,7 @@ function nodeColorToCss(value) {
             const checkboxRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); checkboxRows.append(wrap); };
             checkboxRow("Read visual references", readMedia);
             const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "mxv-opt-check"; checkboxRow("Automatic optimization before run", autoOptimize);
-            dialog.append(checkboxRows);
+            sectionBox.append(checkboxRows);
             let localModels = current.models || [];
             let mmprojModels = current.mmproj_models || [];
             let mmprojManuallySelected = !!current.local_mmproj;
@@ -2427,15 +2407,11 @@ function nodeColorToCss(value) {
             url.value = current.api_url || ""; model.value = current.model || ""; protocol.value = current.protocol || "openai";
             provider.addEventListener("change", () => {
                 const previousProvider = provider.dataset.previousValue || current.provider || "runninghub";
-                // Key 输入框可能归属生成侧（用户刚为生成平台填的 Key）：
-                // 先按归属回存，不能无差别写进优化平台的槽位（审查 S3 串写）。
-                commitKeyToOwner();
                 if (previousProvider === "runninghub" || previousProvider === "runninghub_overseas") {
                     providerModels[previousProvider] = runninghubModel.value;
                 }
-                keyOwner = provider.value;
-                key.value = providerApiKeys[provider.value] || getSharedKey(provider.value) || "";
                 provider.dataset.previousValue = provider.value;
+                key.value = providerApiKeys[provider.value] || "";
                 if (provider.value === "runninghub" || provider.value === "runninghub_overseas") {
                     const preserve = providerModels[provider.value] || optimizerProviders[provider.value].model;
                     fillRunninghubModels(runninghubModelsByProvider[provider.value] || [], preserve);
@@ -2443,11 +2419,38 @@ function nodeColorToCss(value) {
                 sync();
             }); mode.addEventListener("change", sync); sync();
             provider.dataset.previousValue = provider.value;
-            /* ===== AI 生成区（2026-09-25 二次整合）：✨ 与 ⚙ 共用本配置界面，不再单独弹窗 ===== */
-            const genTitle = make("div", {}, t("AI generation options")); genTitle.className = "mxv-opt-section"; dialog.append(genTitle);
+            /* ===== AI 生成区：平台/模型/Key/来源/开关全部归入本区（2026-09-26 分区重构）===== */
+            sectionBox = beginSection("AI generation settings (✨/≡)");
+            const genProvider = row("Generation provider", make("select"));
+            for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
+            genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
+            const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_api_key")?.value);
+            genKey.onchange = () => {
+                providerApiKeys[genProvider.value] = genKey.value.trim();
+                setSharedKey(genProvider.value, genKey.value.trim());
+                setWidget(node, "ai_api_key", genKey.value.trim());
+            };
+            const genModel = row("Generation model", make("input"));
+            genModel.placeholder = t("model override");
+            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
+            const genEndpoint = row("Generation endpoint", make("input"));
+            genEndpoint.placeholder = t("endpoint override");
+            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
+            const syncGenRows = () => {
+                const custom = genProvider.value === "custom";
+                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
+                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
+                genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
+            };
+            genProvider.onchange = () => {
+                syncGenRows();
+                // 平台切换：加载新平台的共享 Key（无则清空）；旧平台 Key 已即时写回钥匙串。
+                genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
+            };
+            syncGenRows();
             const genPurpose = make("div"); genPurpose.className = "mxv-opt-purpose";
             genPurpose.textContent = t("These options configure AI generation and run-time prompt processing; the input always comes from the prompt editor.");
-            dialog.append(genPurpose);
+            sectionBox.append(genPurpose);
             const source = row("Source", make("select"));
             for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
             source.value = String(widget(node, "prompt_source")?.value || "panel");
@@ -2478,9 +2481,9 @@ function nodeColorToCss(value) {
             genSwitchRow("No-subtitle constraint", "ai_no_subtitles");
             genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
             genSwitchRow("Strict validation", "ai_strict_validation");
-            dialog.append(genChecks);
+            sectionBox.append(genChecks);
             const soundHint = make("div", {}, t("Sound and subtitle options also apply when running editor prompts."));
-            soundHint.className = "mxv-opt-purpose"; dialog.append(soundHint);
+            soundHint.className = "mxv-opt-purpose"; sectionBox.append(soundHint);
             const genLanguage = make("select"); genLanguage.className = "mxv-control";
             for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
             genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
@@ -2513,25 +2516,27 @@ function nodeColorToCss(value) {
                 cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
             };
             refreshDialogActions();
-            /* 保存/润色共用：把界面当前取值写入 optimizerSettings 与生成侧 widget（所见即所请求）。 */
+            /* 保存：把两个分区的界面取值分别写入 optimizerSettings 与生成侧 widget。 */
             const applyDialogConfig = () => {
                 const outputLanguage = language.querySelector("input:checked")?.value || "中文";
                 const preset = optimizerProviders[provider.value];
                 const selectedModel = (provider.value === "runninghub" || provider.value === "runninghub_overseas") ? runninghubModel.value : model.value;
-                // 按归属写回 Key：输入框当前值属于 keyOwner 平台（优化或生成）。
-                commitKeyToOwner();
+                // Key 行跟随各自分区：润色 Key → 润色平台槽位；生成 Key → 生成平台槽位。
+                providerApiKeys[provider.value] = key.value.trim();
+                setSharedKey(provider.value, key.value.trim());
+                providerApiKeys[genProvider.value] = genKey.value.trim();
+                setSharedKey(genProvider.value, genKey.value.trim());
                 providerModels[provider.value] = selectedModel;
                 normalizeMaxTokens();
                 const body = { mode: mode.value, provider: provider.value, api_url: provider.value === "custom" ? url.value : preset?.url || url.value, model: selectedModel, protocol: provider.value === "custom" ? protocol.value : preset?.protocol || protocol.value, read_media: readMedia.checked, output_language: outputLanguage, local_model: localModel.value, local_mmproj: localMmproj.value, local_device: localDevice.value, max_tokens: Number(maxTokens.value), auto_optimize: autoOptimize.checked, api_keys: { ...providerApiKeys }, provider_models: { ...providerModels } };
                 body.api_key = providerApiKeys[provider.value] || "";
                 body.has_api_key = !!body.api_key;
                 optimizerSettings = body;
-                // ===== 生成侧写回：一个弹窗配好两个用途 =====
+                // ===== 生成侧写回：平台/Key/模型/端点与钥匙串同步 =====
                 setWidget(node, "ai_provider", genProvider.value);
-                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value));
+                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? "");
                 setWidget(node, "ai_model", genModel.value.trim());
                 setWidget(node, "ai_endpoint", genEndpoint.value.trim());
-                // Key 的写回已由 keyOwner 归属逻辑完成（commitKeyToOwner/provider change/save）。
                 refreshOptimizerName(); refreshPromptConnection(); persistState();
             };
             save.onclick = () => { applyDialogConfig(); close(); };
