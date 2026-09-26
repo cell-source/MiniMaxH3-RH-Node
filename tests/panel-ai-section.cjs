@@ -165,6 +165,23 @@ check(js.includes('function mirrorSourceIdea()') && js.includes('function syncEd
     && !js.includes('useEditorPrompt'), 'editor content mirrors into the runtime source input (actions never flip the source)');
 check(js.split('mirrorSourceIdea()').length - 1 >= 6, 'mirror runs on edit/undo/fill/reset/source-switch/restore');
 
+/* 8b. 润色（✦ 子功能）沿用主区生成配置（2026-09-26）：无独立平台/Key/语言配置 */
+const polishBody = js.slice(js.indexOf('async function runPromptOptimization('), js.indexOf('const autoOptimizeBeforeQueue ='));
+check(!!polishBody, 'polish runner defined');
+check(polishBody.includes('const polishProvider = String(widget(node, "ai_provider")?.value || "deepseek")')
+    && polishBody.includes('const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value)')
+    && polishBody.includes('const polishModel = cleanPrompt(widget(node, "ai_model")?.value)'),
+    'polish config built from the main generation widgets');
+check(polishBody.includes('const polishOutputLanguage = String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English"'),
+    'polish output language follows the main generation language');
+check(!dialogBody.includes('"Polish provider"') && !dialogBody.includes('row("Output language"'),
+    'polish-only provider/language rows removed from the config dialog');
+check(!dialogBody.includes('runninghubModel') && !dialogBody.includes('localModel'),
+    'runninghub/local vision model config removed with the polish provider rows');
+check(dialogBody.includes('polishCheckRow("Read visual references", readMedia)')
+    && dialogBody.includes('polishCheckRow("Automatic optimization before run", autoOptimize)'),
+    'polish behavior toggles stay in the config dialog');
+
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
     'duplicated advanced rows removed (no_subtitle/soundscape/music)');

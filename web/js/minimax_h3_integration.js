@@ -166,7 +166,6 @@ const DOM_TRANSLATIONS = {
     "AI generation": "AI 生成",
     "AI timeout (seconds)": "AI 总超时（秒）",
     "Auto": "自动",
-    "Refresh RunningHub models": "刷新 RunningHub 模型",
     "Steps": "采样步数",
     "Video shift": "视频偏移",
     "Audio shift": "音频偏移",
@@ -260,7 +259,6 @@ const DOM_TRANSLATIONS = {
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
     "Save": "保存", "Cancel": "取消", "Custom": "自定义",
-    "API URL": "API 地址", "Model": "模型", "Protocol": "协议",
     "Prompt is connected to an upstream node; the internal prompt is disabled!": "提示词已连接上游节点，内部提示词已禁用！",
     "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Optimizing": "润色中", "Restore before optimization": "恢复润色前", "Configure API": "配置模型与选项（润色与 AI 生成共用）",
     "Prompt optimizer API is not configured. Open settings now?": "尚未配置润色 API，是否立即打开设置？",
@@ -286,19 +284,7 @@ const DOM_TRANSLATIONS = {
     "Generation timed out": "生成超时，请缩短输入或调整超时设置",
     "The editor content is always the input for the AI / offline / format sources; the editor source runs the text as-is.": "「AI 在线生成 / 离线原文包装 / 整理完整提示词」始终以编辑器内容为输入；「提示词编辑器」来源则原样使用编辑器文本。",
     "Sound and subtitle options also apply when running editor prompts.": "音景、配乐和无字幕选项也用于编辑器提示词的运行处理。",
-    "Output language": "润色输出语言（✦ 润色专用）",
-    "Maximum output tokens": "最大输出 Tokens",
-    "Optimization mode": "优化方式", "Online API": "在线 API", "Local vision model": "本地视觉模型",
-    "Refresh local models": "刷新本地模型", "Local model": "本地模型", "Local device": "本地设备",
-    "Search local models": "搜索本地模型", "Search models": "搜索模型", "No matching models": "没有匹配的模型",
     "Automatic optimization before run": "运行前自动润色提示词", "No compatible local vision models found": "未找到可用的本地视觉模型",
-    "Missing local model dependencies": "缺少本地模型依赖",
-    "Choose vision projector": "选择视觉投影模型", "Vision model (mmproj)": "视觉模型（mmproj）",
-    "No mmproj models found": "未找到mmproj视觉模型",
-    "Multiple matching mmproj files were found. Choose one:": "检测到多个匹配的mmproj文件，请选择一个：",
-    "GGUF dependency unavailable": "GGUF运行依赖不可用",
-    "Download matching dependency": "下载匹配依赖",
-    "Restart ComfyUI after installation": "安装后请重启ComfyUI",
     "Trim audio": "裁剪音频",
     "Audio trim": "音频截取",
     "Start": "开始",
@@ -1122,10 +1108,7 @@ function createPanel(node) {
     if (optimizerBefore != null) resetPrompt.classList.add("visible");
     const configuredOptimizerName = () => {
         if (!optimizerSettings) return "";
-        if (optimizerSettings.mode === "local") {
-            const name = String(optimizerSettings.local_model || "").split(/[\\/]/).pop();
-            return name ? `本地：${name}` : "";
-        }
+        // 润色（✦ 子功能）沿用主区生成平台：名称直接展示生成模型。
         const rawName = String(optimizerSettings.model || "").trim().split("/").pop();
         const name = rawName
             .replace(/^gpt(?=[-_.\d])/i, "GPT")
@@ -1539,18 +1522,18 @@ function nodeColorToCss(value) {
     }
     function refreshPromptConnection() {
         const external = upstreamConnected();
-        const localBlocked = workflowRunning && optimizerSettings?.mode === "local";
         prompt.readOnly = external;
         promptWrap.classList.toggle("external", external);
         prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
         aiGeneratePrompt.disabled = external;
         aiFormatPrompt.disabled = external;
-        polishPrompt.disabled = external || localBlocked;
+        polishPrompt.disabled = external;
         resetPrompt.disabled = external;
     }
     const updateWorkflowState = running => {
         refreshPromptConnection();
-        if (running && optimizing && optimizerSettings?.mode === "local") cancelOptimization();
+        // 运行前自动润色：润色与生成共用同一服务端线程池，工作流启动时自动取消在途润色。
+        if (running && optimizing) cancelOptimization();
     };
     workflowStateHandlers.add(updateWorkflowState);
     installWorkflowStateMonitor();
@@ -2195,9 +2178,7 @@ function nodeColorToCss(value) {
             dialog.append(purpose);
             const mainSection = beginSection("AI generation");
             sectionBox = mainSection;
-            const polishSection = beginSection("Prompt polishing (sub-feature)", "sub");
-            sectionBox = mainSection;
-            // 共享钥匙串/模型池声明：两个分区的 Key 行都写这里。
+            // 共享钥匙串/模型池声明：润色（✦ 子功能）沿用主区的生成平台/Key/模型。
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
             const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
@@ -2275,227 +2256,16 @@ function nodeColorToCss(value) {
             const genRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); };
             genRow("Generation language", genLanguage);
             genRow("AI timeout", genTimeout);
-            /* ===== 润色（✦）＝AI 生成的子功能：配置以子分组呈现，渲染在后 ===== */
-            sectionBox = polishSection;
-            const mode = row("Optimization mode", make("select")); mode.append(new Option(t("Online API"), "api"), new Option(t("Local vision model"), "local")); mode.value = current.mode || "api";
-            const provider = row("Polish provider", make("select"));
-            for (const [value, preset] of Object.entries(optimizerProviders)) provider.append(new Option(preset.label, value));
-            provider.value = current.provider || "runninghub";
-            const key = row("API key", make("input")); key.type = "password"; key.value = providerApiKeys[provider.value] || "";
-            key.onchange = () => { providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim()); };
+            /* ===== 润色（✦）＝AI 生成的子功能：沿用主区平台/Key/模型/语言，无独立配置。
+               仅保留两个行为开关（读取素材 / 运行前自动润色）。 ===== */
             const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "mxv-opt-check";
-            const language = make("div"); language.className = "mxv-opt-language";
-            for (const value of ["English", "中文"]) {
-                const label = make("label"); const radio = make("input"); radio.type = "radio"; radio.name = `mxv-output-language-${node.id}`; radio.value = value; radio.checked = (current.output_language || "中文") === value; label.append(radio, make("span", {}, value)); language.append(label);
-            }
-            const url = row("API URL", make("input"), true);
-            const model = row("Model", make("input"), true);
-            const protocol = row("Protocol", make("select"), true); protocol.append(
-                new Option("OpenAI Chat Completions", "openai"),
-                new Option("OpenAI Responses", "responses"),
-                new Option("Gemini GenerateContent", "gemini"),
-            );
-            const runninghubModelGroup = make("div"); runninghubModelGroup.className = "mxv-opt-model-row";
-            const runninghubModel = make("select"); runninghubModel.className = "mxv-opt-model-native"; runninghubModelGroup.append(runninghubModel);
-            const runninghubModelPicker = make("button"); runninghubModelPicker.type = "button"; runninghubModelPicker.className = "mxv-opt-model-picker"; runninghubModelGroup.append(runninghubModelPicker);
-            const refreshIcon = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 0 1 4.9 4H20a8 8 0 0 0-2.35-4.65ZM12 17a5 5 0 0 1-4.9-4H4a8 8 0 0 0 8 7v3l5-5-5-5v4Z"/></svg>';
-            const refreshRunninghubModels = make("button"); refreshRunninghubModels.type = "button"; refreshRunninghubModels.className = "mxv-opt-refresh"; refreshRunninghubModels.innerHTML = refreshIcon; refreshRunninghubModels.title = t("Refresh RunningHub models"); refreshRunninghubModels.setAttribute("aria-label", t("Refresh RunningHub models")); runninghubModelGroup.append(refreshRunninghubModels);
-            const runninghubModelMenu = make("div"); runninghubModelMenu.className = "mxv-opt-model-menu";
-            const runninghubModelSearch = make("input"); runninghubModelSearch.type = "search"; runninghubModelSearch.placeholder = t("Search models"); runninghubModelSearch.className = "mxv-opt-model-search";
-            const runninghubModelResults = make("div"); runninghubModelResults.className = "mxv-opt-model-results";
-            runninghubModelMenu.append(runninghubModelSearch, runninghubModelResults); runninghubModelGroup.append(runninghubModelMenu);
-            row("Model", runninghubModelGroup);
-            const runninghubModelsByProvider = {
-                runninghub: [...(current.runninghub_models || [])],
-                runninghub_overseas: [...(current.runninghub_overseas_models || current.runninghub_models || [])],
-            };
-            let runninghubModels = runninghubModelsByProvider[provider.value] || [];
-            const fillRunninghubModels = (models = runninghubModels, preserveValue = runninghubModel.value || current.model || "openai/gpt-5.6-sol") => {
-                runninghubModels = models || [];
-                runninghubModel.replaceChildren(...runninghubModels.map(value => new Option(value, value)));
-                if ([...runninghubModel.options].some(option => option.value === preserveValue)) runninghubModel.value = preserveValue;
-                else if ([...runninghubModel.options].some(option => option.value === "openai/gpt-5.6-sol")) runninghubModel.value = "openai/gpt-5.6-sol";
-                refreshRunninghubModelPicker(); renderRunninghubModels();
-            };
-            for (const value of runninghubModels) runninghubModel.append(new Option(value, value));
-            runninghubModel.value = providerModels[provider.value] || "openai/gpt-5.6-sol";
-            const refreshRunninghubModelPicker = () => { runninghubModelPicker.textContent = runninghubModel.value || ""; };
-            const renderRunninghubModels = () => {
-                const keyword = runninghubModelSearch.value.trim().toLowerCase();
-                const filtered = keyword ? runninghubModels.filter(value => value.toLowerCase().includes(keyword)) : runninghubModels;
-                runninghubModelResults.replaceChildren();
-                if (!filtered.length) {
-                    const empty = make("div", {}, t("No matching models")); empty.className = "mxv-opt-model-empty"; runninghubModelResults.append(empty); return;
-                }
-                for (const value of filtered) {
-                    const option = make("button", {}, value); option.type = "button"; option.className = "mxv-opt-model-option";
-                    option.classList.toggle("selected", value === runninghubModel.value);
-                    option.onclick = () => { runninghubModel.value = value; refreshRunninghubModelPicker(); runninghubModelMenu.classList.remove("open"); };
-                    runninghubModelResults.append(option);
-                }
-            };
-            refreshRunninghubModelPicker(); renderRunninghubModels();
-            runninghubModelPicker.onclick = () => {
-                const opening = !runninghubModelMenu.classList.contains("open");
-                runninghubModelMenu.classList.toggle("open", opening);
-                if (opening) { runninghubModelSearch.value = ""; renderRunninghubModels(); requestAnimationFrame(() => runninghubModelSearch.focus()); }
-            };
-            runninghubModelSearch.addEventListener("input", renderRunninghubModels);
-            const localModelGroup = make("div"); localModelGroup.className = "mxv-opt-model-row";
-            const localModel = make("select"); localModel.className = "mxv-opt-model-native"; localModelGroup.append(localModel);
-            const localModelPicker = make("button"); localModelPicker.type = "button"; localModelPicker.className = "mxv-opt-model-picker"; localModelGroup.append(localModelPicker);
-            const localModelMenu = make("div"); localModelMenu.className = "mxv-opt-model-menu";
-            const localModelSearch = make("input"); localModelSearch.type = "search"; localModelSearch.placeholder = t("Search local models"); localModelSearch.className = "mxv-opt-model-search";
-            const localModelResults = make("div"); localModelResults.className = "mxv-opt-model-results";
-            localModelMenu.append(localModelSearch, localModelResults); localModelGroup.append(localModelMenu);
-            const refreshModels = make("button"); refreshModels.type = "button"; refreshModels.className = "mxv-opt-refresh"; refreshModels.innerHTML = refreshIcon; refreshModels.title = t("Refresh local models"); refreshModels.setAttribute("aria-label", t("Refresh local models")); localModelGroup.append(refreshModels);
-            row("Local model", localModelGroup);
-            const localMmproj = row("Vision model (mmproj)", make("select"));
-            const localDevice = row("Local device", make("select")); localDevice.append(new Option(t("Auto"), "auto"), new Option("GPU", "cuda"), new Option("CPU", "cpu")); localDevice.value = current.local_device || "cuda";
-            const dependencyStatus = make("div"); dependencyStatus.className = "mxv-opt-dependencies"; sectionBox.append(dependencyStatus);
-            const maxTokens = row("Maximum output tokens", make("input"));
-            maxTokens.type = "number"; maxTokens.min = "512"; maxTokens.max = "8192"; maxTokens.step = "512";
-            maxTokens.value = String(Math.max(512, Math.min(8192, Number(current.max_tokens) || 4096)));
-            const normalizeMaxTokens = () => {
-                const value = Number.parseInt(maxTokens.value, 10);
-                maxTokens.value = String(Math.max(512, Math.min(8192, Number.isFinite(value) ? value : 4096)));
-            };
-            maxTokens.addEventListener("change", normalizeMaxTokens);
-            row("Output language", language);
-            const checkboxRows = make("div"); checkboxRows.className = "mxv-opt-checks";
-            const checkboxRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); checkboxRows.append(wrap); };
-            checkboxRow("Read visual references", readMedia);
-            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "mxv-opt-check"; checkboxRow("Automatic optimization before run", autoOptimize);
-            sectionBox.append(checkboxRows);
-            let localModels = current.models || [];
-            let mmprojModels = current.mmproj_models || [];
-            let mmprojManuallySelected = !!current.local_mmproj;
-            const selectedLocalModel = () => localModels.find(item => item.relative_path === localModel.value);
-            const fillMmprojModels = (models = mmprojModels, preserveValue = localMmproj.value || current.local_mmproj || "") => {
-                mmprojModels = models || [];
-                localMmproj.replaceChildren();
-                localMmproj.append(new Option(t(mmprojModels.length ? "Choose vision projector" : "No mmproj models found"), ""));
-                mmprojModels.forEach(item => localMmproj.append(new Option(item.name, item.relative_path)));
-                if ([...localMmproj.options].some(option => option.value === preserveValue)) localMmproj.value = preserveValue;
-            };
-            const autoSelectMmproj = () => {
-                const selected = selectedLocalModel();
-                if (selected?.format !== "gguf") { localMmproj.value = ""; return; }
-                const best = selected.mmproj_candidates?.find(value => mmprojModels.some(item => item.relative_path === value));
-                localMmproj.value = best || "";
-            };
-            const refreshModelPicker = () => {
-                const selected = selectedLocalModel();
-                localModelPicker.textContent = selected?.name || t("No compatible local vision models found");
-            };
-            const renderModelResults = () => {
-                const keyword = localModelSearch.value.trim().toLowerCase();
-                const filtered = keyword
-                    ? localModels.filter(item => `${item.name} ${item.relative_path}`.toLowerCase().includes(keyword))
-                    : localModels;
-                localModelResults.replaceChildren();
-                if (!filtered.length) {
-                    const empty = make("div", {}, t("No compatible local vision models found")); empty.className = "mxv-opt-model-empty"; localModelResults.append(empty); return;
-                }
-                for (const item of filtered) {
-                    const option = make("button", {}, item.name); option.type = "button"; option.className = "mxv-opt-model-option";
-                    option.classList.toggle("selected", item.relative_path === localModel.value);
-                    option.onclick = () => { localModel.value = item.relative_path; mmprojManuallySelected = false; refreshModelPicker(); autoSelectMmproj(); sync(); localModelMenu.classList.remove("open"); };
-                    localModelResults.append(option);
-                }
-            };
-            const fillModels = (models = localModels, preserveValue = localModel.value || current.local_model || "") => {
-                localModels = models || [];
-                localModel.replaceChildren();
-                localModels.forEach(item => localModel.append(new Option(item.name, item.relative_path)));
-                if ([...localModel.options].some(option => option.value === preserveValue)) localModel.value = preserveValue;
-                if (!localModel.options.length) localModel.append(new Option(t("No compatible local vision models found"), ""));
-                refreshModelPicker(); renderModelResults();
-            };
-            const showDependencies = missing => { dependencyStatus.textContent = missing?.length ? `${t("Missing local model dependencies")}: ${missing.join(", ")}` : ""; };
-            fillMmprojModels(current.mmproj_models);
-            fillModels(current.models);
-            if (!localMmproj.value) autoSelectMmproj();
-            showDependencies(current.missing_dependencies);
-            localModelPicker.onclick = () => {
-                const opening = !localModelMenu.classList.contains("open");
-                localModelMenu.classList.toggle("open", opening);
-                if (opening) { localModelSearch.value = ""; renderModelResults(); requestAnimationFrame(() => localModelSearch.focus()); }
-            };
-            localModelSearch.addEventListener("input", renderModelResults);
-            localMmproj.addEventListener("change", () => { mmprojManuallySelected = !!localMmproj.value; });
-            dialog.addEventListener("pointerdown", event => {
-                if (!localModelGroup.contains(event.target)) localModelMenu.classList.remove("open");
-                if (!runninghubModelGroup.contains(event.target)) runninghubModelMenu.classList.remove("open");
-            });
-            const withRefreshState = async (button, action) => {
-                if (button.disabled) return;
-                button.disabled = true; button.classList.add("loading");
-                try { await action(); }
-                finally { button.classList.remove("loading"); button.disabled = false; }
-            };
-            refreshRunninghubModels.onclick = () => withRefreshState(refreshRunninghubModels, async () => {
-                const selectedProvider = provider.value === "runninghub_overseas" ? "runninghub_overseas" : "runninghub";
-                const data = await fetchOptimizerJson(`${OPTIMIZER_ROUTE}/runninghub-models?provider=${encodeURIComponent(selectedProvider)}`, { cache: "no-store" });
-                const refreshed = selectedProvider === "runninghub_overseas" ? data.runninghub_overseas_models : data.runninghub_models;
-                runninghubModelsByProvider[selectedProvider] = [...(refreshed || [])];
-                fillRunninghubModels(runninghubModelsByProvider[selectedProvider]);
-                optimizerSettings = {
-                    ...(optimizerSettings || current),
-                    runninghub_models: [...runninghubModelsByProvider.runninghub],
-                    runninghub_overseas_models: [...runninghubModelsByProvider.runninghub_overseas],
-                };
-            }).catch(error => alert(error.message));
-            refreshModels.onclick = () => withRefreshState(refreshModels, async () => {
-                const data = await fetchOptimizerJson(`${OPTIMIZER_ROUTE}/models`, { cache: "no-store" });
-                const previousModel = localModel.value;
-                const previousMmproj = localMmproj.value;
-                fillMmprojModels(data.mmproj_models, previousMmproj);
-                fillModels(data.models, previousModel);
-                const manualStillExists = mmprojManuallySelected && mmprojModels.some(item => item.relative_path === previousMmproj);
-                if (!manualStillExists) { mmprojManuallySelected = false; autoSelectMmproj(); }
-                optimizerSettings = {
-                    ...(optimizerSettings || current),
-                    models: [...localModels],
-                    mmproj_models: [...mmprojModels],
-                    missing_dependencies: data.missing_dependencies || [],
-                };
-                sync(); showDependencies(data.missing_dependencies);
-            }).catch(error => alert(error.message));
-            if (!current.models) refreshModels.click();
-            const sync = () => {
-                const custom = provider.value === "custom";
-                const runninghub = provider.value === "runninghub" || provider.value === "runninghub_overseas";
-                dialog.classList.toggle("custom", custom);
-                const local = mode.value === "local";
-                dialog.classList.toggle("local", local);
-                [provider, key, url, model, protocol].forEach(control => control.closest("label")?.classList.toggle("mxv-opt-hidden", local));
-                runninghubModel.closest("label")?.classList.toggle("mxv-opt-hidden", local || !runninghub);
-                model.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
-                url.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
-                protocol.closest("label")?.classList.toggle("mxv-opt-hidden", local || !custom);
-                [localModel, localDevice, refreshModels].forEach(control => (control.closest("label") || control).classList.toggle("mxv-opt-hidden", !local));
-                const gguf = selectedLocalModel()?.format === "gguf";
-                localMmproj.closest("label")?.classList.toggle("mxv-opt-hidden", !local || !gguf);
-                dependencyStatus.classList.toggle("mxv-opt-hidden", !local || !dependencyStatus.textContent);
-                const preset = optimizerProviders[provider.value];
-                if (!custom) { url.value = preset.url; model.value = preset.model; protocol.value = preset.protocol; }
-            };
-            url.value = current.api_url || ""; model.value = current.model || ""; protocol.value = current.protocol || "openai";
-            provider.addEventListener("change", () => {
-                const previousProvider = provider.dataset.previousValue || current.provider || "runninghub";
-                if (previousProvider === "runninghub" || previousProvider === "runninghub_overseas") {
-                    providerModels[previousProvider] = runninghubModel.value;
-                }
-                provider.dataset.previousValue = provider.value;
-                key.value = providerApiKeys[provider.value] || "";
-                if (provider.value === "runninghub" || provider.value === "runninghub_overseas") {
-                    const preserve = providerModels[provider.value] || optimizerProviders[provider.value].model;
-                    fillRunninghubModels(runninghubModelsByProvider[provider.value] || [], preserve);
-                }
-                sync();
-            }); mode.addEventListener("change", sync); sync();
-            provider.dataset.previousValue = provider.value;
+            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "mxv-opt-check";
+            const subSectionHead = make("div", {}, t("Prompt polishing (sub-feature)")); subSectionHead.className = "mxv-opt-subsection"; mainSection.append(subSectionHead);
+            const polishChecks = make("div"); polishChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
+            const polishCheckRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-gen-item"; wrap.append(control, make("span", {}, t(label))); polishChecks.append(wrap); };
+            polishCheckRow("Read visual references", readMedia);
+            polishCheckRow("Automatic optimization before run", autoOptimize);
+            mainSection.append(polishChecks);
             const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
             // 配置界面纯配置（2026-09-26）：✦ 润色与 ≡/✨ 一样是工具条一键直出动作。
@@ -2518,22 +2288,22 @@ function nodeColorToCss(value) {
                 cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
             };
             refreshDialogActions();
-            /* 保存：把两个分区的界面取值分别写入 optimizerSettings 与生成侧 widget。 */
+            /* 保存：生成侧 widget 与润色行为开关统一落盘。润色（✦ 子功能）沿用
+               主区生成平台/Key/模型/语言——不再有独立配置。 */
             const applyDialogConfig = () => {
-                const outputLanguage = language.querySelector("input:checked")?.value || "中文";
-                const preset = optimizerProviders[provider.value];
-                const selectedModel = (provider.value === "runninghub" || provider.value === "runninghub_overseas") ? runninghubModel.value : model.value;
-                // Key 行跟随各自分区：润色 Key → 润色平台槽位；生成 Key → 生成平台槽位。
-                providerApiKeys[provider.value] = key.value.trim();
-                setSharedKey(provider.value, key.value.trim());
+                // 润色行为开关落在共享钥匙串副本上，随 persistState 持久化。
                 providerApiKeys[genProvider.value] = genKey.value.trim();
                 setSharedKey(genProvider.value, genKey.value.trim());
-                providerModels[provider.value] = selectedModel;
-                normalizeMaxTokens();
-                const body = { mode: mode.value, provider: provider.value, api_url: provider.value === "custom" ? url.value : preset?.url || url.value, model: selectedModel, protocol: provider.value === "custom" ? protocol.value : preset?.protocol || protocol.value, read_media: readMedia.checked, output_language: outputLanguage, local_model: localModel.value, local_mmproj: localMmproj.value, local_device: localDevice.value, max_tokens: Number(maxTokens.value), auto_optimize: autoOptimize.checked, api_keys: { ...providerApiKeys }, provider_models: { ...providerModels } };
-                body.api_key = providerApiKeys[provider.value] || "";
-                body.has_api_key = !!body.api_key;
-                optimizerSettings = body;
+                optimizerSettings = {
+                    ...(optimizerSettings || {}),
+                    provider: genProvider.value,
+                    api_key: genKey.value.trim(),
+                    has_api_key: !!genKey.value.trim(),
+                    read_media: readMedia.checked,
+                    auto_optimize: autoOptimize.checked,
+                    // 润色输出语言跟随主体生成语言：zh→中文，mixed/en→English。
+                    output_language: genLanguage.value === "zh" ? "中文" : "English",
+                };
                 // ===== 生成侧写回：平台/Key/模型/端点与钥匙串同步 =====
                 setWidget(node, "ai_provider", genProvider.value);
                 setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? "");
@@ -2838,12 +2608,30 @@ function nodeColorToCss(value) {
             await loadOptimizerSettings();
             if (!promptOperationCurrent(pending)) return false;
             if (automatic && !optimizerSettings?.auto_optimize) return false;
-            const local = optimizerSettings?.mode === "local";
-            if (local && workflowRunning) return false;
-            if ((!local && !optimizerSettings?.has_api_key) || (local && !optimizerSettings?.local_model)) {
+            // 润色（✦ 子功能）沿用主区生成配置：平台/Key/模型/端点直接取生成 widget。
+            const polishProvider = String(widget(node, "ai_provider")?.value || "deepseek");
+            const polishApiKey = getSharedKey(polishProvider) || cleanPrompt(widget(node, "ai_api_key")?.value);
+            const polishModel = cleanPrompt(widget(node, "ai_model")?.value);
+            const polishEndpoint = cleanPrompt(widget(node, "ai_endpoint")?.value);
+            if (!polishApiKey || (!polishEndpoint && !polishModel && polishProvider === "custom")) {
                 if (!automatic) showOptimizerConfigPrompt();
                 return false;
             }
+            // 润色输出语言跟随主体生成语言：zh→中文，mixed/en→English（mixed 的对白
+            // 保留原文语义与 English 输出一致）。
+            const polishOutputLanguage = String(widget(node, "ai_language")?.value || "zh") === "zh" ? "中文" : "English";
+            const polishConfig = {
+                mode: "api",
+                provider: polishProvider,
+                api_url: polishEndpoint,
+                api_key: polishApiKey,
+                model: polishModel,
+                protocol: "openai",
+                read_media: optimizerSettings?.read_media !== false,
+                output_language: polishOutputLanguage,
+                max_tokens: 4096,
+                auto_optimize: !!optimizerSettings?.auto_optimize,
+            };
             const contextSignature = optimizerContextSignature(specs, optimizationMode, task, duration, taskContext);
             if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { pushPromptUndo(promptSnapshot()); applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             elapsedPrompt.classList.add("visible");
@@ -2855,7 +2643,7 @@ function nodeColorToCss(value) {
             let response;
             let data;
             try {
-                const requestBody = { request_id: optimizerRequestId, prompt: before, task, duration, media: mediaPayload, context: taskContext, config: optimizerSettings };
+                const requestBody = { request_id: optimizerRequestId, prompt: before, task, duration, media: mediaPayload, context: taskContext, config: polishConfig };
                 // RunningHub must use the single-request endpoint. Its hosted
                 // reverse proxy may route separate /start and /status calls to
                 // different workers, while the in-process async job registry

@@ -33,18 +33,19 @@ function host(overrides = {}) {
         polishPrompt: {}, aiGeneratePrompt: {}, aiFormatPrompt: {}, // toolbar buttons; onclick rows are not extracted
         durationWidget: { value: 5 },
         genProvider: { value: 'deepseek' },
-        commitKeyToOwner: noop, providerApiKeys: {}, getSharedKey: () => '',
+        providerApiKeys: {}, getSharedKey: p => p === 'deepseek' ? 'host-key' : '',
         OPTIMIZER_ROUTE: '/rh/minimax-h3/prompt-optimizer', alerts: [], requests: [],
-        optimizerSettings: { has_api_key: true, auto_optimize: true, mode: 'api' }, optimizerCache: null,
+        optimizerSettings: { has_api_key: true, auto_optimize: true, read_media: false, api_keys: { deepseek: 'host-key' }, api_key: 'host-key' }, optimizerCache: null,
         resolvedTaskType: () => 'T2VA', resemblesOfficialPrompt: () => false, workflowRunning: false,
         optimizerMediaSpecs: () => [], optimizerTaskContext: () => ({}), optimizerContextSignature: () => 'signature',
-        optimizerMediaPayload: async () => [], showOptimizerConfigPrompt: noop,
+        optimizerMediaPayload: async () => [], showOptimizerConfigPrompt: () => { ctx.configPromptShown++; },
         elapsedPrompt: { classList: { add: noop, remove: noop } },
     };
     ctx.prompt = { focus: noop, get value() { return ctx.promptPlainText; }, set value(v) { ctx.promptPlainText = v; } };
     ctx.editorText = () => ctx.prompt.value;
     ctx.alert = s => ctx.alerts.push(s);
     ctx.loadOptimizerSettings = async () => ctx.optimizerSettings;
+    ctx.configPromptShown = 0;
     ctx.api = { fetchApi: (url, options) => {
         if (url.endsWith('/cancel')) { ctx.cancelRequest = options; return Promise.resolve({}); }
         return new Promise((resolve, reject) => ctx.requests.push({ url, options, resolve: data => resolve({ ok: true, text: async () => JSON.stringify(data) }), reject }));
