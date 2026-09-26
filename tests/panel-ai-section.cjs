@@ -123,25 +123,26 @@ for (const kind of ['image', 'video', 'audio']) {
     check(vm.runInContext(`nextSlot("${kind}")`, modeContext) === `ref_${kind}_1`, 'reference slot: ' + kind);
 }
 
-/* 8. AI 生成/整理一键直出 + 统一配置界面（2026-09-26）：配置只管配置，动作在工具条 */
+/* 8. AI 生成/整理/润色一键直出 + 统一配置界面（2026-09-26）：配置只管配置，动作全在工具条 */
 check(js.includes('const aiGeneratePrompt = make("button", {}, "✨")'), 'AI generate button created');
 check(js.includes('const aiFormatPrompt = make("button", {}, "≡")'), 'offline format button created');
-check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear)'),
-    'toolbar hosts ↻/≡/✨/⚙ direct actions');
-check(!js.includes('const optimizePrompt'), 'polish toolbar button removed');
+check(js.includes('const polishPrompt = make("button", {}, "✦")'), 'polish button restored on toolbar');
+check(js.includes('promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, polishPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear)'),
+    'toolbar hosts ↻/✦/≡/✨/⚙ direct actions');
+check(!js.includes('const optimizePrompt'), 'old polish button variable removed');
 check(js.includes('aiGeneratePrompt.onclick = () => { if (ensureGenerationKey()) runGeneration("ai"); }'), '✨ generates directly per config');
 check(js.includes('aiFormatPrompt.onclick = () => runGeneration("format");'), '≡ formats directly per config');
+check(js.includes('if (optimizing) { await cancelOptimization(); return; }'), '✦ re-click cancels a running polish');
 check(!js.includes('function openAiGenerateDialog'), 'separate AI generation dialog removed');
 const dialogBody = js.slice(js.indexOf('function openOptimizerSettings()'), js.indexOf('function showOptimizerConfigPrompt()'));
 check(!!dialogBody, 'unified config dialog defined');
-check(js.includes('polishButton.onclick = () => {') && dialogBody.includes('applyDialogConfig(); close();'),
-    'polish action lives in the config dialog and commits settings first');
 for (const name of ['ai_enrich', 'ai_soundscape', 'ai_music', 'ai_auto_timestamps', 'ai_fixed_camera',
     'ai_no_subtitles', 'ai_anti_pop', 'ai_strict_validation']) {
     check(dialogBody.includes(`"${name}"`), 'config dialog switch writes hidden widget: ' + name);
 }
-check(dialogBody.includes('actions.append(cancel, save, polishButton)'), 'config dialog is config-only (cancel/save/polish)');
-check(!dialogBody.includes('runButton') && !dialogBody.includes('formatButton'), 'no generate/format action buttons left in the config dialog');
+check(dialogBody.includes('actions.append(cancel, save)'), 'config dialog is pure config (cancel/save only)');
+check(!dialogBody.includes('polishButton') && !dialogBody.includes('runButton') && !dialogBody.includes('formatButton'),
+    'no action buttons left in the config dialog');
 check(!dialogBody.includes('legacyIdea') && !js.includes('Idea / prompt to rewrite'), 'legacy idea textarea removed from the config dialog');
 check(dialogBody.includes('source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); }'),
     'source switch mirrors the editor content into the runtime input');
@@ -153,7 +154,6 @@ check(dialogBody.includes('genLanguage.onchange = () => setWidget(node, "ai_lang
     && dialogBody.includes('setWidget(node, "ai_timeout", value)'), 'dialog keeps language/timeout in widgets');
 check(!js.includes('mxv-gen-more') && !dialogBody.includes('make("details")'),
     'no collapse wrapper inside the config dialog');
-check(!dialogBody.includes('optimizePrompt'), 'dialog does not reference the removed toolbar button');
 check(js.includes('function mirrorSourceIdea()') && js.includes('function syncEditorSource()')
     && !js.includes('useEditorPrompt'), 'editor content mirrors into the runtime source input (actions never flip the source)');
 check(js.split('mirrorSourceIdea()').length - 1 >= 6, 'mirror runs on edit/undo/fill/reset/source-switch/restore');

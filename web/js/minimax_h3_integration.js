@@ -899,12 +899,13 @@ function createPanel(node) {
     elapsedPrompt.title = t("Cancel processing");
     elapsedPrompt.onclick = () => cancelPromptOperation();
     const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
+    const polishPrompt = make("button", {}, "✦"); polishPrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const aiFormatPrompt = make("button", {}, "≡"); aiFormatPrompt.className = "mxv-prompt-tool";
     const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
     const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
-    // 动作一键直出（2026-09-26）：≡ 离线整理、✨ AI 生成按当前配置直接执行并填回；
-    // 配置界面只负责配置，润色仍由「运行前自动润色」开关与界面内 ✦ 润色按钮承担。
-    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
+    // 动作全部一键直出（2026-09-26）：✦ 润色（优化模型改写表达，可读素材画面）、
+    // ≡ 离线整理、✨ AI 生成；⚙ 只负责配置，界面内不再放动作按钮。
+    promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, polishPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
     const syncPromptHighlightGeometry = () => {
         promptHighlightContent.style.width = `${prompt.clientWidth}px`;
     };
@@ -1537,6 +1538,7 @@ function nodeColorToCss(value) {
         prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
         aiGeneratePrompt.disabled = external;
         aiFormatPrompt.disabled = external;
+        polishPrompt.disabled = external || localBlocked;
         resetPrompt.disabled = external;
     }
     const updateWorkflowState = running => {
@@ -1565,6 +1567,7 @@ function nodeColorToCss(value) {
         });
         button.addEventListener("mouseleave", clear); button.addEventListener("pointerdown", clear);
     }
+    delayedTooltip(polishPrompt, () => t(optimizing ? "Optimizing click to cancel" : "Optimize prompt"));
     delayedTooltip(aiFormatPrompt, () => t("H3 format (offline)"));
     delayedTooltip(aiGeneratePrompt, () => t("AI generate prompt"));
     delayedTooltip(resetPrompt, () => t("Restore before optimization"));
@@ -2489,9 +2492,8 @@ function nodeColorToCss(value) {
             genRow("AI timeout", genTimeout);
             const actions = make("div"); actions.className = "mxv-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
-            // ✦ 润色是唯一的界面内动作；≡ 整理与 ✨ 生成已改为工具条一键直出（2026-09-26）。
-            const polishButton = make("button", {}, t("Polish")); polishButton.title = t("Optimize prompt");
-            actions.append(cancel, save, polishButton); dialog.append(actions);
+            // 配置界面纯配置（2026-09-26）：✦ 润色与 ≡/✨ 一样是工具条一键直出动作。
+            actions.append(cancel, save); dialog.append(actions);
             const close = (cancelRunning = true) => {
                 if (cancelRunning) cancelPromptOperation();
                 overlay.remove();
@@ -2505,7 +2507,7 @@ function nodeColorToCss(value) {
             overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
             refreshDialogActions = () => {
                 const busy = !!activePromptOperation;
-                polishButton.disabled = save.disabled = busy;
+                save.disabled = busy;
                 for (const control of dialog.querySelectorAll("input, select, textarea")) control.disabled = busy;
                 cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
             };
@@ -2532,13 +2534,7 @@ function nodeColorToCss(value) {
                 refreshOptimizerName(); refreshPromptConnection(); persistState();
             };
             save.onclick = () => { applyDialogConfig(); close(); };
-            polishButton.onclick = () => {
-                if (aiGenerating || optimizing) return;
-                // 先按界面当前值落盘再执行：改了平台/模型不点保存也能按新配置润色。
-                applyDialogConfig(); close();
-                runPromptOptimization();
-            };
-            // 生成/整理动作已提升为工具条一键直出（见 runGeneration），配置界面不再承担执行。
+            // 生成/整理/润色动作已全部提升为工具条一键直出，配置界面不再承担执行。
             document.body.append(overlay);
         }).catch(error => { if (!panelRemoved && epoch === settingsEpoch) alert(error.message); });
     }
@@ -2882,6 +2878,12 @@ function nodeColorToCss(value) {
     const autoOptimizeBeforeQueue = () => runPromptOptimization({ automatic: true });
     autoOptimizerHandlers.add(autoOptimizeBeforeQueue);
     installAutoOptimizerQueueHook();
+    // ✦ 润色一键直出（2026-09-26 回归工具条）：润色中再点一次 = 取消；本地模型模式在
+    // 工作流运行时由 updateWorkflowState 自动取消（refreshPromptConnection 已禁用按钮）。
+    polishPrompt.onclick = async () => {
+        if (optimizing) { await cancelOptimization(); return; }
+        await runPromptOptimization();
+    };
     // undefined = pointer is outside a paste target; null = the generic
     // "add media" target, where accept() chooses the next compatible slot.
     let hoverPasteSlot;

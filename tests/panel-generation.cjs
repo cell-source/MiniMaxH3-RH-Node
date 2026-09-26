@@ -30,7 +30,7 @@ function host(overrides = {}) {
         selectionOffsets: () => [0, 0], setEditorSelection: noop, renderPromptHighlights: noop,
         promptByMode: { text_keyframes: 'original', all_reference: 'reference' }, optimizerBeforeByMode: {}, optimizerBefore: null,
         resetPrompt: { classList: { add: noop, remove: noop } },
-        aiGeneratePrompt: {}, aiFormatPrompt: {}, // toolbar buttons; onclick rows are not extracted
+        polishPrompt: {}, aiGeneratePrompt: {}, aiFormatPrompt: {}, // toolbar buttons; onclick rows are not extracted
         durationWidget: { value: 5 },
         genProvider: { value: 'deepseek' },
         commitKeyToOwner: noop, providerApiKeys: {}, getSharedKey: () => '',
