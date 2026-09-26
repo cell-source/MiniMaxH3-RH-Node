@@ -212,6 +212,12 @@ check(optimizerNameBody.includes('const rawName = polishModelValue().split("/").
     && !optimizerNameBody.includes('optimizerSettings'),
     'toolbar model badge shows the actual polish provider/model');
 
+/* 8f. 加载修复（2026-09-26 审查 A4）：位移冲空的采样器组合在 onConfigure 时回填默认 */
+check(js.includes('for (const name of ["sampler_name", "scheduler"]) {')
+    && js.includes('combo.value = combo.options.values[0]')
+    && js.includes('timeoutWidget.value = 180'),
+    'empty sampler/scheduler/timeout are repaired to schema defaults on configure');
+
 /* 9. 批次 B：高级选项去重——无字幕/音景/配乐三行已删除，严格提示词标签保留 */
 check(!js.includes('addAdvanced("no_subtitle"') && !js.includes('addAdvanced("soundscape"') && !js.includes('addAdvanced("music"'),
     'duplicated advanced rows removed (no_subtitle/soundscape/music)');

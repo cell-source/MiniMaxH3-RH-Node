@@ -36,6 +36,8 @@ class ExampleConsistencyTests(unittest.TestCase):
     def test_canvas_examples_carry_every_widget_and_no_credentials(self):
         order = generator.AIO_WIDGET_ORDER
         self.assertEqual(len(order), len(set(order)), "AIO_WIDGET_ORDER 不得有重复项")
+        self.assertEqual(order[-1], "prompt_override",
+                         "forceInput 幻影槽位必须固定在末位（A4）：否则具名 widget 加载/保存不对称")
         for mode in MODES:
             with self.subTest(mode=mode):
                 data = json.loads((ROOT / f"examples/{mode}.workflow.json").read_text(encoding="utf-8"))
@@ -47,7 +49,7 @@ class ExampleConsistencyTests(unittest.TestCase):
                 self.assertEqual(mapped["prompt_source"], "panel")
                 self.assertEqual(mapped["ai_api_key"], "")
                 self.assertEqual(mapped["prompt_override"], "",
-                                 "forceInput 输入的槽位必须保留空值，否则尾部整段偏移")
+                                 "forceInput 幻影槽位固定在末位并保留空值（A4）")
                 self.assertTrue(mapped["prompt"], "画布示例必须把完整提示词写进编辑器")
                 self.assertFalse([v for v in values if v is None], "画布示例不得有 null 参数")
                 self.assertEqual(unet["widgets_values"],

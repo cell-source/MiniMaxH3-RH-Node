@@ -431,7 +431,7 @@ function setPromptWidget(node, value) {
     w.value = next;
     w.callback?.call(w, w.value);
 }
-function cleanPrompt(value) { return value && value !== "(none)" ? value : ""; }
+function cleanPrompt(value) { return typeof value === "string" && value && value !== "(none)" ? value : ""; }
 function hasOwn(object, key) { return Object.prototype.hasOwnProperty.call(object, key); }
 function setMediaWidget(node, name, value) {
     const w = widget(node, name); if (!w) return;
@@ -3528,6 +3528,16 @@ function nodeColorToCss(value) {
             const configuredState = hook === "onConfigure" ? args[0]?.properties?.[stateKey] : null;
             const result = old?.apply(this, args);
             sanitizeHiddenInputs(this);
+            // A4（2026-09-26）：位移曾把尾部组合值冲成空串；空采样器无法出图。恢复配置后
+            // 回填 schema 默认（两个组合的默认都在选项首位，与服务端 execute 兑底一致）。
+            if (hook === "onConfigure") {
+                for (const name of ["sampler_name", "scheduler"]) {
+                    const combo = widget(node, name);
+                    if (combo && !combo.value && Array.isArray(combo.options?.values) && combo.options.values.length) combo.value = combo.options.values[0];
+                }
+                const timeoutWidget = widget(node, "ai_timeout");
+                if (timeoutWidget && (timeoutWidget.value === "" || timeoutWidget.value == null)) timeoutWidget.value = 180;
+            }
             for (const n of [
                 "main_mode", "prompt", "task_type", ...mediaSlots,
                 "audio_mode", "audio_denoise_strength",
@@ -3592,7 +3602,8 @@ function nodeColorToCss(value) {
                 }
                 for (const name of mediaSlots) {
                     const value = widget(node, name)?.value;
-                    if (!media.has(name) && value && value !== "(none)") {
+                    // A4：位移/外部工作流可能把非字符串塞进素材槽（如数字），一律按未设置处理。
+                    if (!media.has(name) && typeof value === "string" && value && value !== "(none)") {
                         // 原生 widget 值同样过白名单（同为工作流可构造输入）。
                         if (value.includes("\\") || value.includes("/") || value.includes("..") || value.startsWith("~")) {
                             setMediaWidget(node, name, "");

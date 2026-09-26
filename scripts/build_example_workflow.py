@@ -88,10 +88,10 @@ MODES = {
 }
 
 # ComfyUI 序列化 `widgets_values` 的位置对应节点 widget 的创建顺序。
-# 2026-09-26 实测（浏览器端以哨兵数组逐个校准）：
-# - `prompt_override` 是 forceInput 输入，**加载时会占一个槽位**（面板上不出现 widget，
-#   但值必须保留在数组里）；缺了它，从其位置起的整段（sampler_name/scheduler/ai_*）会+1 偏移，
-#   实测表现为 ai_model 拿到 ai_timeout 的值。
+# 2026-09-26 实测（浏览器端以哨兵数组逐个校准，含修复后复验）：
+# - `prompt_override` 是 forceInput 输入，**加载时在它的 schema 位置占一个「幻影槽位」**
+#   （面板上不出现 widget）；曾排在 gh_state_json 之后导致尾部整段偏移。A4 修复后其输入
+#   定义移到列表末位，幻影槽位随之固定在**末尾**（保存时由面板 DOM widget 的尾值回填）。
 # - `mxv_panel` 是面板注入的 DOM widget（serialize:false），**不属于** widgets_values。
 # video_nodes.py 增删 widget 时 aio_widget_values() 会报错，提醒同步更新。
 AIO_WIDGET_ORDER = (
@@ -107,8 +107,8 @@ AIO_WIDGET_ORDER = (
     f"ref_video_{i}" for i in range(1, 4)) + tuple(
     f"ref_audio_{i}" for i in range(1, 4)) + (
     "gh_state_json",
-    "prompt_override",  # forceInput 输入占位（面板不显示 widget，但必须占数组位置）
     "sampler_name", "scheduler", "ai_api_key", "ai_endpoint", "ai_model", "ai_timeout",
+    "prompt_override",  # forceInput 幻影槽位（A4）：必须固定在末位，否则具名 widget 加载/保存不对称
 )
 
 # 不在 AIO_BASE / spec 内的 widget：取 schema 默认值（见 sampling.py）或前端注入值。

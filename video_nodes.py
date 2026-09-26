@@ -609,15 +609,6 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
                 # Keep this last so adding persistence does not shift legacy
                 # widgets_values positions for any existing input.
                 io.String.Input("gh_state_json", default="", optional=True, extra_dict={"hidden": True}),
-                # Keep new inputs after every legacy widget so old workflow
-                # widget-value positions remain unchanged.
-                io.String.Input(
-                    "prompt_override",
-                    display_name="Prompt",
-                    optional=True,
-                    force_input=True,
-                    tooltip="Optional upstream prompt; overrides the local prompt editor when connected",
-                ),
                 # RH advanced prompt constraints. Keep these last so legacy
                 # workflow widget-value positions never shift.
                 _hidden_boolean("no_subtitle", True),
@@ -660,6 +651,18 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
                 io.String.Input("ai_endpoint", default="", optional=True),
                 io.String.Input("ai_model", default="", optional=True),
                 io.Int.Input("ai_timeout", default=180, min=15, max=600, optional=True),
+                # Optional upstream prompt（forceInput）。2026-09-26 审查 A4：forceInput 输入在前端
+                # 加载时会占一个 widgets_values「幻影槽位」（保存时不占，反而由面板 DOM widget 的
+                # 尾值回填）。它曾排在 gh_state_json 之后，导致每次「保存→重开」
+                # sampler_name/scheduler/ai_* 整体左移一位直至被冲空。移到输入列表末位后，
+                # 幻影槽位落在末尾：所有具名 widget 的加载/保存位置对称，旧工作流也能正确对齐。
+                io.String.Input(
+                    "prompt_override",
+                    display_name="Prompt",
+                    optional=True,
+                    force_input=True,
+                    tooltip="Optional upstream prompt; overrides the local prompt editor when connected",
+                ),
             ],
             outputs=[
                 io.Image.Output("frames"),
@@ -689,6 +692,13 @@ class MiniMaxH3IntegrationGH(io.ComfyNode):
         # string "(none)". T8 treats this control as an int, with 0 disabling
         # remapping, so normalize it before calling the shared conditioning.
         drive_audio_ordinal = _coerce_int(drive_audio_ordinal, default=1, minimum=0, maximum=6)
+        # A4（2026-09-26）兑底：位移曾把 sampler_name/scheduler 冲成空串、ai_timeout 冲成 ""。
+        # 空组合无法采样、空超时会在 make_client 内 TypeError；这里回 schema 默认。
+        if sampler_name not in SAMPLER_OPTIONS:
+            sampler_name = DEFAULT_SAMPLER_NAME
+        if scheduler not in SCHEDULER_OPTIONS:
+            scheduler = DEFAULT_SCHEDULER_NAME
+        ai_timeout = _coerce_int(ai_timeout, default=180, minimum=15, maximum=600)
         media_values = {
             "first_frame": first_frame, "last_frame": last_frame, "hybrid_audio": hybrid_audio,
             "ref_image_1": ref_image_1, "ref_image_2": ref_image_2, "ref_image_3": ref_image_3,

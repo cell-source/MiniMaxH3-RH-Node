@@ -41,6 +41,9 @@ class PanelRuntimeTests(unittest.TestCase):
 
         context = {
             "json": json, "DEFAULT_SAMPLER_NAME": "test", "DEFAULT_SCHEDULER_NAME": "test",
+            # A4 守卫（video_nodes.execute）引用的选项表：沙盒默认值 "test" 必须在表内，
+            # 否则守卫会把测试传入的采样器改写回默认。
+            "SAMPLER_OPTIONS": ["test"], "SCHEDULER_OPTIONS": ["test"],
             "model_management": types.SimpleNamespace(throw_exception_if_processing_interrupted=lambda: None),
             "apply_advanced_constraints": apply_advanced_constraints,
             "make_client": fake_make_client, "generate_prompt": fake_generate_prompt,
