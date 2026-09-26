@@ -2,7 +2,8 @@
 
 > 产物：`dist/MiniMaxH3-RH-Node.zip`（约 250 KB，zip 内含 `MiniMaxH3-RH-Node/` 包文件夹）
 > 校验：`dist/MiniMaxH3-RH-Node.zip.sha256`
-> 构建：`python scripts/package_runninghub.py`（自动重建 prompt_engine 后打 zip；白名单打包，不含原 HTML 与任何凭据）
+> 构建：`python scripts/package_runninghub.py`（白名单打包；prompt_engine 以仓库内容为真源，
+> 打包不重建并校验 zip 内产物与仓库逐字节一致；不含原 HTML 与任何凭据）
 
 ---
 
@@ -84,7 +85,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 - [x] zip 含包文件夹结构（`MiniMaxH3-RH-Node/`），解压即得正确层级
 - [x] requirements.txt 齐全（quickjs-ng / requests / 视频链路依赖）
 - [x] 五模式示例经引擎严格校验 valid；`check_comfy_registration.py` 可离线校验端口类型
-- [x] prompt_engine 与源 HTML 同步（`source.sha256`，打包时自动重建）
+- [x] prompt_engine 以仓库内容为真源；打包不重建，并校验 zip 内产物与仓库逐字节一致
 - [x] 本地 ComfyUI 实测：注册、服务加载、图校验、execute 提示词路径全通过（2026-09-24，CPU）
 - [ ] 安装 H3 模型权重后端到端生成一次视频
 - [ ] RH 审核收录通过 + 平台侧真实运行一次

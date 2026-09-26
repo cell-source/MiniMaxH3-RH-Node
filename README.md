@@ -100,7 +100,8 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 ## 开发与打包
 
 ```sh
-python scripts/build_prompt_engine.py
+# 引擎规则以 prompt_engine/rules.js 为维护真源（直接改该文件）；仅需从参考 HTML 重新引导时才用：
+# python scripts/build_prompt_engine.py --force
 python -m unittest discover -s tests -p test_prompt_node.py -v
 node tests/language-globalization.cjs
 python scripts/check_comfy_registration.py /path/to/ComfyUI

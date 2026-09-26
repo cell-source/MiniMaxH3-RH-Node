@@ -7,7 +7,9 @@ H3 条件构建、双时钟采样及音视频解码实现。原说明完整保�
 
 本次修改：新增服务端提示词生成器；节点 ID 改用 RH 后缀；前端扩展名和优化器路由隔离；
 独立 MiniMaxH3RH 连接类型；上游提示词接入时保留生成器的声音与画面约束。
-提示词规则来自本项目现有 HTML 工具，通过 scripts/build_prompt_engine.py 提取，
-仅移除内置凭据并加入服务端适配；源 HTML 的 SHA-256 记录于 prompt_engine/source.sha256。
+提示词规则源自本项目现有 HTML 工具（仅作最初的输入参考），经 scripts/build_prompt_engine.py
+引导生成后**以仓库中的 prompt_engine/rules.js 为维护真源**：后续修复直接在该文件上进行，
+打包不再重建（并校验发布包内产物与仓库逐字节一致）。引导时仅移除内置凭据并加入服务端适配；
+源 HTML 的 SHA-256 记录于 prompt_engine/source.sha256，仅作溯源，不参与发布流程。
 
 分发包不包含模型权重，模型许可由各模型发布方规定。
