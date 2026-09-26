@@ -71,28 +71,23 @@ console.log(JSON.stringify(Object.fromEntries(c.node.widgets.map(w => [w.name,w.
                     completed = subprocess.run(["node", "-e", script, json.dumps({"source": source, "enabled": enabled, "prompt": result["prompt"]})],
                                                cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True)
                     widgets = json.loads(completed.stdout)
-                    # 来源是显式配置：填回不翻转；非面板来源的 ai_text 镜像编辑器内容。
-                    self.assertEqual(widgets["prompt_source"], source)
-                    self.assertEqual(widgets["ai_text"], "old idea" if source == "panel" else widgets["prompt"])
-                    self.assertEqual(widgets["ai_text"], "old idea" if source == "panel" else result["prompt"])
+                    # 迁移 v2：所有旧来源归一为 panel（编辑器内容永远优先）；
+                    # ai_text 永远镜像编辑器内容。
+                    self.assertEqual(widgets["prompt_source"], "panel")
+                    self.assertEqual(widgets["ai_text"], widgets["prompt"])
                     args = {name: None for name, parameter in inspect.signature(self.resolve).parameters.items()
                             if parameter.default is inspect.Parameter.empty}
                     args.update({name: value for name, value in widgets.items() if name in inspect.signature(self.resolve).parameters})
                     args.update(main_mode="text_keyframes", duration_seconds=5, aspect="16:9",
                                 gh_state_json=json.dumps({"mode": "text_keyframes", "prompts": {"text_keyframes": widgets["prompt"]}}))
                     actual = self.resolve(**args)
-                    if source == "panel":
-                        # 填回结果即最终文本：面板来源直接运行，不得触发旧生成器或远程客户端。
-                        self.assertEqual(self.generation_inputs, [])
-                        self.assertEqual(self.client_calls, [])
-                        self.assertIn("女子站着。", actual)
-                        self.assertEqual("贴合画面环境的环境声自然延续" in actual, enabled)
-                        self.assertEqual("慢速而克制的钢琴独奏" in actual, enabled)
-                        self.assertNotIn("Every spoken line", actual)
-                    else:
-                        # 非面板来源在运行期处理编辑器内容：收到的输入必须等于编辑器文本。
-                        self.assertEqual(self.generation_inputs, [widgets["prompt"]])
-                        self.assertEqual(actual, f"<GENERATED:{widgets['prompt']}>")
+                    # 面板来源直接运行编辑器内容：不触发旧生成器或远程客户端。
+                    self.assertEqual(self.generation_inputs, [])
+                    self.assertEqual(self.client_calls, [])
+                    self.assertIn("女子站着。", actual)
+                    self.assertEqual("贴合画面环境的环境声自然延续" in actual, enabled)
+                    self.assertEqual("慢速而克制的钢琴独奏" in actual, enabled)
+                    self.assertNotIn("Every spoken line", actual)
 
 
 if __name__ == "__main__":

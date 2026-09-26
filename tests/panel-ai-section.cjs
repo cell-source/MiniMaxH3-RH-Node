@@ -95,7 +95,7 @@ check(!js.includes('beginSection("Polish settings (') && !js.includes('beginSect
 const nodeDefs = JSON.parse(fs.readFileSync(path.join(root, 'locales/zh/nodeDefs.json'), 'utf8'));
 const definition = Object.values(nodeDefs).find(d => d.inputs?.prompt_source);
 check(!!definition, 'localized integration node found');
-for (const name of ['prompt_source', 'ai_language', 'ai_mode', 'ai_provider']) {
+for (const name of ['ai_language', 'ai_mode']) {
     for (const [value, label] of Object.entries(definition.inputs[name].options)) {
         context.label = value;
         check(vm.runInContext('t(label)', context) === label, name + ' localized option: ' + value);
@@ -151,8 +151,10 @@ check(dialogBody.includes('actions.append(cancel, save)'), 'config dialog is pur
 check(!dialogBody.includes('polishButton') && !dialogBody.includes('runButton') && !dialogBody.includes('formatButton'),
     'no action buttons left in the config dialog');
 check(!dialogBody.includes('legacyIdea') && !js.includes('Idea / prompt to rewrite'), 'legacy idea textarea removed from the config dialog');
-check(dialogBody.includes('source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); }'),
-    'source switch mirrors the editor content into the runtime input');
+check(!dialogBody.includes('row("Source"') && !dialogBody.includes('source.onchange'),
+    'source dropdown removed (the editor content is always the input)');
+check(js.includes('generationOptionsVersion < 2 && String(widget(node, "prompt_source")?.value || "panel") !== "panel"'),
+    'migration v2 normalizes legacy sources to panel');
 check(js.includes('const route = operation === "ai" ? "generate" : "format";')
     && js.includes('`${OPTIMIZER_ROUTE}/${route}`'), 'toolbar actions post to generate/format endpoints');
 check(dialogBody.includes('genRow("Generation language", genLanguage)') && dialogBody.includes('genRow("AI timeout", genTimeout)'),

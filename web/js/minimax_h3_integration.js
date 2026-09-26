@@ -173,11 +173,6 @@ const DOM_TRANSLATIONS = {
     "Scheduler": "调度器",
     "Seed": "种子",
     "Unable to load prompt optimizer settings": "无法加载提示词优化器设置",
-    "Source": "来源",
-    "panel": "提示词编辑器（默认）",
-    "ai": "AI 在线生成",
-    "offline": "离线原文包装",
-    "format": "整理完整提示词",
     "API key (cleared when sharing the workflow)": "API Key（分享工作流前请清空）",
     "H3 mode": "H3 模式",
     "Endpoint override": "覆盖端点（可选）",
@@ -1411,12 +1406,16 @@ function nodeColorToCss(value) {
             const value = widget(node, legacyPanel ? panelName : name)?.value;
             setGenerationOption(name, value === true || value === "true");
         }
-        generationOptionsVersion = 1;
+        // 版本 2（2026-09-26）：来源下拉已删除——工作流永远以编辑器内容为准，
+        // 旧工作流的 ai/offline/format 前置选择一并归一为 panel（编辑器文本优先）。
+        if (generationOptionsVersion < 2 && String(widget(node, "prompt_source")?.value || "panel") !== "panel") {
+            setWidget(node, "prompt_source", "panel");
+        }
+        generationOptionsVersion = 2;
     }
-    // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：ai_text 镜像编辑器，
-    // 来源本身只在配置界面显式切换，编辑/撤销/填回都不会改写来源。
+    // ai_text 始终镜像编辑器内容（2026-09-26）：面板永远以编辑器为准；镜像仅为
+    // 保持隐藏 widget 与可见内容一致，后端运行期分支不会再用旧创意文本。
     function mirrorSourceIdea() {
-        if (String(widget(node, "prompt_source")?.value || "panel") === "panel") return;
         setWidget(node, "ai_text", prompt.value);
     }
     function syncEditorSource() {
@@ -2207,12 +2206,6 @@ function nodeColorToCss(value) {
                 genKey.value = providerApiKeys[genProvider.value] ?? getSharedKey(genProvider.value) ?? "";
             };
             syncGenRows();
-            const source = row("Source", make("select"));
-            for (const value of ["panel", "ai", "offline", "format"]) source.append(new Option(t(value), value));
-            source.value = String(widget(node, "prompt_source")?.value || "panel");
-            // 三个非面板来源始终以编辑器内容为输入（2026-09-26）：不再单独维护"创意"文本，
-            // ai_text 由 mirrorSourceIdea 自动镜像编辑器，来源仅在配置界面显式切换。
-            source.onchange = () => { setWidget(node, "prompt_source", source.value); promptRevision++; mirrorSourceIdea(); persistState(); };
             const genMode = row("H3 mode", make("select"));
             for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
             genMode.value = String(widget(node, "ai_mode")?.value || "auto");

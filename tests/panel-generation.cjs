@@ -83,9 +83,9 @@ if (require.main === module) (async () => {
     const legacy = host();
     run(legacy, 'migrateGenerationOptions()');
     assert.equal(value(legacy, 'soundscape'), true); // old runtime source keeps AI options
+    assert.equal(value(legacy, 'prompt_source'), 'panel'); // v2 migration normalizes the source
     run(legacy, 'syncEditorSource()');
-    assert.equal(value(legacy, 'prompt_source'), 'ai'); // source is explicit config; actions never flip it
-    assert.equal(value(legacy, 'ai_text'), 'original'); // editor content mirrors into the runtime source input
+    assert.equal(value(legacy, 'ai_text'), 'original'); // editor content mirrors into the runtime input
     const body = run(legacy, 'generationBody()');
     assert.equal(body.controls.visual_stability, true);
     for (const mode of ['t2va', 'i2va', 'fl2va', 'l2va', 'ref2va']) {
@@ -145,8 +145,8 @@ if (require.main === module) (async () => {
     success.requests[0].resolve({ prompt: 'generated', valid: false, report: 'edit this' });
     await pending;
     assert.equal(success.prompt.value, 'generated');
-    assert.equal(value(success, 'prompt_source'), 'ai');
-    assert.equal(value(success, 'ai_text'), 'generated'); // filled result mirrors into the source input
+    assert.equal(value(success, 'prompt_source'), 'panel');
+    assert.equal(value(success, 'ai_text'), 'generated'); // filled result mirrors into the runtime input
     assert.equal(value(success, 'prompt'), 'generated');
     run(success, 'stepPromptHistory(false)');
     assert.equal(success.prompt.value, 'original');
