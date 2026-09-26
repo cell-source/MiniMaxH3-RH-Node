@@ -186,7 +186,8 @@ function finalPromptError(text, mode) {
     if (!/^\[Shot 1\]/.test(p.scene)) return 'integrated_multimodal_description 必须以 [Shot 1] 开头';
     if (!validateShotTimeline(p.scene, duration())) return '镜头编号、切点或时长不合法';
     if (!validateAllTimelineMarkers(p.scene, duration())) return '时间戳必须严格递增且小于视频总时长';
-    if (!validateSoundFields(p.ss, p.mu)) return '音景或配乐的句数/要素不合规';
+    const soundProblem = describeSoundFieldProblem(p.ss, p.mu);
+    if (soundProblem) return soundProblem;
     if (!validateFinalDialogueMarkup(p.scene)) return antiPopOn() ? '对白不符合抗残音实验格式' : '对白不符合官方 <d> 严格格式';
     const finalDialogueCount = antiPopOn() ? (p.scene.match(/\[(?:Chinese|中文|English)\]/g) || []).length : (p.scene.match(/<d>\[(?:Chinese|中文|English)\]/g) || []).length;
     const speakerError = baseSpeakerIdError(p.scene, finalDialogueCount);
@@ -391,11 +392,24 @@ function customOptionError(text, mode, requireAutoTimestamp) {
     const withoutConstraint = main.split(camC).join('');
     const shots = withoutConstraint.match(/\[Shot\s+\d+\]/g) || [];
     if (shots.length !== 1) return '自定义选项冲突：固定镜头启用时必须保持唯一 [Shot 1]，当前结果包含 ' + shots.length + ' 个镜头';
-    /* zh 用中文运动词组合（避免单字误伤“不推拉摇移”类否定描述）；en 保持英文动词短语检查。 */
+    /* zh 用中文运动词组合（避免单字误伤“不推拉摇移”类否定描述）；en 保持英文动词短语检查。
+       否定式描述（"不做任何推拉摇移、变焦"、"无手持抖动"）是对约束的转述而非违规，
+       命中时回看前文是否被否定修饰覆盖。 */
     const moveRe = zh
-      ? /镜头(?:小幅|大幅|缓慢|缓缓|慢慢|慢速|快速|微微)?(?:推近|拉远|推|拉|摇|移|横移|跟随|跟拍|环绕|旋转|升降|俯仰|甩动|上摇|下摇|左摇|右摇)|摇镜|移镜|推镜|拉镜|甩镜|跟拍|环绕镜头|镜头环绕|镜头缩放|缩放镜头|变焦|手持镜头|手持摄影|手持拍摄|镜头(?:切换|转场)|画面(?:切换|转场)|切换至|切至|跳切/
-      : /\b(?:camera|shot)\s+(?:pushes|pulls|pans|tilts|zooms|dollies|trucks|pedestals|orbits|moves|shakes|cuts|switches|transitions)\b|\bhandheld\s+(?:camera|shot)\b/i;
-    if (moveRe.test(withoutConstraint)) {
+      ? /镜头(?:小幅|大幅|缓慢|缓缓|慢慢|慢速|快速|微微)?(?:推近|拉远|推|拉|摇|移|横移|跟随|跟拍|环绕|旋转|升降|俯仰|甩动|上摇|下摇|左摇|右摇)|摇镜|移镜|推镜|拉镜|甩镜|跟拍|环绕镜头|镜头环绕|镜头缩放|缩放镜头|变焦|手持镜头|手持摄影|手持拍摄|镜头(?:切换|转场)|画面(?:切换|转场)|切换至|切至|跳切/g
+      : /\b(?:camera|shot)\s+(?:pushes|pulls|pans|tilts|zooms|dollies|trucks|pedestals|orbits|moves|shakes|cuts|switches|transitions)\b|\bhandheld\s+(?:camera|shot)\b/gi;
+    moveRe.lastIndex = 0;
+    let moveMatch;
+    let cameraViolation = '';
+    while ((moveMatch = moveRe.exec(withoutConstraint)) !== null) {
+      const prefix = withoutConstraint.slice(Math.max(0, moveMatch.index - 14), moveMatch.index);
+      /* 否定列表（"不做任何推拉摇移、变焦、升降或切换"）以顿号连接：窗口内允许顿号，
+         只被句号/分号/换行截断——每个列表项都共享句首的否定修饰。 */
+      if (/(?:不做|不进行|不使用|没有|无|禁止|避免|不再|不|仅|只)(?:任何|任何的|其他)?[^。；；\n]{0,14}$/.test(prefix)) continue;
+      cameraViolation = moveMatch[0];
+      break;
+    }
+    if (cameraViolation) {
       return '自定义选项冲突：固定镜头启用时，正文不得包含推拉摇移、缩放、环绕、手持、抖动或切镜描述';
     }
   } else if (t.includes(FIXED_CAMERA_CONSTRAINT) || t.includes(FIXED_CAMERA_CONSTRAINT_ZH)) {
@@ -1669,19 +1683,24 @@ function validateMusicCompleteness(text) {
 }
 /* 音景 1–4 句；配乐 1–3 句且四要素完整（N/A 时跳过）。
    已移除人声词禁（murmur/voice 等）：A/B 实测证明人声类词不是片头残音诱因，且会误伤丰富模式下 AI 常见的合规音景句。 */
-function validateSoundFields(soundscape, music) {
+/* 音景 1–4 句；配乐 1–3 句且四要素完整（N/A 时跳过）。细化报错便于用户自修：
+   区分音景句数、配乐句数、配乐要素三类原因，而不是统一的"句数/要素不合规"。 */
+function describeSoundFieldProblem(soundscape, music) {
   const ss = String(soundscape || '').trim();
   const mu = String(music || '').trim();
   if (!/^N\/A\.?$/i.test(ss)) {
     const n = countSentences(ss);
-    if (n < 1 || n > 4) return false;
+    if (n < 1 || n > 4) return '音景描述应为 1–4 句，当前 ' + n + ' 句（以句号/问号/叹号计）';
   }
   if (!/^N\/A\.?$/i.test(mu)) {
     const n = countSentences(mu);
-    if (n < 1 || n > 3) return false;
-    if (!validateMusicCompleteness(mu)) return false;
+    if (n < 1 || n > 3) return '配乐描述应为 1–3 句，当前 ' + n + ' 句；无配乐请将 non_diegetic_music 整行改为 N/A';
+    if (!validateMusicCompleteness(mu)) return '配乐描述需包含配器、速度、节奏、动态中的至少三项；无配乐请将 non_diegetic_music 整行改为 N/A';
   }
-  return true;
+  return '';
+}
+function validateSoundFields(soundscape, music) {
+  return !describeSoundFieldProblem(soundscape, music);
 }
 
 function descriptiveContent(text) {
@@ -1917,7 +1936,14 @@ function normalizeKeyframeAlignment(mode, text) {
 /* 非 Ref2VA 模式：字段名应与其内容同一行；把误写的“字段名独占一行”合并回同一行。 */
 function normalizeFieldInline(mode, t) {
   if (mode === 'ref2va') return String(t || '');
-  return String(t || '').replace(
+  /* 字段名紧跟在上一字段句末（"…喊话。non_diegetic_music:…"）：AI 输出被手动编辑
+     或拼接后常见的丢换行场景。不修复会让后一个字段吞进前一个字段，报出与实际
+     问题无关的"音景或配乐的句数/要素不合规"。三条字段名互不成为对方前缀，可安全内联拆分。 */
+  const corrected = String(t || '').replace(
+    /([^\n])([ \t]*)(integrated_multimodal_description|overall_soundscape|non_diegetic_music):/g,
+    '$1\n$2$3:'
+  );
+  return corrected.replace(
     /^(integrated_multimodal_description|overall_soundscape|non_diegetic_music):[ \t]*\n[ \t]*/gm,
     '$1: '
   );
@@ -1964,6 +1990,20 @@ function normalizeCheckedMusic(t) {
   return String(t || '')
     .replace(/^(non_diegetic_music:[ \t]*)\r?\n[ \t]*N\/A\.?[ \t]*$/gm, '$1\n' + mu)
     .replace(/^non_diegetic_music:[ \t]*N\/A\.?[ \t]*$/gm, 'non_diegetic_music: ' + mu);
+}
+/* 否定式配乐描述（"不添加非画内配乐"/"无配乐"/no music 等）：语义上是"无配乐"，
+   但字面非 N/A 会被配乐要素校验拒绝，且用户很难看懂怎么改。命中否定短语且
+   剩余内容不含任何配器/速度/节奏/动态实质要素时，规范化为 N/A。 */
+function normalizeNegatedSoundFields(t) {
+  const negatedMusic = /(不添加|没有|无|不要|禁止)[^，,。；\n]{0,12}(画内配乐|配乐|背景音乐|音乐)|\bno (?:non-?diegetic )?(?:music|score)\b/i;
+  return String(t || '').replace(/^(non_diegetic_music:[ \t]*)([^\n]+)$/gmi, (_, head, body) => {
+    const meaningful = body.trim().replace(/^[。．，,；;\s]+|[。．\s]+$/g, '');
+    if (!meaningful || !negatedMusic.test(meaningful)) return head + body;
+    if (validateMusicCompleteness(meaningful)) return head + body;
+    /* 排除否定短语与"仅以…铺底"状语后剩余的基调描述（如"保持安静克制的听觉基调"）
+       不构成配乐四要素，整句语义就是"无配乐" → N/A。 */
+    return head + 'N/A';
+  });
 }
 /* 抗爆破音：把 <d>[语言] 台词</d> 改写为内联 [语言] 台词（保留前后英文描述）。 */
 function normalizeInlineDialogue(t) {
@@ -2026,6 +2066,7 @@ function normalizePrompt(mode, text) {
   t = normalizeInlineDialogue(t);
   t = normalizeCheckedSoundscape(t);
   t = normalizeCheckedMusic(t);
+  t = normalizeNegatedSoundFields(t);
   t = applyFixedCameraConstraint(t);
   t = applyVisualStabilityConstraint(t);
   t = normalizeFixedTimelineSyntax(t);
