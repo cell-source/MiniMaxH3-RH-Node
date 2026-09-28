@@ -9,10 +9,10 @@
 
 ## 实测情况
 
-本仓库**未在 RunningHub 平台实测**。参考 GHX 定制版 2026-09-21 的实测结论：RunningHub 共享池
+本仓库**未在 RunningHub 平台实测**。同系列定制版于 2026-09-21 实测的结论是：RunningHub 共享池
 未开放用户侧自定义节点安装（registry 搜索与安装后端均被平台禁用），zip 与 GitHub URL 两种安装
 方式都不可用，需走平台审核收录。包内仅注册一个节点 `MiniMaxH3IntegrationRH`（All-in-One），
-与官方/GH/GHX 版本互不冲突、可共存。
+节点 ID 与其他 MiniMax H3 集成包不冲突。
 
 ## 路线一：提交 RH 审核收录
 
@@ -54,7 +54,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 ## API 调用注意（工作流 API 用户）
 
 - 提交后 `promptTips` 出现 `node_errors` 时，先确认节点 ID 为 `MiniMaxH3IntegrationRH`，
-  不要残留旧 GH/GHX/双节点时代的 ID。
+  不要残留旧版/双节点时代的 ID。
 - 节点 `ai_api_key` 字段会随工作流保存：**API 提交前清空该字段**，改用对应服务商的环境变量
   （`DEEPSEEK_API_KEY` / `GLM_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` /
   `DASHSCOPE_API_KEY` / `SILICONFLOW_API_KEY` / 通用 `H3_LLM_API_KEY`）。
@@ -69,7 +69,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
   注册，五模式示例端口类型全部 PASS。
 - **服务加载**：真实 `python main.py --cpu` 启动，`MiniMaxH3-RH-Node` 导入 0.8 秒无错误；
   `/object_info` 确认 62 输入（36 必填 + 26 可选）与 4 输出（frames/audio/video_latent/report），
-  旧 6 节点 ID 已消失，与 GHX 6 节点共存无冲突。
+  旧 6 节点 ID 已消失；单节点注册与其他集成包无命名冲突。
 - **图校验**：4 节点示例图提交 `/prompt`，62 个输入全部结构校验通过；仅有的 node_errors
   是 4 个模型文件 combo 值不在列表（本机未安装 H3 权重），符合预期。
 - **execute 行为实测**（`test_allinone_execute.py`，在 ComfyUI 运行时上下文直调节点）：
@@ -79,7 +79,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 
 ## 发布前核对清单
 
-- [x] 节点 ID `MiniMaxH3IntegrationRH`（单节点注册），与官方/GH/GHX 版本不冲突
+- [x] 节点 ID `MiniMaxH3IntegrationRH`（单节点注册），与其他同类集成包不冲突
   （`check_comfy_registration.py` 断言注册数 1）
 - [x] 包名/UA/类名无原作者字样；LICENSE 与 NOTICE 署名保留（GPL-3.0-or-later 合规）
 - [x] 白名单打包：zip 不含原 HTML、内置凭据（`_decodeKey` 已替换为 server-managed）、`__pycache__`

@@ -13,7 +13,7 @@ FILES = ["__init__.py", "prompt_runtime.py", "llm_client.py", "video_nodes.py",
          "core.py", "conditioning.py", "audio_ops.py", "sampling.py", "tiled_sampler.py", "latent_upscaler.py",
          "latent_upscaler_core.py", "prompt_optimizer.py", "prompt_tags.py", "requirements.txt", "LICENSE",
          "README.md", "NOTICE.md"]
-DOC_FILES = ["docs/RELEASE-TO-RUNNINGHUB.md", "docs/UPSTREAM-GHX-README.md"]
+DOC_FILES = ["docs/RELEASE-TO-RUNNINGHUB.md"]
 FOLDERS = ["prompt_engine", "web", "locales", "examples"]
 
 

@@ -6,8 +6,8 @@ from urllib.parse import urlsplit
 
 import requests
 
-# 服务商预设（参照 MiniMaxH3-Integration-GHX 的 PROVIDERS 模式扩充为 OpenAI
-# 兼容 chat/completions 文本服务）：名称 → (端点, 默认模型, 环境变量, 额外参数)。
+# 服务商预设（OpenAI 兼容 chat/completions 文本服务）：
+# 名称 → (端点, 默认模型, 环境变量, 额外参数)。
 # 端点与模型都只是预设：用户在节点上选 provider 后仍可覆盖 ai_endpoint/ai_model；
 # Key 由用户填写（ai_api_key）或从环境变量读取，不硬编码在包内。
 PROVIDERS = {
