@@ -93,7 +93,7 @@ def expect(name, kwargs, needle, strip_env=False):
 
 # 1) AI + 占位符环境变量（本机 DEEPSEEK_API_KEY=中文占位文字）：修复后应报明确的 Key 无效错误
 expect("ai-占位Key环境变量", dict(prompt_source="ai", ai_text="A woman stands still.", ai_mode="t2va"),
-       "不是有效的 API Key")
+       "API Key 无效")
 
 # 1b) AI 无 Key（清空环境变量）：应报“请设置服务端 DEEPSEEK_API_KEY”
 expect("ai-无Key", dict(prompt_source="ai", ai_text="A woman stands still.", ai_mode="t2va"),
