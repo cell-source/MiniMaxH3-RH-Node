@@ -47,10 +47,12 @@ RESOLUTION = "768P"   # 实验用 768P 控制成本
 POLL_SECONDS = 20
 MAX_MINUTES = 25
 
-# 与主工具 v4 完全一致：全时段画面母版、音画分通道、画面边缘连续、声源保留。
-# S3 仍额外添加电影风格锚定，比较其在 v4 基础上的增益。
+# 与主工具 v6 完全一致（2026-09-28）：三句极简版——①全帧场景母版（含下三分之一与全部边缘，
+# 说话与安静时同样完整）；②话语只进声轨（对白/语言标签/说话人编号仅指导声轨、画外保持画外、
+# 口型按场景、画面不随话语措辞或节奏）；③场景文字保护（表面文字不擦除、语音不渲染为画面文字）。
+# S3 仍额外添加电影风格锚定，比较其增益。句式必须与根 HTML 的 NO_SUBTITLES_CONSTRAINT 逐字一致。
 NO_SUBTITLES_CONSTRAINT = (
-    "From the first frame through the final frame, deliver a clean picture master: every part of the image belongs to the depicted scene, including the full lower third, bottom edge, upper edge, and corners. Every spoken word, including dialogue, narration, announcements, and off-screen voices, is an audio performance only; dialogue quotations, language labels, and speaker identifiers in this prompt are instructions for the soundtrack alone. For visible speakers, show only the mouth movement and performance specified by the scene; off-screen speech keeps its established off-screen source and leaves visible mouths in their described state. Throughout each utterance and the pauses before and after it, the lower third and all frame edges continuously retain the existing scene detail, texture, depth, and lighting, just as they do during silence. The visual image evolves solely through the actions and camera behavior already specified, independently of the wording, language, timing, and rhythm of speech; preserve the existing composition and scene objects. Visible writing is limited to text explicitly established on physical objects in the scene, attached to those surfaces with their perspective and occlusion, retaining its scene-defined content independently of spoken words. Treat the soundtrack and picture as separate production channels: all spoken wording is delivered to the ear, while the eye receives only the scene itself, continuously for the entire clip."
+    "The full frame, including the lower third and every edge, shows only the depicted scene throughout, as complete in speech as in silence. Dialogue quotes, language labels, and speaker identifiers are soundtrack instructions only; off-screen voices stay off-screen, visible mouths follow the scene, and the picture never follows speech wording or rhythm. Visible writing stays on scene surfaces such as signs, posters, and screens, never erased, and spoken words are never rendered as image text."
 )
 CINEMATIC_ANCHOR = (
     "The target video uses a realistic live-action theatrical film look with natural "

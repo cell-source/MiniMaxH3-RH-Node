@@ -4,7 +4,16 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const os = require('node:os');
-const html = fs.readFileSync(path.join(__dirname, '../MiniMax-H3-提示词生成器.html'), 'utf8');
+// 参考生成器 HTML 维护在上游主项目 MiniMaxH3（本仓库同级目录），本仓库不再随附该文件。
+// 解析顺序：环境变量 MINIMAX_H3_HTML → 同级主项目 → 兼容旧仓库根路径；找不到则跳过本测试。
+const htmlPath = [process.env.MINIMAX_H3_HTML,
+  path.join(__dirname, '..', '..', 'MiniMaxH3', 'MiniMax-H3-提示词生成器.html'),
+  path.join(__dirname, '..', 'MiniMax-H3-提示词生成器.html')].filter(Boolean).find(p => fs.existsSync(p));
+if (!htmlPath) {
+  console.log('SKIP: 未找到参考生成器 HTML（设置 MINIMAX_H3_HTML，或确认同级 MiniMaxH3 主项目存在）');
+  process.exit(0);
+}
+const html = fs.readFileSync(htmlPath, 'utf8');
 const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 const main = scripts.find(s => s.includes('function i2vaAlignLine'));
 const temp = path.join(os.tmpdir(), `h3-syntax-${process.pid}.js`);
@@ -12,6 +21,10 @@ try {
   fs.writeFileSync(temp, scripts.join('\n;\n'));
   require('node:child_process').execFileSync(process.execPath, ['--check', temp]);
 } finally { fs.unlinkSync(temp); }
+// v4.1: the English constraint must stay byte-identical to experiment/subtitle_experiment.py (S2 uses the same sentence).
+const pyConst = /NO_SUBTITLES_CONSTRAINT = \(\s*"(.+?)"\s*\)/s.exec(
+  fs.readFileSync(path.join(__dirname, '../experiment/subtitle_experiment.py'), 'utf8'))[1];
+assert.equal(pyConst, (html.match(/const NO_SUBTITLES_CONSTRAINT = '(.+?)';/) || [])[1]);
 const els = {};
 for (const m of html.matchAll(/<(input|select|textarea|div|span|button|output)[^>]*\bid="([^"]+)"[^>]*>/g)) {
   els[m[2]] = { value: (m[0].match(/value="([^"]*)"/) || [])[1] || '', checked: /\bchecked\b/.test(m[0]),
@@ -133,6 +146,19 @@ for (const language of ['zh','mixed','en']) {
   check("!!customOptionError(legacyPrompt,'t2va',false)", true);
   check('LEGACY_NO_SUBTITLES_CONSTRAINTS.concat([NO_SUBTITLES_CONSTRAINT,NO_SUBTITLES_CONSTRAINT_ZH]).every(x=>!rebuildVisualConstraints(legacyPrompt).includes(x))', true);
 }
+// v6 condensed constraint (2026-09-28): two-round condensation — three shorter sentences; scene-text protection kept; v4/v4.1/v5 sentences migrate via the legacy list.
+reset('zh'); els.no_subtitles.checked = true;
+check('/招牌|海报|屏幕|印花/.test(noSubtitlesConstraint())', true);
+check('/不被擦除/.test(noSubtitlesConstraint())', true);
+check('noSubtitlesConstraint().length < 200', true);
+els.lang.value = 'en';
+check('/signs, posters/.test(noSubtitlesConstraint())', true);
+check('/never erased/.test(noSubtitlesConstraint())', true);
+check('noSubtitlesConstraint().length < 600', true);
+run("globalThis.oldPair = LEGACY_NO_SUBTITLES_CONSTRAINTS.slice(-2).join(' ')");
+run("globalThis.oldPairPrompt = 'integrated_multimodal_description: [Shot 1] '+oldPair+'\\n\\noverall_soundscape: N/A\\n\\nnon_diegetic_music: N/A'");
+check("rebuildVisualConstraints(oldPairPrompt).split(noSubtitlesConstraint()).length-1", 1);
+check("rebuildVisualConstraints(rebuildVisualConstraints(oldPairPrompt))===rebuildVisualConstraints(oldPairPrompt)", true);
 run("currentKey=()=> 'test-only'; currentModel=()=>({label:'mock',endpoint:'mock',model:'mock'}); showToast=()=>{}; setAiResultNotice=()=>{}; renderPromptHistory=()=>{}; fillAiFields=()=>{};");
 const mock = (responses, failAt = -1, stopAt = -1) => {
   ctx.calls=[]; ctx.timeoutStop=false; ctx.responses=responses; ctx.failAt=failAt; ctx.stopAt=stopAt;
