@@ -1,7 +1,10 @@
-"""打包契约：prompt_engine 以仓库内容为真源，打包与引导脚本都不得静默覆盖它。
+"""打包契约：prompt_engine 以仓库内容为真源，打包流程不得重建或静默覆盖它。
 
-背景（2026-09-26 上线评估 A1）：rules.js 由 scripts/build_prompt_engine.py 从参考 HTML
-生成，而引擎修复只改在产物上；打包时自动 build() 会把修复悄悄替换回旧实现。
+背景（2026-09-26 上线评估 A1）：引擎修复曾只改在生成产物上，打包时自动重建会把
+修复悄悄替换回旧实现；此后打包改为白名单复制 + 逐字节校验。参考生成器 HTML 已
+移出本仓库（维护于上游主项目 MiniMaxH3），历史引导脚本 build_prompt_engine.py
+随之删除：引擎与参考 HTML 的差异（维护修复）只能通过移植 hunk 同步，整文件重建
+会回退全部修复。
 """
 import sys
 import tempfile
@@ -11,18 +14,6 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-
-REFERENCE_HTML = """<html><body><script>
-function i2vaAlignLine() { return 1; }
-function _decodeKey() {
-  return 'secret';
-}
-function _decodeKeyGlm() {
-  return 'secret';
-}
-/* ==================== 初始化
-</script></body></html>
-"""
 
 
 class PackagingContractTests(unittest.TestCase):
@@ -49,26 +40,6 @@ class PackagingContractTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError) as caught:
                     package_runninghub._verify_engine_matches_repo(output)
             self.assertIn("must never regenerate prompt_engine", str(caught.exception))
-
-    def test_bootstrap_refuses_to_overwrite_the_maintained_rules(self):
-        import build_prompt_engine
-
-        with tempfile.TemporaryDirectory() as folder:
-            root = Path(folder)
-            (root / "prompt_engine").mkdir()
-            (root / "MiniMax-H3-提示词生成器.html").write_text(REFERENCE_HTML, encoding="utf-8")
-            rules = root / "prompt_engine/rules.js"
-            rules.write_text("// maintained in repo\n", encoding="utf-8")
-            with patch.object(build_prompt_engine, "ROOT", root):
-                with self.assertRaises(SystemExit) as caught:
-                    build_prompt_engine.build()
-                self.assertIn("--force", str(caught.exception))
-                self.assertEqual(rules.read_text(encoding="utf-8"), "// maintained in repo\n")
-                build_prompt_engine.build(force=True)
-            rewritten = rules.read_text(encoding="utf-8")
-            self.assertTrue(rewritten.startswith("// prompt_engine rules — maintained in this repository."))
-            self.assertIn('return "server-managed";', rewritten)
-            self.assertNotIn("secret", rewritten)
 
     def test_repository_rules_are_not_marked_as_generated(self):
         first_line = (ROOT / "prompt_engine/rules.js").read_text(encoding="utf-8").splitlines()[0]

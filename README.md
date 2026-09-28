@@ -94,7 +94,7 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 | custom | `H3_LLM_API_KEY` | （必填 ai_endpoint 与 ai_model） |
 
 也可填写节点 ai_api_key，但该字段会保存到工作流中，分享前应清空。
-节点不使用旧 HTML 内置 Key，分发 ZIP 也不包含原 HTML。
+节点不使用生成器 HTML 里的内置 Key，分发 ZIP 也不包含任何 HTML 文件。
 
 ## 模型与能力边界
 
@@ -106,8 +106,10 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 ## 开发与打包
 
 ```sh
-# 引擎规则以 prompt_engine/rules.js 为维护真源（直接改该文件）；仅需从参考 HTML 重新引导时才用：
-# python scripts/build_prompt_engine.py --force
+# 引擎规则以 prompt_engine/rules.js 为维护真源（直接改该文件）。
+# 参考生成器 HTML 维护在上游主项目 MiniMaxH3（本仓库同级目录）：同步时把改动
+# 移植进 rules.js（勿整文件重建，会回退仓库维护的引擎修复），必要时更新
+# prompt_engine/source.sha256（HTML 以 read_text 归一化换行后 UTF-8 编码的 SHA-256）。
 python -m unittest discover -s tests -p test_prompt_node.py -v
 node tests/language-globalization.cjs
 python scripts/check_comfy_registration.py /path/to/ComfyUI
