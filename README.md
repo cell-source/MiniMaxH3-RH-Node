@@ -110,8 +110,12 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 # 参考生成器 HTML 维护在上游主项目 MiniMaxH3（本仓库同级目录）：同步时把改动
 # 移植进 rules.js（勿整文件重建，会回退仓库维护的引擎修复），必要时更新
 # prompt_engine/source.sha256（HTML 以 read_text 归一化换行后 UTF-8 编码的 SHA-256）。
-python -m unittest discover -s tests -p test_prompt_node.py -v
-node tests/language-globalization.cjs
+python -m pytest tests -o addopts='' -q        # Python 全量回归（65 用例 + 78 子测试）
+node tests/panel-ai-section.cjs                # 面板静态一致性（274 断言）
+node tests/panel-generation.cjs                # 面板生成行为（vm 沙箱）
+node tests/panel-layout.cjs                    # 面板布局（7 断言）
+node tests/language-globalization.cjs          # 引擎规则回归（HTML 取自同级主项目，缺失时 SKIP）
+node --check web/js/minimax_h3_integration.js
 python scripts/check_comfy_registration.py /path/to/ComfyUI
 python scripts/test_allinone_execute.py /path/to/ComfyUI   # execute 行为实测（无需模型权重）
 python scripts/build_example_workflow.py
