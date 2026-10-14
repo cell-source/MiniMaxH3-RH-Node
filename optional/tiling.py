@@ -636,11 +636,11 @@ class _MiniMaxH3TiledSamplerLegacy:
 
         sampler_impl = getattr(sampler, "sampler_impl", None)
         is_standard_euler = getattr(sampler_impl, "__name__", "") == "sample_euler"
-        is_ghx_dual = bool(getattr(sampler, "_ghx_dual_clock", False))
-        if not (is_standard_euler or is_ghx_dual):
+        is_h3_dual = bool(getattr(sampler, "_h3_dual_clock", False))
+        if not (is_standard_euler or is_h3_dual):
             return False
 
-        if is_ghx_dual:
+        if is_h3_dual:
             return True
         return not any(not ctx.get("disable_hard_injection") for ctx in keyframe_contexts)
 
@@ -699,10 +699,10 @@ class _MiniMaxH3TiledSamplerLegacy:
 
         original_extra = dict(getattr(sampler, "extra_options", {}) or {})
         original_inpaint = dict(getattr(sampler, "inpaint_options", {}) or {})
-        dual_clock = bool(getattr(sampler, "_ghx_dual_clock", False))
-        shift_video = float(getattr(sampler, "_ghx_shift_video", 12.0))
-        shift_audio = float(getattr(sampler, "_ghx_shift_audio", 3.0))
-        audio_velocity_is_raw = bool(getattr(sampler, "_ghx_audio_velocity_is_raw", False))
+        dual_clock = bool(getattr(sampler, "_h3_dual_clock", False))
+        shift_video = float(getattr(sampler, "_h3_shift_video", 12.0))
+        shift_audio = float(getattr(sampler, "_h3_shift_audio", 3.0))
+        audio_velocity_is_raw = bool(getattr(sampler, "_h3_audio_velocity_is_raw", False))
         full_denoise_mask = _h3_make_mask(video_mask, audio_mask)
 
         @torch.no_grad()

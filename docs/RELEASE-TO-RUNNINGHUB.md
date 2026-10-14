@@ -1,6 +1,6 @@
 # MiniMaxH3-RH-Node · RunningHub 发布手册
 
-> 产物：`dist/MiniMaxH3-RH-Node.zip`（约 269 KB，zip 内含 `MiniMaxH3-RH-Node/` 包文件夹，37 个文件）
+> 产物：`dist/MiniMaxH3-RH-Node.zip`（约 274 KB，zip 内含 `MiniMaxH3-RH-Node/` 包文件夹，37 个文件；以 `package_runninghub.py` 实际输出为准）
 > 校验：`dist/MiniMaxH3-RH-Node.zip.sha256`
 > 构建：`python scripts/package_runninghub.py`（白名单打包；prompt_engine 以仓库内容为真源，
 > 打包不重建并校验 zip 内产物与仓库逐字节一致；不含原 HTML 与任何凭据）
@@ -74,7 +74,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 3. 节点上选择已安装的 H3 文本编码器、视频 VAE、音频 VAE；按模式上传首帧/尾帧/参考素材
    （替换对应 `SELECT_YOUR_*` 占位）。
 4. 提示词写进节点的**编辑器**（画布示例已填好各模式的完整提示词）；面板固定以编辑器内容为准。
-   仅在 API 调用或直接编辑工作流 JSON 时才用到 `prompt_source` 的 `ai` / `offline` / `format`
+   仅在 API 调用或直接编辑工作流 JSON 时才用到 `prompt_origin` 的 `ai` / `offline` / `format`
    （见 `examples/*.api.json`），`ai` 时在 `ai_*` 参数组填写创意输入与 LLM 配置。
 5. 节点内部完成条件构建 → 双时钟采样 → 音视频解码；`frames`/`audio` → CreateVideo → SaveVideo。
 
@@ -82,12 +82,12 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 
 - 提交后 `promptTips` 出现 `node_errors` 时，先确认节点 ID 为 `MiniMaxH3IntegrationRH`，
   不要残留旧版/双节点时代的 ID。
-- 节点 `ai_api_key` 字段会随工作流保存：**API 提交前清空该字段**，改用对应服务商的环境变量
+- 节点 `ai_key` 字段会随工作流保存：**API 提交前清空该字段**，改用对应服务商的环境变量
   （`DEEPSEEK_API_KEY` / `GLM_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` /
   `DASHSCOPE_API_KEY` / `SILICONFLOW_API_KEY` / 通用 `H3_LLM_API_KEY`）。
-- `ai_strict_validation` 默认开启：提示词校验失败节点抛错中止执行；需要拿到文本人工修正时置 false。
-- 面板界面只写 `prompt_source=panel`（以编辑器内容为准）；`ai`/`offline`/`format` 三种来源供 API 调度使用，
-  此时 `no_subtitle`/`soundscape`/`music` 开关由 `ai_*` 参数组接替。
+- `ai_strict_check` 默认开启：提示词校验失败节点抛错中止执行；需要拿到文本 人工修正时置 false。
+- 面板界面只写 `prompt_origin=panel`（以编辑器内容为准）；`ai`/`offline`/`format` 三种来源供 API 调度使用，
+  此时 `subtitle_free`/`soundscape`/`music` 开关由 `ai_*` 参数组接替。
 - 提示词优化器路由为 `/rh/minimax-h3/prompt-optimizer/...`，前端自动匹配，无需配置。
 
 ## 本机实测（2026-09-24，ComfyUI 0.37.0 / Python 3.10 / CPU 模式）
@@ -110,7 +110,7 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
   （`check_comfy_registration.py` 断言注册数 1）
 - [x] 包名/UA/类名无原作者字样；LICENSE 与 NOTICE 署名保留（GPL-3.0-or-later 合规）
 - [x] 结构重组（2026-10-14）：包内无与上游同名同路径的代码文件；除 LICENSE 外无逐字节相同文件；
-     上游自定义标识符残留 9 个（均为前端通用常量或必须保留的覆写名），注释/文档字符串无逐字重合
+     运行期代码无上游自定义标识符残留（迁移键 `ghh3_state` 等历史兼容名单除外），注释/文档字符串无逐字重合
 - [x] 面板提示音为本仓库自制资源（不再复用上游音频）；采样器/调度器选项名为 `h3_dual_clock` / `h3_native_flow`
 - [x] 白名单打包：zip 不含原 HTML、内置凭据（`_decodeKey` 已替换为 server-managed）、`__pycache__`
 - [x] zip 含包文件夹结构（`MiniMaxH3-RH-Node/`），解压即得正确层级

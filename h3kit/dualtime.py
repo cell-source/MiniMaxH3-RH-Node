@@ -561,10 +561,11 @@ def _attach_sampler(patched_model, model, sampler_id, use_native_av,
     sampler_impl.__name__ = "run_dual_clock_euler"
     sampler = comfy.samplers.KSAMPLER(sampler_impl)
     # 供二段分块采样器读取的元数据：让它用同一套双时钟更新并同步各分块。
-    sampler._ghx_dual_clock = True
-    sampler._ghx_shift_video = float(video_sigma_shift)
-    sampler._ghx_shift_audio = float(audio_sigma_shift)
-    sampler._ghx_audio_velocity_is_raw = bool(audio_velocity_is_raw)
+    # optional/tiling.py 未随包发布，但符号仍按本仓库命名约定用 _h3_ 前缀。
+    sampler._h3_dual_clock = True
+    sampler._h3_shift_video = float(video_sigma_shift)
+    sampler._h3_shift_audio = float(audio_sigma_shift)
+    sampler._h3_audio_velocity_is_raw = bool(audio_velocity_is_raw)
     return sampler
 
 

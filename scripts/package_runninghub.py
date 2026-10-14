@@ -33,8 +33,18 @@ def _verify_engine_matches_repo(output: Path) -> None:
 
 def package():
     paths = [ROOT / name for name in FILES + DOC_FILES]
+    # 白名单是整目录收录：编辑器备份/临时脚本若落在 h3kit/ 等目录内会被带进发布包
+    # （曾发生 optimizer.py.bak 入包、zip 从 268 KB 涨到 351 KB 的事故），这里防御性排除。
+    blocked_parts = {"__pycache__", ".git", ".vscode", ".pytest_cache"}
+    blocked_suffixes = (".bak", ".tmp", ".orig", ".rej")
     for name in FOLDERS:
-        paths.extend(p for p in (ROOT / name).rglob("*") if p.is_file() and "__pycache__" not in p.parts)
+        paths.extend(
+            p for p in (ROOT / name).rglob("*")
+            if p.is_file()
+            and not (blocked_parts & set(p.parts))
+            and not p.name.endswith(blocked_suffixes)
+            and not p.name.startswith("_tmp")
+        )
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
     output = dist / "MiniMaxH3-RH-Node.zip"

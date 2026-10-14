@@ -310,10 +310,10 @@ class DualClockSetupTests(unittest.TestCase):
 
     def test_sampler_carries_the_dual_clock_metadata(self):
         _model, sampler, _sigmas = self._setup()
-        self.assertTrue(getattr(sampler, "_ghx_dual_clock"))
-        self.assertAlmostEqual(sampler._ghx_shift_video, 12.0)
-        self.assertAlmostEqual(sampler._ghx_shift_audio, 3.0)
-        self.assertFalse(sampler._ghx_audio_velocity_is_raw)
+        self.assertTrue(getattr(sampler, "_h3_dual_clock"))
+        self.assertAlmostEqual(sampler._h3_shift_video, 12.0)
+        self.assertAlmostEqual(sampler._h3_shift_audio, 3.0)
+        self.assertFalse(sampler._h3_audio_velocity_is_raw)
         self.assertEqual(sampler.sampler_function.__name__, "run_dual_clock_euler")
 
     def test_locked_audio_also_patches_the_inpaint_entry(self):

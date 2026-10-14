@@ -302,6 +302,14 @@ Object.assign(DOM_TRANSLATIONS, {
     "Drive audio ordinal": "驱动音频序号",
     "Drive audio": "驱动音频",
     "None": "无",
+    "Text encoder": "CLIP模型",
+    "Video VAE": "视频 VAE",
+    "Audio VAE": "音频 VAE",
+    "Aspect": "宽高比例",
+    "Megapixels": "百万像素",
+    "Clip seconds": "时长（秒）",
+    "After generate": "生成后控制",
+    "adaptive": "自适应",
 });
 
 function currentLocale() {
@@ -402,7 +410,10 @@ function installAspectDisplay(node) {
 function drawAspectDisplayOverlay(node, ctx) {
     if (!isChineseLocale()) return;
     const control = widget(node, "frame_ratio");
-    if (!control || control.value !== "adaptive" || control === node.__h3kActiveWidget) return;
+    // 面板已接管画幅控件（原生 widget 行隐藏）；隐藏后 y 停在旧位置，
+    // 继续画会在画布上残留一块“自适应”浮字。
+    if (!control || control.hidden || control.options?.hidden) return;
+    if (control.value !== "adaptive" || control === node.__h3kActiveWidget) return;
     const y = Number(control.y);
     const height = Number(control.height) || 30;
     const width = Number(node.size?.[0]) || 0;
@@ -766,6 +777,9 @@ function createPanel(node) {
         ...AI_GROUP_WIDGETS,
         // 采样参数组（单节点整合新增）：在「更多设置」卡片内提供等价控件，原生 widget 一并隐藏
         "sample_steps", "video_sigma_shift", "audio_sigma_shift", "sampler_id", "scheduler_id", "seed_value",
+        // 模型与画幅组（2026-10-14）：原生行隐藏，等价控件放在「更多设置」顶部，
+        // 避免节点体上残留一排 null 值的原生 widget 行。
+        "text_encoder", "video_decoder", "audio_decoder", "frame_ratio", "pixel_budget", "clip_seconds", "control_after_generate",
     ]) hideWidget(widget(node, name));
     // Old graphs may contain the literal string "(none)" in this hidden Int
     // input. Clean it before ComfyUI serializes/submits the prompt.
@@ -1270,6 +1284,51 @@ function nodeColorToCss(value) {
     };
     const number = (name, step, min, max) => { const wrap = make("div"); wrap.className = "h3k-number"; const left = make("button", {}, "◀"); const n = document.createElement("input"); n.type = "number"; n.step = step; n.min = min; n.max = max; const raw = Number(widget(node, name)?.value); n.value = Number.isFinite(raw) ? raw : min; const right = make("button", {}, "▶"); const update = value => { const numeric = Number(value); const next = Math.max(Number(min), Math.min(Number(max), Number.isFinite(numeric) ? numeric : Number(min))); n.value = Number.isInteger(next) ? next : next.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); setWidget(node, name, next); }; left.onclick = () => update(Number(n.value || min) - Number(step)); right.onclick = () => update(Number(n.value || min) + Number(step)); n.onchange = () => update(n.value); wrap.append(left, n, right); return wrap; };
     const check = (name) => { const label = make("label"); label.className = "h3k-toggle"; const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value; const track = make("span"); c.onchange = () => setWidget(node, name, c.checked); label.append(c, track); return label; };
+    /* ===== 模型与画幅组（2026-10-14）：原生 widget 行已隐藏，这里提供等价控件。
+       模型下拉选项直接取自 widget.options.values（服务端文件列表），
+       工作流恢复后由 _h3kSyncOptions 重灌，保证显示值与真实提交值一致。 ===== */
+    const dynamicSelect = name => {
+        const s = document.createElement("select"); s.className = "h3k-control";
+        const syncOptions = () => {
+            const source = widget(node, name);
+            const values = Array.isArray(source?.options?.values) ? source.options.values : [];
+            const current = source?.value;
+            if (values.length) s.replaceChildren(...values.map(v => new Option(v, v)));
+            else if (current) s.replaceChildren(new Option(current, current));
+            else s.replaceChildren(new Option("—", ""));
+            // widget 值为空时不借用第一个选项当显示值：显示 "—" 并保持提交值不变，
+            // 否则会出现"看起来选了模型、实际提交 null"的不一致。
+            if (current != null && current !== "") {
+                // 列表里已不存在的旧文件名也保留为选项：显示值必须与提交值一致。
+                if (![...s.options].some(option => option.value === String(current))) s.append(new Option(current, current));
+                s.value = String(current);
+            } else {
+                const placeholder = s.querySelector('option[value=""]');
+                if (!placeholder) s.append(new Option("—", ""));
+                s.value = "";
+            }
+        };
+        syncOptions();
+        // 纯值控件：直接写 widget，不走 setWidget 的 (none) 兑底——空列表时保持
+        // null，不产生 "(none)" 这种假文件名（sanitizeHiddenInputs 不清理模型字段）。
+        s.onchange = () => { const w = widget(node, name); if (w && s.value) { w.value = s.value; w.callback?.call(w, w.value); } };
+        s._h3kSyncOptions = syncOptions;
+        localizedSelects.push(s);
+        return s;
+    };
+    addAdvanced("text_encoder", "Text encoder", dynamicSelect("text_encoder"));
+    addAdvanced("video_decoder", "Video VAE", dynamicSelect("video_decoder"));
+    addAdvanced("audio_decoder", "Audio VAE", dynamicSelect("audio_decoder"));
+    addAdvanced("frame_ratio", "Aspect", select("frame_ratio", ASPECT_INTERNAL_VALUES));
+    const formatBounds = (name, fallback) => {
+        const options = widget(node, name)?.options || {};
+        return [options.step ?? fallback[0], options.min ?? fallback[1], options.max ?? fallback[2]];
+    };
+    const pixelBudgetControl = number("pixel_budget", ...formatBounds("pixel_budget", ["0.1", "0.2", "2"]));
+    addAdvanced("pixel_budget", "Megapixels", pixelBudgetControl);
+    const clipSecondsControl = number("clip_seconds", ...formatBounds("clip_seconds", ["1", "2", "30"]));
+    addAdvanced("clip_seconds", "Clip seconds", clipSecondsControl);
+    addAdvanced("control_after_generate", "After generate", dynamicSelect("control_after_generate"));
     addAdvanced("audio_source", "Audible source", select("audio_source", ["native", "lock_source", "reference_only", "remix_source"]));
     const audioStrengthControl = number("audio_cleanup", "0.05", "0", "1");
     addAdvanced("audio_cleanup", "Voice rewrite strength", audioStrengthControl);
@@ -1421,9 +1480,11 @@ function nodeColorToCss(value) {
             );
             driveAudioOrdinalControl.value = String(next);
         }
-        const visible = state.mode === "text_keyframes"
+        // 模型与画幅行在任何模式下都可见；其余行按模式显隐。
+        const modelRows = ["text_encoder", "video_decoder", "audio_decoder", "frame_ratio", "pixel_budget", "clip_seconds", "control_after_generate"];
+        const visible = [...modelRows, ...(state.mode === "text_keyframes"
             ? ["audio_source", "audio_cleanup", "tag_guard"]
-            : ["audio_source", "audio_cleanup", "asset_scale", "tag_guard", "driving_track"];
+            : ["audio_source", "audio_cleanup", "asset_scale", "tag_guard", "driving_track"])];
         for (const [name, row] of advancedRows) {
             const isVisible = visible.includes(name);
             row.hidden = !isVisible;
@@ -3669,6 +3730,7 @@ function nodeColorToCss(value) {
                 "audio_source", "audio_cleanup",
                 "driving_track", "asset_scale", "tag_guard",
                 "panel_state", "subtitle_free", "soundscape", "music",
+                "text_encoder", "video_decoder", "audio_decoder", "frame_ratio", "pixel_budget", "clip_seconds", "control_after_generate",
             ]) hideWidget(widget(node,n));
             normalizeIntWidget(node, "driving_track", 1, 0, 6);
             if (hook !== "onAdded") {
@@ -3760,6 +3822,16 @@ function nodeColorToCss(value) {
                 // ✨ 生成弹窗（开关直接写 widget），此处只回读标签格式强校验。
                 const strictTagsBox = advancedRows.get("tag_guard")?.querySelector("input[type=checkbox]");
                 if (strictTagsBox) strictTagsBox.checked = !!widget(node, "tag_guard")?.value;
+                // 模型/画幅控件回灌：先归一化历史别名值（如“自适应”），再按 widget 现值
+                // 重灌下拉与数字框，保证显示值与将要提交的值一致。
+                normalizeAspectWidget(node);
+                for (const control of localizedSelects) control._h3kSyncOptions?.();
+                for (const [control, name] of [[pixelBudgetControl, "pixel_budget"], [clipSecondsControl, "clip_seconds"]]) {
+                    const raw = Number(widget(node, name)?.value);
+                    const input = control.querySelector("input");
+                    if (input && Number.isFinite(raw)) input.value = raw;
+                }
+                refreshSize();
                 updateAdvancedVisibility();
                 render();
                 syncLayout(userHeight, true);
