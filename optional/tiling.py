@@ -10,14 +10,14 @@ from comfy.k_diffusion.sampling import to_d
 from comfy.utils import model_trange
 import latent_preview
 from comfy_api.latest import io
-from .sampling import time_shift_sigma, time_shift_slope
+from ..h3kit.dualtime import flow_shift_sigma, flow_shift_slope
 from comfy.ldm.minimax.model import PackedLayout
 
 H3_VIDEO_FRAMES = 17
 H3_LATENT_CHANNELS = 24
 H3_LATENT_TIME = 5
 
-def _make_packed_layout(text_len, latent_t, latent_h, latent_w, audio_t,
+def _pack_layout(text_len, latent_t, latent_h, latent_w, audio_t,
                         keyframes=None, refs=None, frame_count=None):
     args = (text_len, latent_t, latent_h, latent_w, audio_t)
     kwargs = {"keyframes": keyframes, "refs": refs}
@@ -48,7 +48,7 @@ def _resize_keyframe_image(image, target_h, target_w):
         ).permute(0, 2, 3, 1).contiguous()
     return x
 
-def _reencode_keyframe(item, full_h, full_w, debug=False):
+def _rebuild_keyframe(item, full_h, full_w, debug=False):
 
     source_image = item.get("source_image")
     video_vae = item.get("video_vae")
@@ -427,9 +427,9 @@ class _MiniMaxH3TiledSamplerLegacy:
 
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
-        _MiniMaxH3TiledSamplerLegacy._clean_minimax_layout(guider, debug)
+        _MiniMaxH3TiledSamplerLegacy._clear_packed_layout(guider, debug)
 
-        keyframe_contexts = _MiniMaxH3TiledSamplerLegacy._prepare_minimax_keyframes(
+        keyframe_contexts = _MiniMaxH3TiledSamplerLegacy._collect_packed_keyframes(
             guider, H, W, debug
         )
 
@@ -455,7 +455,7 @@ class _MiniMaxH3TiledSamplerLegacy:
             )
 
         if debug:
-            sampler_name = getattr(getattr(sampler, "sampler_function", None), "__name__", "未知")
+            sampler_name = getattr(getattr(sampler, "sampler_impl", None), "__name__", "未知")
             reason = "存在高清硬关键帧" if any(
                 not ctx.get("disable_hard_injection") for ctx in keyframe_contexts
             ) else f"采样器={sampler_name}"
@@ -491,10 +491,10 @@ class _MiniMaxH3TiledSamplerLegacy:
                 guider.model_patcher, sigmas.shape[-1] - 1, x0_output
             )
 
-            _MiniMaxH3TiledSamplerLegacy._apply_minimax_keyframe_region(
+            _MiniMaxH3TiledSamplerLegacy._bind_keyframe_region(
                 keyframe_contexts, tile_axis, ax_start, ax_end, debug
             )
-            _MiniMaxH3TiledSamplerLegacy._clean_minimax_layout(guider, debug)
+            _MiniMaxH3TiledSamplerLegacy._clear_packed_layout(guider, debug)
             try:
                 tile_samples = guider.sample(
                     tile_noise, tile_nested, sampler, sigmas,
@@ -504,7 +504,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                     seed=noise.seed,
                 )
             finally:
-                _MiniMaxH3TiledSamplerLegacy._restore_minimax_keyframes(keyframe_contexts)
+                _MiniMaxH3TiledSamplerLegacy._release_keyframe_region(keyframe_contexts)
 
             if hasattr(tile_samples, "is_nested") and tile_samples.is_nested:
                 tile_parts = tile_samples.unbind()
@@ -634,8 +634,8 @@ class _MiniMaxH3TiledSamplerLegacy:
     @staticmethod
     def _can_use_synchronized_euler(sampler, keyframe_contexts):
 
-        sampler_function = getattr(sampler, "sampler_function", None)
-        is_standard_euler = getattr(sampler_function, "__name__", "") == "sample_euler"
+        sampler_impl = getattr(sampler, "sampler_impl", None)
+        is_standard_euler = getattr(sampler_impl, "__name__", "") == "sample_euler"
         is_ghx_dual = bool(getattr(sampler, "_ghx_dual_clock", False))
         if not (is_standard_euler or is_ghx_dual):
             return False
@@ -820,7 +820,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                     if text_len <= 0:
                         raise RuntimeError("H3 synchronized tiling could not determine text token length")
 
-                    payload["layout"] = _make_packed_layout(
+                    payload["layout"] = _pack_layout(
                         text_len, int(vs[2]), tile_h, tile_w, audio_t,
                         keyframes=keyframes or None,
                         refs=refs or None,
@@ -829,7 +829,7 @@ class _MiniMaxH3TiledSamplerLegacy:
 
                     ref_latents = [
                         r.get("latent") for r in refs
-                        if r.get("latent") is not None and r.get("kind") != "t8_keyframe_latent"
+                        if r.get("latent") is not None and r.get("kind") != "h3kit-hybrid-marker"
                     ]
                     ordered = []
                     kfi = refi = 0
@@ -966,9 +966,9 @@ class _MiniMaxH3TiledSamplerLegacy:
 
                         sigma_v = sigma_hat
                         sigma_v_next = step_sigmas[step_idx + 1]
-                        sigma_a = time_shift_sigma(sigma_v, shift_video, shift_audio)
-                        sigma_a_next = time_shift_sigma(sigma_v_next, shift_video, shift_audio)
-                        slope = time_shift_slope(sigma_v, shift_video, shift_audio)
+                        sigma_a = flow_shift_sigma(sigma_v, shift_video, shift_audio)
+                        sigma_a_next = flow_shift_sigma(sigma_v_next, shift_video, shift_audio)
+                        slope = flow_shift_slope(sigma_v, shift_video, shift_audio)
                         dv = to_d(video_x, sigma_v, merged_streams[0])
 
                         da = to_d(audio_x, sigma_v, merged_streams[1])
@@ -1009,7 +1009,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                 seed=noise.seed,
             )
         finally:
-            _MiniMaxH3TiledSamplerLegacy._restore_minimax_keyframes(keyframe_contexts)
+            _MiniMaxH3TiledSamplerLegacy._release_keyframe_region(keyframe_contexts)
 
         sampled_video, sampled_audio, _ = _h3_extract(samples, debug)
         intermediate_device = comfy.model_management.intermediate_device()
@@ -1048,7 +1048,7 @@ class _MiniMaxH3TiledSamplerLegacy:
         return (out, out_denoised)
 
     @staticmethod
-    def _prepare_minimax_keyframes(guider, full_h, full_w, debug=False):
+    def _collect_packed_keyframes(guider, full_h, full_w, debug=False):
 
         contexts = []
         if not hasattr(guider, "original_conds"):
@@ -1083,7 +1083,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                     old_hw = tuple(latent.shape[-2:])
                     if old_hw != (full_h, full_w):
 
-                        fresh = _reencode_keyframe(item, full_h, full_w, debug)
+                        fresh = _rebuild_keyframe(item, full_h, full_w, debug)
                         if fresh is not None:
                             item["latent"] = fresh
                             reencoded.append(old_hw)
@@ -1129,7 +1129,7 @@ class _MiniMaxH3TiledSamplerLegacy:
         return contexts
 
     @staticmethod
-    def _apply_minimax_keyframe_region(contexts, tile_axis, start, end, debug=False):
+    def _bind_keyframe_region(contexts, tile_axis, start, end, debug=False):
 
         for ctx in contexts:
             if ctx.get("disable_hard_injection"):
@@ -1165,7 +1165,7 @@ class _MiniMaxH3TiledSamplerLegacy:
             ctx["cond"]["minimax_keyframes"] = tiled
 
     @staticmethod
-    def _restore_minimax_keyframes(contexts):
+    def _release_keyframe_region(contexts):
 
         for ctx in contexts:
             ctx["cond"]["minimax_keyframes"] = ctx["original"]
@@ -1222,10 +1222,10 @@ class _MiniMaxH3TiledSamplerLegacy:
             callback = latent_preview.prepare_callback(
                 guider.model_patcher, refine_sigmas.shape[-1] - 1, x0_output
             )
-            _MiniMaxH3TiledSamplerLegacy._apply_minimax_keyframe_region(
+            _MiniMaxH3TiledSamplerLegacy._bind_keyframe_region(
                 keyframe_contexts or [], tile_axis, band_start, band_end, debug
             )
-            _MiniMaxH3TiledSamplerLegacy._clean_minimax_layout(guider, debug)
+            _MiniMaxH3TiledSamplerLegacy._clear_packed_layout(guider, debug)
             try:
                 band_samples = guider.sample(
                     band_noise_nested, band_nested, sampler, refine_sigmas,
@@ -1235,7 +1235,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                     seed=noise.seed,
                 )
             finally:
-                _MiniMaxH3TiledSamplerLegacy._restore_minimax_keyframes(keyframe_contexts or [])
+                _MiniMaxH3TiledSamplerLegacy._release_keyframe_region(keyframe_contexts or [])
 
             if hasattr(band_samples, "is_nested") and band_samples.is_nested:
                 band_samples_video = band_samples.unbind()[0]
@@ -1255,7 +1255,7 @@ class _MiniMaxH3TiledSamplerLegacy:
         return output
 
     @staticmethod
-    def _clean_minimax_layout(guider, debug=False):
+    def _clear_packed_layout(guider, debug=False):
 
         if hasattr(guider, 'model_patcher') and hasattr(guider.model_patcher, 'model'):
             model = guider.model_patcher.model
@@ -1280,8 +1280,8 @@ class _MiniMaxH3TiledSamplerLegacy:
                      video_tensor, audio_tensor, fmt_info,
                      video_mask=None, audio_mask=None, debug=False):
 
-        _MiniMaxH3TiledSamplerLegacy._clean_minimax_layout(guider, debug)
-        keyframe_contexts = _MiniMaxH3TiledSamplerLegacy._prepare_minimax_keyframes(
+        _MiniMaxH3TiledSamplerLegacy._clear_packed_layout(guider, debug)
+        keyframe_contexts = _MiniMaxH3TiledSamplerLegacy._collect_packed_keyframes(
             guider, video_tensor.shape[-2], video_tensor.shape[-1], debug
         )
 
@@ -1294,10 +1294,10 @@ class _MiniMaxH3TiledSamplerLegacy:
         )
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
-        _MiniMaxH3TiledSamplerLegacy._apply_minimax_keyframe_region(
+        _MiniMaxH3TiledSamplerLegacy._bind_keyframe_region(
             keyframe_contexts, "H", 0, video_tensor.shape[-2], debug
         )
-        _MiniMaxH3TiledSamplerLegacy._clean_minimax_layout(guider, debug)
+        _MiniMaxH3TiledSamplerLegacy._clear_packed_layout(guider, debug)
         try:
             samples = guider.sample(
                 noise.generate_noise(latent_dict),
@@ -1310,7 +1310,7 @@ class _MiniMaxH3TiledSamplerLegacy:
                 seed=noise.seed,
             )
         finally:
-            _MiniMaxH3TiledSamplerLegacy._restore_minimax_keyframes(keyframe_contexts)
+            _MiniMaxH3TiledSamplerLegacy._release_keyframe_region(keyframe_contexts)
         samples = samples.to(comfy.model_management.intermediate_device())
 
         out = latent_dict.copy()

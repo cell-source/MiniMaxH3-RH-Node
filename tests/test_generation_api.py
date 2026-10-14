@@ -1,6 +1,6 @@
 """面板「AI 生成 / H3 格式整理」HTTP 出口的离线单测。
 
-prompt_optimizer 依赖 ComfyUI 运行时（folder_paths/server），测试环境用桩模块
+h3kit.optimizer 依赖 ComfyUI 运行时（folder_paths/server），测试环境用桩模块
 替身后导入；路由处理器直接以假 request 调用，不起真实 HTTP 服务。
 """
 import asyncio
@@ -21,7 +21,7 @@ _saved_modules = {}
 def setUpModule():
     global prompt_optimizer, _generation_payload_controls, _run_generation_operation
     global format_prompt_api, generate_prompt_api
-    names = ("folder_paths", "server", "h3pkg", "h3pkg.prompt_optimizer", "h3pkg.llm_client", "h3pkg.prompt_runtime")
+    names = ("folder_paths", "server", "h3pkg", "h3pkg.h3kit.optimizer", "h3pkg.h3kit.llm", "h3pkg.h3kit.rules")
     for name in names:
         _saved_modules[name] = sys.modules.get(name)
         sys.modules.pop(name, None)
@@ -32,9 +32,9 @@ def setUpModule():
     package = types.ModuleType("h3pkg")
     package.__path__ = [str(ROOT)]
     sys.modules["h3pkg"] = package
-    prompt_optimizer = importlib.import_module("h3pkg.prompt_optimizer")
-    importlib.import_module("h3pkg.llm_client")
-    importlib.import_module("h3pkg.prompt_runtime")
+    prompt_optimizer = importlib.import_module("h3pkg.h3kit.optimizer")
+    importlib.import_module("h3pkg.h3kit.llm")
+    importlib.import_module("h3pkg.h3kit.rules")
     _generation_payload_controls = prompt_optimizer._generation_payload_controls
     _run_generation_operation = prompt_optimizer._run_generation_operation
     format_prompt_api = prompt_optimizer.format_prompt_api
@@ -136,13 +136,13 @@ class FormatEndpointTests(unittest.TestCase):
 class GenerateEndpointTests(unittest.TestCase):
     def test_errors_never_echo_credentials(self):
         sentinel = "private-key-sentinel"
-        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "prefix\n" + sentinel}), patch("h3pkg.llm_client.requests.post") as post:
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "prefix\n" + sentinel}), patch("h3pkg.h3kit.llm.requests.post") as post:
             response = _post(generate_prompt_api, {"prompt": "雨夜"})
             self.assertEqual(response.status, 400)
             self.assertNotIn(sentinel, response.text)
             post.assert_not_called()
         for error in (RuntimeError(sentinel), ValueError(sentinel)):
-            with patch("h3pkg.prompt_runtime.generate_prompt", side_effect=error):
+            with patch("h3pkg.h3kit.rules.generate_prompt", side_effect=error):
                 response = _post(format_prompt_api, {"prompt": "雨夜"})
                 self.assertEqual(response.status, 400)
                 self.assertNotIn(sentinel, response.text)
@@ -150,7 +150,7 @@ class GenerateEndpointTests(unittest.TestCase):
         class Response:
             def __enter__(self): return upstream
             def __exit__(self, *args): pass
-        with patch("h3pkg.llm_client.requests.post", return_value=Response()):
+        with patch("h3pkg.h3kit.llm.requests.post", return_value=Response()):
             response = _post(generate_prompt_api, {"prompt": "雨夜", "api_key": sentinel})
             self.assertEqual(response.status, 400)
             self.assertIn("401", response.text)
@@ -179,7 +179,7 @@ class GenerateEndpointTests(unittest.TestCase):
 
         payload = {"prompt": "雨夜霓虹街头", "provider": "deepseek", "api_key": "sk-test",
                    "timeout": 90, "controls": {"mode": "t2va", "lang": "zh"}}
-        with patch("h3pkg.llm_client.make_client", side_effect=fake_make_client):
+        with patch("h3pkg.h3kit.llm.make_client", side_effect=fake_make_client):
             response = asyncio.run(generate_prompt_api(_FakeRequest(payload)))
         self.assertEqual(response.status, 200)
         body = json.loads(response.text)
@@ -198,7 +198,7 @@ class RunGenerationOperationTests(unittest.TestCase):
     def test_all_boolean_options_reach_engine(self):
         for enabled in (False, True):
             controls = {name: enabled for name in prompt_optimizer._H3_GENERATION_CONTROLS}
-            with patch("h3pkg.prompt_runtime.generate_prompt", return_value={"prompt": "x"}) as generate:
+            with patch("h3pkg.h3kit.rules.generate_prompt", return_value={"prompt": "x"}) as generate:
                 _run_generation_operation({"prompt": "x", "controls": controls}, "format")
             for name in controls:
                 self.assertIs(generate.call_args.args[2][name], enabled)
@@ -212,7 +212,7 @@ class RunGenerationOperationTests(unittest.TestCase):
             self.assertEqual("慢速而克制的钢琴独奏" in result["prompt"], enabled)
 
     def test_format_operation_passes_none_client(self):
-        with patch("h3pkg.prompt_runtime.generate_prompt", return_value={"prompt": "x", "valid": True, "report": ""}) as gen:
+        with patch("h3pkg.h3kit.rules.generate_prompt", return_value={"prompt": "x", "valid": True, "report": ""}) as gen:
             _run_generation_operation({"prompt": "t", "controls": {}}, "format")
             self.assertIsNone(gen.call_args[0][3])
 
@@ -228,7 +228,7 @@ class RunGenerationOperationTests(unittest.TestCase):
                 return "DIALOGUE_COUNT: 0\n" + base(scene)
             return llm
 
-        with patch("h3pkg.llm_client.make_client", side_effect=fake_make_client):
+        with patch("h3pkg.h3kit.llm.make_client", side_effect=fake_make_client):
             result = _run_generation_operation(
                 {"prompt": "雨夜", "provider": "deepseek", "api_key": "sk", "timeout": 600,
                  "controls": {"mode": "t2va"}},
@@ -248,8 +248,8 @@ class GenerationHttpTests(unittest.IsolatedAsyncioTestCase):
         from aiohttp import web
         from aiohttp.test_utils import TestClient, TestServer
         routes = web.RouteTableDef()
-        with patch.object(prompt_optimizer, "PromptServer", types.SimpleNamespace(instance=types.SimpleNamespace(routes=routes))), patch.object(prompt_optimizer, "_ROUTES_REGISTERED", False):
-            self.assertTrue(prompt_optimizer.register_prompt_optimizer_routes())
+        with patch.object(prompt_optimizer, "PromptServer", types.SimpleNamespace(instance=types.SimpleNamespace(routes=routes))), patch.object(prompt_optimizer, "_ROUTES_BOUND", False):
+            self.assertTrue(prompt_optimizer.register_fanout_routes())
         app = web.Application()
         app.add_routes(routes)
         self.client = TestClient(TestServer(app))
@@ -320,39 +320,39 @@ class NormalizeConfigTests(unittest.TestCase):
             ("openai", "https://api.openai.com/v1", "gpt-4.1-mini", "openai"),
             ("gemini", "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-flash", "gemini"),
         ):
-            config = prompt_optimizer._normalize_config({"provider": provider, "api_key": "k", "protocol": "openai" if provider != "gemini" else None})
+            config = prompt_optimizer._merge_settings({"provider": provider, "api_key": "k", "protocol": "openai" if provider != "gemini" else None})
             self.assertEqual(config["api_url"], url, provider)
             self.assertEqual(config["model"], model, provider)
             self.assertEqual(config["protocol"], protocol, provider)
 
     def test_unknown_provider_keeps_empty_url_and_model(self):
         # 回归：此前回退到 RunningHub 预设，把 DeepSeek 的 Key 发往 RunningHub。
-        config = prompt_optimizer._normalize_config({"provider": "no-such", "api_key": "k"})
+        config = prompt_optimizer._merge_settings({"provider": "no-such", "api_key": "k"})
         self.assertEqual(config["api_url"], "")
         self.assertEqual(config["model"], "")
 
     def test_preset_protocol_wins_over_client_value(self):
         # 审查 L6：预设优先，未如平台不再继承 RunningHub 协议。
-        config = prompt_optimizer._normalize_config({"provider": "openai", "api_key": "k", "protocol": "runninghub"})
+        config = prompt_optimizer._merge_settings({"provider": "openai", "api_key": "k", "protocol": "runninghub"})
         self.assertEqual(config["protocol"], "openai")
 
     def test_custom_without_protocol_defaults_to_openai(self):
-        config = prompt_optimizer._normalize_config(
+        config = prompt_optimizer._merge_settings(
             {"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m", "api_key": "k"}
         )
         self.assertEqual(config["protocol"], "openai")
 
     def test_unknown_provider_without_protocol_never_routes_to_runninghub(self):
-        config = prompt_optimizer._normalize_config({"provider": "no-such", "api_key": "k"})
+        config = prompt_optimizer._merge_settings({"provider": "no-such", "api_key": "k"})
         self.assertEqual(config["protocol"], "openai")
 
     def test_custom_explicit_url_and_model_pass_through(self):
-        config = prompt_optimizer._normalize_config({"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m1", "api_key": "k"})
+        config = prompt_optimizer._merge_settings({"provider": "custom", "api_url": "https://example.invalid/v1", "model": "m1", "api_key": "k"})
         self.assertEqual(config["api_url"], "https://example.invalid/v1")
         self.assertEqual(config["model"], "m1")
 
     def test_runninghub_preset_still_resolves(self):
-        config = prompt_optimizer._normalize_config({})
+        config = prompt_optimizer._merge_settings({})
         self.assertEqual(config["provider"], "runninghub")
         self.assertEqual(config["api_url"], "https://www.runninghub.cn/openapi/v2")
         self.assertEqual(config["model"], "openai/gpt-5.6-sol")
@@ -364,10 +364,10 @@ class TextOnlyProviderMediaTests(unittest.TestCase):
     IMAGE = {"kind": "image", "label": "<picture 1>", "images": ["data:image/jpeg;base64,AAAA"]}
 
     def parts(self, provider, read_media, model=""):
-        config = prompt_optimizer._normalize_config(
+        config = prompt_optimizer._merge_settings(
             {"provider": provider, "api_key": "k", "model": model, "read_media": read_media}
         )
-        return prompt_optimizer._request_parts(
+        return prompt_optimizer._compose_request(
             config, {"prompt": "雨夜", "task": "T2VA", "duration": 5, "media": [self.IMAGE]}
         )
 
@@ -403,7 +403,7 @@ class UpstreamErrorHygieneTests(unittest.TestCase):
         self.assertIn("key=***", prompt_optimizer._redact_credentials(url))
 
     def test_error_message_excludes_the_upstream_body(self):
-        error = prompt_optimizer._logged_upstream_error("提示词优化失败：鰴权失败（HTTP 401）", 'body with key=SECRET and prompt text')
+        error = prompt_optimizer._logged_upstream_error("提示词优化失败：鉴权失败（HTTP 401）", 'body with key=SECRET and prompt text')
         self.assertIn("HTTP 401", str(error))
         self.assertNotIn("SECRET", str(error))
         self.assertNotIn("prompt text", str(error))
@@ -439,12 +439,12 @@ class UpstreamErrorHygieneTests(unittest.TestCase):
             def post(self, *args, **kwargs):
                 return Response()
 
-        config = prompt_optimizer._normalize_config({"provider": "openai", "api_key": "k", "read_media": False})
+        config = prompt_optimizer._merge_settings({"provider": "openai", "api_key": "k", "read_media": False})
         payload = {"prompt": "雨夜", "task": "T2VA", "duration": 5, "media": []}
         with patch.object(prompt_optimizer.aiohttp, "ClientTimeout", lambda **kwargs: None), \
                 patch.object(prompt_optimizer.aiohttp, "ClientSession", Session):
             with self.assertRaises(RuntimeError) as caught:
-                asyncio.run(prompt_optimizer._request_async(config, payload))
+                asyncio.run(prompt_optimizer._post_json(config, payload))
         message = str(caught.exception)
         self.assertIn("HTTP 429", message)
         self.assertNotIn("SECRET", message)

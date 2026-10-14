@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '../web/js/minimax_h3_integration.js'), 'utf8');
+const source = fs.readFileSync(path.join(__dirname, '../web/js/h3kit_panel.js'), 'utf8');
 const layout = source.slice(source.indexOf('    let measuredContentHeight = null;'), source.indexOf('    // Text edits, fonts'));
 const child = (height, display = 'block') => ({
     tagName: 'DIV', offsetHeight: height,

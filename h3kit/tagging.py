@@ -4,34 +4,34 @@ import json
 import re
 
 
-MEDIA_TAG_RE = re.compile(
+TAG_PATTERN = re.compile(
     r"<\s*(Image|Picture|Video|Audio)\s*(\d+)\s*>|"
     r"(?<![\w<])(Image|Picture|Video|Audio)\s*#?\s*(\d+)\b(?!\s*>)",
     re.IGNORECASE,
 )
-OFFICIAL_TAG_RE = re.compile(r"<(Picture|Video|Audio)\s+(\d+)>", re.IGNORECASE)
+ANGLE_TAG_PATTERN = re.compile(r"<(Picture|Video|Audio)\s+(\d+)>", re.IGNORECASE)
 
 
-def canonicalize_media_tags(prompt: str, task_type: str | None = None) -> str:
-    def replacement(match: re.Match) -> str:
+def normalize_tags(prompt: str, task_hint: str | None = None) -> str:
+    def _substitute(match: re.Match) -> str:
         media_type = (match.group(1) or match.group(3)).lower()
         ordinal = int(match.group(2) or match.group(4))
-        if (task_type or "").lower() == "fl2va" and media_type in {"image", "picture"}:
+        if (task_hint or "").lower() == "fl2va" and media_type in {"image", "picture"}:
             return f"picture {ordinal}"
         official_type = "Picture" if media_type in {"image", "picture"} else media_type.title()
         return f"<{official_type} {ordinal}>"
 
-    return MEDIA_TAG_RE.sub(replacement, prompt or "")
+    return TAG_PATTERN.sub(_substitute, prompt or "")
 
 
-def prepare_prompt(
+def build_prompt_body(
     prompt: str,
     counts: dict[str, int],
     strict: bool = True,
-    task_type: str | None = None,
+    task_hint: str | None = None,
     valid_ordinals: dict[str, set[int]] | None = None,
 ) -> tuple[str, list[str]]:
-    normalized = canonicalize_media_tags(prompt, task_type)
+    normalized = normalize_tags(prompt, task_hint)
 
     warnings: list[str] = []
     limits = {
@@ -39,7 +39,7 @@ def prepare_prompt(
         "video": int(counts.get("videos", 0)),
         "audio": int(counts.get("audios", 0)),
     }
-    for match in OFFICIAL_TAG_RE.finditer(normalized):
+    for match in ANGLE_TAG_PATTERN.finditer(normalized):
         media_type, ordinal = match.group(1).lower(), int(match.group(2))
         valid = valid_ordinals.get(media_type) if valid_ordinals else None
         missing = ordinal not in valid if valid is not None else ordinal < 1 or ordinal > limits[media_type]
@@ -53,28 +53,28 @@ def prepare_prompt(
     return normalized, warnings
 
 
-def pack_media_tag_ordinals(prompt: str, ordinal_maps: dict[str, dict[int, int]]) -> str:
+def densify_tag_ordinals(prompt: str, ordinal_maps: dict[str, dict[int, int]]) -> str:
     """Map stable UI slot ordinals to the dense order used by MiniMax's tokenizer."""
-    def replacement(match: re.Match) -> str:
+    def _substitute(match: re.Match) -> str:
         media_type = match.group(1).lower()
         ordinal = int(match.group(2))
         packed = ordinal_maps.get(media_type, {}).get(ordinal, ordinal)
         return f"<{match.group(1).title()} {packed}>"
 
-    return OFFICIAL_TAG_RE.sub(replacement, prompt or "")
+    return ANGLE_TAG_PATTERN.sub(_substitute, prompt or "")
 
 
-def media_map_json(pictures, videos, audios) -> str:
-    def mapped(values):
+def tag_map_json(pictures, videos, audios) -> str:
+    def tagged(values):
         if isinstance(values, dict):
             return {str(index): label for index, label in sorted(values.items())}
         return {str(index + 1): label for index, label in enumerate(values)}
 
     return json.dumps(
         {
-            "pictures": mapped(pictures),
-            "videos": mapped(videos),
-            "audios": mapped(audios),
+            "pictures": tagged(pictures),
+            "videos": tagged(videos),
+            "audios": tagged(audios),
         },
         ensure_ascii=False,
         indent=2,
@@ -108,16 +108,24 @@ NO_SUBTITLES_LEGACY_CONSTRAINTS = (
     "画面（含下三分之一与全部边缘）自始至终只呈现所描述的场景，说话与安静时同样完整。对白、语言标签与说话人编号仅指导声轨；画外声音保持画外，口型只按场景要求，画面不随话语的措辞或节奏变化。可见文字只保留在招牌、屏幕等场景物体表面，不被擦除；说出的词语绝不渲染为画面文字。",
     "Every spoken line is delivered only as audible voice with naturally synchronized lip movement and mouth articulation, and spoken words never appear as written text anywhere in the frame. The lower third of the frame remains occupied by clean scene content such as clothing, props, gestures, and background depth, and any visible lettering exists solely on physical objects inside the scene, like signs, posters, or device screens already established in the description.",
 )
-DEFAULT_SOUNDSCAPE = (
-    "Subtle ambient sound appropriate to the depicted environment continues "
-    "throughout the video."
-)
-DEFAULT_MUSIC = (
-    "A restrained solo piano score at a slow tempo, with steady, widely spaced notes "
-    "and quiet dynamics that fade out gently."
-)
+# 声音/音乐字段的缺省句：开关打开而提示词里只有 N/A 时补上。
+# 英文取值与 prompt_engine/rules.js 的 DEFAULT_SOUNDSCAPE_EN / DEFAULT_MUSIC_EN 逐字一致。
+SOUND_FIELD_DEFAULTS = {
+    "overall_soundscape": (
+        "Subtle ambient sound appropriate to the depicted environment continues "
+        "throughout the video."
+    ),
+    "non_diegetic_music": (
+        "A restrained solo piano score at a slow tempo, with steady, widely spaced notes "
+        "and quiet dynamics that fade out gently."
+    ),
+}
+DEFAULT_SOUNDSCAPE = SOUND_FIELD_DEFAULTS["overall_soundscape"]
+DEFAULT_MUSIC = SOUND_FIELD_DEFAULTS["non_diegetic_music"]
 
-_H3_FIELD_NAMES = (
+# H3 解析提示词结构时认的顶层字段名；只用于判断“字段体到哪里结束”，
+# 集合无序，拼正则前先排序以保证结果稳定。
+_H3_FIELD_NAMES = frozenset({
     "integrated_multimodal_description",
     "detailed_description",
     "subject_definitions",
@@ -125,67 +133,76 @@ _H3_FIELD_NAMES = (
     "retention_analysis",
     "overall_soundscape",
     "non_diegetic_music",
-)
+})
+# 主描述字段的锚点：“无字幕”约束只在它之后、[Shot 1] 处插入。
 _MAIN_FIELD_ANCHOR_RE = re.compile(
-    r"(?:^|\n)(?:integrated_multimodal_description|detailed_description):"
+    "|".join((r"(?:^|\n)integrated_multimodal_description:", r"(?:^|\n)detailed_description:"))
 )
 _SHOT_ONE_RE = re.compile(r"\[Shot\s+1\]")
-_MUTE_SENTINEL_RE = re.compile(r"^n/?a\.?$", re.IGNORECASE)
+_MUTE_SENTINEL_RE = re.compile(r"^n/?a\.?$", flags=re.IGNORECASE)
+_SOUNDSCAPE_HEAD_RE = re.compile(r"\s*overall_soundscape:")
+_BLANK_LINE_RE = re.compile(r"\n[ \t]*\n")
+_TRAILING_BLANK_RE = re.compile(r"[ \t]+(?=\r?\n)")
+_EXTRA_BLANK_LINES_RE = re.compile(r"(?:\r?\n[ \t]*){3,}")
 
 
 def _normalize_blank_runs(text: str) -> str:
-    text = re.sub(r"[ \t]+(\r?\n)", r"\1", text)
-    text = re.sub(r"(?:\r?\n[ \t]*){3,}", "\n\n", text)
-    return text
+    """去掉行尾空白，并把 3 个以上连续换行折叠成一个空行。"""
+    return _EXTRA_BLANK_LINES_RE.sub("\n\n", _TRAILING_BLANK_RE.sub("", text))
 
 
-def _sound_field_span(text: str, field: str):
-    """Locate a top-level H3 field; return (head_end, body_end) or None.
+def _next_field_start(text: str, offset: int, field: str) -> int | None:
+    """下一个已知字段（跳过自己）的起始位置；找不到返回 None。"""
+    names = sorted(name for name in _H3_FIELD_NAMES if name != field)
+    found = re.compile(r"(?m)^[ \t]*(?:" + "|".join(names) + r"):").search(text, offset)
+    return found.start() if found else None
 
-    The body stops at the first blank line or the next known field name so a
-    rewrite can never swallow trailing prompt content that follows the block.
+
+def _sound_field_span(text: str, field: str) -> tuple[int, int] | None:
+    """定位某个顶层字段体，返回 (字段头结束, 字段体结束)，找不到返回 None。
+
+    字段体止于首个空行或下一个已知字段名，以免写入时吞掉后面的提示词内容。
     """
     head = re.search(r"(?m)^" + field + r":[ \t]*", text)
     if head is None:
         return None
-    others = "|".join(name for name in _H3_FIELD_NAMES if name != field)
-    nxt = re.compile(r"(?m)^[ \t]*(?:" + others + r"):").search(text, head.end())
-    limit = nxt.start() if nxt else len(text)
-    blank = re.search(r"\n[ \t]*\n", text[head.end():limit])
-    body_end = head.end() + blank.start() if blank else limit
-    return head.end(), body_end
+    following = _next_field_start(text, head.end(), field)
+    limit = following if following is not None else len(text)
+    blank = _BLANK_LINE_RE.search(text, head.end(), limit)
+    return head.end(), blank.start() if blank else limit
 
 
 def _apply_sound_field(text: str, field: str, default: str, enabled: bool) -> str:
+    """按开关写入或清除某个声音字段。"""
     span = _sound_field_span(text, field)
     if span is None:
-        # Enabled leaves prompts without the field untouched; disabled still
-        # guarantees a mute instruction by appending one.
         if enabled:
             return text
+        # 关闭时提示词里即使没有这个字段，也要留下一条明确的静音指令。
         base = text.rstrip()
         return (base + "\n\n" if base else "") + field + ": N/A"
     head_end, body_end = span
     body = text[head_end:body_end].strip()
     if enabled:
-        # Keep real descriptions; only heal an explicit mute sentinel so the
-        # toggle never silently rewrites a authored soundscape or score.
+        # 已有真实描述就原样保留，只有显式 N/A 才补缺省值，
+        # 避免开关静默覆盖作者已写好的声音设计。
         if body and not _MUTE_SENTINEL_RE.match(body):
             return text
-        replacement = default
+        written = default
     else:
-        replacement = "N/A"
+        written = "N/A"
     head = re.search(r"(?m)^" + field + r":", text)
-    return text[: head.start()] + field + ": " + replacement + text[body_end:]
+    return text[: head.start()] + field + ": " + written + text[body_end:]
 
 
 def _inject_no_subtitle(text: str) -> str:
+    """把“无字幕”约束插到 [Shot 1] 之后；找不到锚点则原样返回。
+
+    参考实现的口径：没有 [Shot 1] 就只剥离不追加，保证非结构化文本不被改写。
+    """
     anchor = _MAIN_FIELD_ANCHOR_RE.search(text)
-    search_from = anchor.end() if anchor else 0
-    shot = _SHOT_ONE_RE.search(text, search_from)
+    shot = _SHOT_ONE_RE.search(text, anchor.end() if anchor else 0)
     if shot is None:
-        # Reference contract: without a [Shot 1] anchor the constraint is only
-        # stripped, never appended, so unstructured text stays untouched.
         return text
     tail = text[shot.end():].lstrip()
     return text[: shot.end()] + " " + NO_SUBTITLES_CONSTRAINT + "\n\n" + tail
@@ -194,7 +211,7 @@ def _inject_no_subtitle(text: str) -> str:
 def apply_advanced_constraints(
     prompt: str,
     *,
-    no_subtitle: bool = True,
+    subtitle_free: bool = True,
     soundscape: bool = False,
     music: bool = False,
 ) -> str:
@@ -205,16 +222,19 @@ def apply_advanced_constraints(
     """
     text = str(prompt or "")
     removed = False
-    for block in NO_SUBTITLES_LEGACY_CONSTRAINTS + (NO_SUBTITLES_CONSTRAINT,):
+    for block in (*NO_SUBTITLES_LEGACY_CONSTRAINTS, NO_SUBTITLES_CONSTRAINT):
         if block in text:
             text = text.replace(block, "")
             removed = True
     if removed:
         text = _normalize_blank_runs(text)
-    text = _apply_sound_field(text, "overall_soundscape", DEFAULT_SOUNDSCAPE, soundscape)
-    text = _apply_sound_field(text, "non_diegetic_music", DEFAULT_MUSIC, music)
+    for field, default, enabled in (
+        ("overall_soundscape", DEFAULT_SOUNDSCAPE, soundscape),
+        ("non_diegetic_music", DEFAULT_MUSIC, music),
+    ):
+        text = _apply_sound_field(text, field, default, enabled)
     text = _normalize_blank_runs(text)
-    text = re.sub(r"\s*overall_soundscape:", "\n\noverall_soundscape:", text, count=1)
-    if no_subtitle:
+    text = _SOUNDSCAPE_HEAD_RE.sub("\n\noverall_soundscape:", text, count=1)
+    if subtitle_free:
         text = _inject_no_subtitle(text)
     return text

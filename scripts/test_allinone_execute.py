@@ -2,11 +2,11 @@
 
 No H3 weights are installed, so execution cannot complete — but the merged
 execute() handles prompts BEFORE any model loading. We verify:
-  1. prompt_source="ai" without a key  -> explicit DEEPSEEK key error (AI path wired)
-  2. prompt_source="ai" duration>15    -> explicit guard error (15s cap)
-  3. prompt_source="offline"           -> runs quickjs engine, then fails at clip
+  1. prompt_origin="ai" without a key  -> explicit DEEPSEEK key error (AI path wired)
+  2. prompt_origin="ai" duration>15    -> explicit guard error (15s cap)
+  3. prompt_origin="offline"           -> runs quickjs engine, then fails at clip
                                           loading (proves engine + validation ran)
-  4. prompt_source="format" ref2va     -> same as 3 for the format path
+  4. prompt_origin="format" ref2va     -> same as 3 for the format path
 Bootstrap mirrors scripts/check_comfy_registration.py (PromptServer stub only).
 """
 import asyncio
@@ -41,24 +41,24 @@ assert node_cls.GET_SCHEMA().node_id == "MiniMaxH3IntegrationRH"
 print("node:", node_cls.GET_SCHEMA().node_id)
 
 BASE = dict(
-    main_mode="text_keyframes", aspect="16:9", megapixels=0.5, duration_seconds=5,
-    clip_name="qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    video_vae_name="minimax_h3_video_vae_fp16.safetensors",
-    audio_vae_name="minimax_h3_audio_vae_fp32.safetensors",
-    prompt="", first_frame="", last_frame="", hybrid_audio="",
-    ref_image_1="", ref_image_2="", ref_image_3="", ref_image_4="", ref_image_5="",
-    ref_image_6="", ref_image_7="", ref_image_8="", ref_image_9="",
-    ref_video_1="", ref_video_2="", ref_video_3="", ref_audio_1="", ref_audio_2="", ref_audio_3="",
-    task_type="t2va", audio_mode="native", audio_denoise_strength=0.0,
-    drive_audio_ordinal=0, strict_prompt_tags=True, ref_image_size="match",
-    model=None, steps=4, shift_video=12.0, shift_audio=3.0, noise_seed=42,
-    prompt_source="panel", ai_text="", ai_language="en", ai_mode="auto",
-    ai_enrich=False, ai_soundscape=False, ai_music=False, ai_auto_timestamps=False,
-    ai_fixed_camera=False, ai_visual_stability=False, ai_no_subtitles=True,
-    ai_anti_pop=False, ai_strict_validation=True, ai_provider="deepseek",
-    ai_api_key="", ai_endpoint="", ai_model="", ai_timeout=30,
-    gh_state_json="", prompt_override=None,
-    no_subtitle=True, soundscape=False, music=False,
+    panel_mode="text_keyframes", frame_ratio="16:9", pixel_budget=0.5, clip_seconds=5,
+    text_encoder="qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    video_decoder="minimax_h3_video_vae_fp16.safetensors",
+    audio_decoder="minimax_h3_audio_vae_fp32.safetensors",
+    prompt="", keyframe_open="", keyframe_close="", keyframe_audio="",
+    still_1="", still_2="", still_3="", still_4="", still_5="",
+    still_6="", still_7="", still_8="", still_9="",
+    footage_1="", footage_2="", footage_3="", track_1="", track_2="", track_3="",
+    task_hint="t2va", audio_source="native", audio_cleanup=0.0,
+    driving_track=0, tag_guard=True, asset_scale="match",
+    model=None, sample_steps=4, video_sigma_shift=12.0, audio_sigma_shift=3.0, seed_value=42,
+    prompt_origin="panel", ai_idea="", ai_locale="en", ai_task="auto",
+    ai_expand=False, ai_ambience=False, ai_score=False, ai_timeline=False,
+    ai_lock_camera=False, ai_stabilize=False, ai_subtitle_free=True,
+    ai_audio_guard=False, ai_strict_check=True, ai_platform="deepseek",
+    ai_key="", ai_base_url="", ai_model_name="", ai_deadline=30,
+    panel_state="", upstream_prompt=None,
+    subtitle_free=True, soundscape=False, music=False,
 )
 
 failures = []
@@ -92,19 +92,19 @@ def expect(name, kwargs, needle, strip_env=False):
 
 
 # 1) AI + 占位符环境变量（本机 DEEPSEEK_API_KEY=中文占位文字）：修复后应报明确的 Key 无效错误
-expect("ai-占位Key环境变量", dict(prompt_source="ai", ai_text="A woman stands still.", ai_mode="t2va"),
+expect("ai-占位Key环境变量", dict(prompt_origin="ai", ai_idea="A woman stands still.", ai_task="t2va"),
        "API Key 无效")
 
 # 1b) AI 无 Key（清空环境变量）：应报“请设置服务端 DEEPSEEK_API_KEY”
-expect("ai-无Key", dict(prompt_source="ai", ai_text="A woman stands still.", ai_mode="t2va"),
+expect("ai-无Key", dict(prompt_origin="ai", ai_idea="A woman stands still.", ai_task="t2va"),
        "DEEPSEEK_API_KEY", strip_env=True)
 
 # 2) 时长守卫：引擎生成仅支持 2–15 秒
-expect("ai-超时长", dict(prompt_source="ai", ai_text="A woman stands still.", duration_seconds=20),
+expect("ai-超时长", dict(prompt_origin="ai", ai_idea="A woman stands still.", clip_seconds=20),
        "2–15 秒")
 
 # 3) offline：quickjs 引擎执行 + 严格校验通过后，失败点应为文本编码器缺失
-expect("offline-引擎后加载失败", dict(prompt_source="offline", ai_text="A woman stands still.", ai_language="en"),
+expect("offline-引擎后加载失败", dict(prompt_origin="offline", ai_idea="A woman stands still.", ai_locale="en"),
        "not found")
 
 # 4) format ref2va：format 路径同样先于模型加载
@@ -115,8 +115,8 @@ ref2va_text = (
     "detailed_description:\n[Shot 1] <Subject 1> stands still in the scene from <Picture 1>.\n\n"
     "overall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A"
 )
-expect("format-ref2va", dict(prompt_source="format", ai_text=ref2va_text,
-                             ai_mode="ref2va", main_mode="all_reference", task_type="ref2va"),
+expect("format-ref2va", dict(prompt_origin="format", ai_idea=ref2va_text,
+                             ai_task="ref2va", panel_mode="all_reference", task_hint="ref2va"),
        "not found")
 
 faulthandler.cancel_dump_traceback_later()

@@ -2,16 +2,16 @@
   "MiniMaxH3IntegrationRH": {
     "display_name": "MiniMax H3 一体化生成 (RH)",
     "inputs": {
-      "clip_name": {
+      "text_encoder": {
         "name": "CLIP模型"
       },
-      "video_vae_name": {
+      "video_decoder": {
         "name": "视频 VAE"
       },
-      "audio_vae_name": {
+      "audio_decoder": {
         "name": "音频 VAE"
       },
-      "aspect": {
+      "frame_ratio": {
         "name": "宽高比例",
         "options": {
           "adaptive": "自适应",
@@ -25,37 +25,37 @@
           "21:9": "21:9"
         }
       },
-      "megapixels": {
+      "pixel_budget": {
         "name": "百万像素"
       },
-      "prompt_override": {
+      "upstream_prompt": {
         "name": "提示词"
       },
-      "duration_seconds": {
+      "clip_seconds": {
         "name": "时长（秒）"
       },
       "model": {
         "name": "扩散模型"
       },
-      "steps": {
+      "sample_steps": {
         "name": "采样步数"
       },
-      "shift_video": {
+      "video_sigma_shift": {
         "name": "视频 Shift"
       },
-      "shift_audio": {
+      "audio_sigma_shift": {
         "name": "音频 Shift"
       },
-      "sampler_name": {
+      "sampler_id": {
         "name": "采样器"
       },
-      "scheduler": {
+      "scheduler_id": {
         "name": "调度器"
       },
-      "noise_seed": {
+      "seed_value": {
         "name": "随机种子"
       },
-      "prompt_source": {
+      "prompt_origin": {
         "name": "提示词来源",
         "options": {
           "panel": "提示词编辑器（默认）",
@@ -64,10 +64,10 @@
           "format": "整理完整提示词"
         }
       },
-      "ai_text": {
+      "ai_idea": {
         "name": "创意 / 待整理提示词"
       },
-      "ai_language": {
+      "ai_locale": {
         "name": "输出语言",
         "options": {
           "zh": "中文",
@@ -75,45 +75,45 @@
           "en": "English"
         }
       },
-      "ai_mode": {
+      "ai_task": {
         "name": "H3 模式",
         "options": {
           "auto": "自动（按面板模式与已传素材推断）",
-          "t2va": "文生视频（无参考图）",
-          "i2va": "首帧图生视频",
-          "fl2va": "首尾帧图生视频",
-          "l2va": "尾帧图生视频",
-          "ref2va": "全能参考（多图/视频参考）"
+          "t2va": "纯文本驱动（无参考图）",
+          "i2va": "起始帧图生视频",
+          "fl2va": "起止帧图生视频",
+          "l2va": "结束帧图生视频",
+          "ref2va": "全能参考模式（多图/视频参考）"
         }
       },
-      "ai_enrich": {
+      "ai_expand": {
         "name": "AI 扩写（受限）"
       },
-      "ai_soundscape": {
+      "ai_ambience": {
         "name": "生成音景"
       },
-      "ai_music": {
+      "ai_score": {
         "name": "生成配乐"
       },
-      "ai_auto_timestamps": {
+      "ai_timeline": {
         "name": "自动时间戳"
       },
-      "ai_fixed_camera": {
+      "ai_lock_camera": {
         "name": "固定镜头"
       },
-      "ai_visual_stability": {
+      "ai_stabilize": {
         "name": "画面稳定约束"
       },
-      "ai_no_subtitles": {
+      "ai_subtitle_free": {
         "name": "无字幕约束"
       },
-      "ai_anti_pop": {
+      "ai_audio_guard": {
         "name": "抗残音内联对白"
       },
-      "ai_strict_validation": {
+      "ai_strict_check": {
         "name": "严格校验"
       },
-      "ai_provider": {
+      "ai_platform": {
         "name": "AI 提供方",
         "options": {
           "deepseek": "DeepSeek",
@@ -125,16 +125,16 @@
           "custom": "自定义（手填端点与模型）"
         }
       },
-      "ai_api_key": {
+      "ai_key": {
         "name": "API Key（自填，分享前请清空）"
       },
-      "ai_endpoint": {
+      "ai_base_url": {
         "name": "覆盖端点（可选）"
       },
-      "ai_model": {
+      "ai_model_name": {
         "name": "覆盖模型名（可选）"
       },
-      "ai_timeout": {
+      "ai_deadline": {
         "name": "AI 总超时（秒）"
       },
       "frames": {

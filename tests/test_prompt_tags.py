@@ -1,4 +1,4 @@
-"""prompt_tags no-subtitle constraint sync with the prompt_engine (v6).
+"""h3kit.tagging no-subtitle constraint sync with the prompt_engine (v6).
 
 背景（2026-09-28 v6 同步）：panel 路径的运行期后处理 apply_advanced_constraints
 与 quickjs 引擎各自维护约束句。若两侧文本不一致，引擎生成（或历史版本遗留）的
@@ -9,8 +9,8 @@ import re
 import unittest
 from pathlib import Path
 
-import prompt_tags
-from prompt_tags import NO_SUBTITLES_CONSTRAINT, NO_SUBTITLES_LEGACY_CONSTRAINTS, apply_advanced_constraints
+import h3kit.tagging as prompt_tags
+from h3kit.tagging import NO_SUBTITLES_CONSTRAINT, NO_SUBTITLES_LEGACY_CONSTRAINTS, apply_advanced_constraints
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,20 +37,20 @@ class NoSubtitleConstraintSyncTests(unittest.TestCase):
         prompt = ("integrated_multimodal_description: [Shot 1] 女子站着。 "
                   + NO_SUBTITLES_LEGACY_CONSTRAINTS[2]  # 引擎 v4 英文块
                   + "\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A")
-        once = apply_advanced_constraints(prompt, no_subtitle=True)
+        once = apply_advanced_constraints(prompt, subtitle_free=True)
         self.assertNotIn(NO_SUBTITLES_LEGACY_CONSTRAINTS[2], once)
         self.assertEqual(once.count(NO_SUBTITLES_CONSTRAINT), 1)
-        self.assertEqual(apply_advanced_constraints(once, no_subtitle=True), once)
+        self.assertEqual(apply_advanced_constraints(once, subtitle_free=True), once)
 
     def test_disabled_toggle_removes_every_known_variant(self):
         prompt = ("integrated_multimodal_description: [Shot 1] 女子站着。 "
                   + NO_SUBTITLES_CONSTRAINT
                   + "\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A")
-        stripped = apply_advanced_constraints(prompt, no_subtitle=False)
+        stripped = apply_advanced_constraints(prompt, subtitle_free=False)
         self.assertNotIn(NO_SUBTITLES_CONSTRAINT, stripped)
         for block in NO_SUBTITLES_LEGACY_CONSTRAINTS:
             self.assertNotIn(block, apply_advanced_constraints(
-                prompt.replace(NO_SUBTITLES_CONSTRAINT, block), no_subtitle=False))
+                prompt.replace(NO_SUBTITLES_CONSTRAINT, block), subtitle_free=False))
 
 
 if __name__ == "__main__":

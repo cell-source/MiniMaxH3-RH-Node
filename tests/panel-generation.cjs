@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
-const js = fs.readFileSync(path.join(__dirname, '../web/js/minimax_h3_integration.js'), 'utf8');
+const js = fs.readFileSync(path.join(__dirname, '../web/js/h3kit_panel.js'), 'utf8');
 function section(start, end) {
     const a = js.indexOf(start), b = js.indexOf(end, a);
     assert(a >= 0 && b > a, `source anchors exist: ${start}`);
@@ -12,11 +12,11 @@ function section(start, end) {
 }
 const noop = () => {};
 function host(overrides = {}) {
-    const values = { prompt_source: 'ai', ai_text: 'old idea', ai_provider: 'deepseek', ai_api_key: '', ai_endpoint: '', ai_model: '',
-        ai_mode: 'auto', ai_language: 'zh', ai_timeout: 180, ai_strict_validation: true,
-        ai_enrich: false, ai_soundscape: true, ai_music: true, ai_fixed_camera: true,
-        ai_visual_stability: true, ai_no_subtitles: false, ai_anti_pop: true, ai_auto_timestamps: true,
-        soundscape: false, music: false, no_subtitle: true, aspect: '16:9', prompt: 'original', ...overrides };
+    const values = { prompt_origin: 'ai', ai_idea: 'old idea', ai_platform: 'deepseek', ai_key: '', ai_base_url: '', ai_model_name: '',
+        ai_task: 'auto', ai_locale: 'zh', ai_deadline: 180, ai_strict_check: true,
+        ai_expand: false, ai_ambience: true, ai_score: true, ai_lock_camera: true,
+        ai_stabilize: true, ai_subtitle_free: false, ai_audio_guard: true, ai_timeline: true,
+        soundscape: false, music: false, subtitle_free: true, frame_ratio: '16:9', prompt: 'original', ...overrides };
     const graph = {};
     const ctx = {
         console, AbortController, Blob, DOMException, performance, setTimeout, clearTimeout, setInterval, clearInterval,
@@ -71,34 +71,34 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 
 module.exports = { host, run };
 if (require.main === module) (async () => {
-    const migration = host({ prompt_source: 'panel', soundscape: true, music: false, no_subtitle: false });
+    const migration = host({ prompt_origin: 'panel', soundscape: true, music: false, subtitle_free: false });
     run(migration, 'migrateGenerationOptions()');
-    assert.equal(value(migration, 'ai_soundscape'), true);
-    assert.equal(value(migration, 'ai_music'), false);
-    assert.equal(value(migration, 'ai_no_subtitles'), false);
-    run(migration, 'setGenerationOption("ai_music", true)');
+    assert.equal(value(migration, 'ai_ambience'), true);
+    assert.equal(value(migration, 'ai_score'), false);
+    assert.equal(value(migration, 'ai_subtitle_free'), false);
+    run(migration, 'setGenerationOption("ai_score", true)');
     assert.equal(value(migration, 'music'), true);
-    run(migration, 'setGenerationOption("ai_no_subtitles", true)');
-    assert.equal(value(migration, 'no_subtitle'), true);
+    run(migration, 'setGenerationOption("ai_subtitle_free", true)');
+    assert.equal(value(migration, 'subtitle_free'), true);
     run(migration, 'migrateGenerationOptions()');
-    assert.equal(value(migration, 'ai_music'), true); // versioned migration is idempotent
+    assert.equal(value(migration, 'ai_score'), true); // versioned migration is idempotent
     const legacy = host();
     run(legacy, 'migrateGenerationOptions()');
     assert.equal(value(legacy, 'soundscape'), true); // old runtime source keeps AI options
-    assert.equal(value(legacy, 'prompt_source'), 'panel'); // v2 migration normalizes the source
+    assert.equal(value(legacy, 'prompt_origin'), 'panel'); // v2 migration normalizes the source
     run(legacy, 'syncEditorSource()');
-    assert.equal(value(legacy, 'ai_text'), 'original'); // editor content mirrors into the runtime input
+    assert.equal(value(legacy, 'ai_idea'), 'original'); // editor content mirrors into the runtime input
     const body = run(legacy, 'generationBody()');
     assert.equal(body.controls.visual_stability, true);
     for (const mode of ['t2va', 'i2va', 'fl2va', 'l2va', 'ref2va']) {
-        run(legacy, `setWidget(node, "ai_mode", "${mode}")`);
+        run(legacy, `setWidget(node, "ai_task", "${mode}")`);
         assert.equal(run(legacy, 'generationBody().controls.mode'), mode);
     }
     legacy.durationWidget.value = 30;
     assert.throws(() => run(legacy, 'generationBody()'), /2–15/);
-    run(legacy, 'setWidget(node, "ai_model", ""); setWidget(node, "ai_api_key", "")');
-    assert.equal(value(legacy, 'ai_model'), '');
-    assert.equal(value(legacy, 'ai_api_key'), '');
+    run(legacy, 'setWidget(node, "ai_model_name", ""); setWidget(node, "ai_key", "")');
+    assert.equal(value(legacy, 'ai_model_name'), '');
+    assert.equal(value(legacy, 'ai_key'), '');
     const keys = host();
     keys.optimizerSettings = { provider: 'deepseek', api_keys: { deepseek: 'old', openai: 'other' }, api_key: 'old', has_api_key: true };
     keys.providerApiKeys = { deepseek: 'old', openai: 'other' };
@@ -108,11 +108,11 @@ if (require.main === module) (async () => {
     run(keys, `
         providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim());
         providerApiKeys[genProvider.value] = genKey.value.trim(); setSharedKey(genProvider.value, genKey.value.trim());
-        setWidget(node, "ai_api_key", genKey.value.trim());
+        setWidget(node, "ai_key", genKey.value.trim());
     `);
     assert.equal(keys.providerApiKeys.deepseek, 'gen-key');
     assert.equal(keys.optimizerSettings.api_keys.deepseek, 'gen-key');
-    assert.equal(value(keys, 'ai_api_key'), 'gen-key');
+    assert.equal(value(keys, 'ai_key'), 'gen-key');
     assert.equal(keys.optimizerSettings.api_keys.openai, 'other'); // other platform untouched
     keys.key.value = '';
     run(keys, `providerApiKeys[provider.value] = key.value.trim(); setSharedKey(provider.value, key.value.trim());`);
@@ -121,9 +121,9 @@ if (require.main === module) (async () => {
     keys.genKey.value = '';
     run(keys, `
         providerApiKeys[genProvider.value] = genKey.value.trim(); setSharedKey(genProvider.value, genKey.value.trim());
-        setWidget(node, "ai_api_key", genKey.value.trim());
+        setWidget(node, "ai_key", genKey.value.trim());
     `);
-    assert.equal(value(keys, 'ai_api_key'), '');
+    assert.equal(value(keys, 'ai_key'), '');
     assert.equal(keys.optimizerSettings.has_api_key, false);
 
     const strict = host();
@@ -137,7 +137,7 @@ if (require.main === module) (async () => {
     assert.deepEqual(strict.alerts, ['invalid structure']);
     assert.equal(strict.activePromptOperation, null);
 
-    const success = host({ ai_strict_validation: false });
+    const success = host({ ai_strict_check: false });
     run(success, 'migrateGenerationOptions()');
     pending = run(success, 'runGeneration("format")');
     const sent = JSON.parse(await success.requests[0].options.body.text());
@@ -147,8 +147,8 @@ if (require.main === module) (async () => {
     success.requests[0].resolve({ prompt: 'generated', valid: false, report: 'edit this' });
     await pending;
     assert.equal(success.prompt.value, 'generated');
-    assert.equal(value(success, 'prompt_source'), 'panel');
-    assert.equal(value(success, 'ai_text'), 'generated'); // filled result mirrors into the runtime input
+    assert.equal(value(success, 'prompt_origin'), 'panel');
+    assert.equal(value(success, 'ai_idea'), 'generated'); // filled result mirrors into the runtime input
     assert.equal(value(success, 'prompt'), 'generated');
     run(success, 'stepPromptHistory(false)');
     assert.equal(success.prompt.value, 'original');
@@ -193,7 +193,7 @@ if (require.main === module) (async () => {
     assert(timeout.requests[0].options.signal.aborted);
     timeout.requests[0].reject(new DOMException('Aborted', 'AbortError'));
     await pending;
-    assert.deepEqual(timeout.alerts, ['Generation timed out']);
+    assert.deepEqual(timeout.alerts, ['Drafting timed out']);
     assert.equal(timeout.prompt.value, 'original');
     const removed = host();
     Object.assign(removed, {

@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from prompt_runtime import generate_prompt  # noqa: E402  （与运行期同一套 quickjs 引擎）
+from h3kit.rules import generate_prompt  # noqa: E402  （与运行期同一套 quickjs 引擎）
 
 # Ref2VA 不能用 offline（离线包装不生成六 section），示例按 README 指引使用
 # format 操作整理一份完整、可通过严格校验的六 section 提示词。
@@ -50,76 +50,76 @@ NODE_ID = "MiniMaxH3IntegrationRH"
 
 # All-in-One 节点的公共输入（按 schema 顺序；model 是连线不进 widgets）
 AIO_BASE = dict(
-    main_mode="text_keyframes",
-    clip_name="qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
-    video_vae_name="minimax_h3_video_vae_fp16.safetensors",
-    audio_vae_name="minimax_h3_audio_vae_fp32.safetensors",
-    aspect="16:9", megapixels=0.5, duration_seconds=5,
-    prompt="", first_frame="", last_frame="", hybrid_audio="",
-    task_type="t2va", audio_mode="native", audio_denoise_strength=0.0,
-    drive_audio_ordinal=0, strict_prompt_tags=True, ref_image_size="match",
-    gh_state_json="",
-    no_subtitle=True, soundscape=False, music=False,
-    steps=4, shift_video=12.0, shift_audio=3.0, noise_seed=42,
-    prompt_source="offline", ai_language="en",
-    ai_enrich=False, ai_soundscape=False, ai_music=False, ai_auto_timestamps=False,
-    ai_fixed_camera=False, ai_visual_stability=False, ai_no_subtitles=True,
-    ai_anti_pop=False, ai_strict_validation=True,
-    ai_provider="deepseek", ai_api_key="", ai_endpoint="", ai_model="", ai_timeout=180,
+    panel_mode="text_keyframes",
+    text_encoder="qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    video_decoder="minimax_h3_video_vae_fp16.safetensors",
+    audio_decoder="minimax_h3_audio_vae_fp32.safetensors",
+    frame_ratio="16:9", pixel_budget=0.5, clip_seconds=5,
+    prompt="", keyframe_open="", keyframe_close="", keyframe_audio="",
+    task_hint="t2va", audio_source="native", audio_cleanup=0.0,
+    driving_track=0, tag_guard=True, asset_scale="match",
+    panel_state="",
+    subtitle_free=True, soundscape=False, music=False,
+    sample_steps=4, video_sigma_shift=12.0, audio_sigma_shift=3.0, seed_value=42,
+    prompt_origin="offline", ai_locale="en",
+    ai_expand=False, ai_ambience=False, ai_score=False, ai_timeline=False,
+    ai_lock_camera=False, ai_stabilize=False, ai_subtitle_free=True,
+    ai_audio_guard=False, ai_strict_check=True,
+    ai_platform="deepseek", ai_key="", ai_base_url="", ai_model_name="", ai_deadline=180,
 )
 
 MODES = {
-    "t2va": dict(text="A woman stands still.", mode="t2va", main_mode="text_keyframes", media={}),
+    "t2va": dict(text="A woman stands still.", mode="t2va", panel_mode="text_keyframes", media={}),
     "i2va": dict(text="A woman beside a rain-covered train window slowly lifts her gaze.",
-                 mode="i2va", main_mode="text_keyframes",
-                 media={"first_frame": "SELECT_YOUR_FIRST_FRAME.png"}),
+                 mode="i2va", panel_mode="text_keyframes",
+                 media={"keyframe_open": "SELECT_YOUR_FIRST_FRAME.png"}),
     "fl2va": dict(text="She raises the umbrella above her shoulder and holds it open.",
-                  mode="fl2va", main_mode="text_keyframes",
-                  media={"first_frame": "SELECT_YOUR_FIRST_FRAME.png",
-                         "last_frame": "SELECT_YOUR_LAST_FRAME.png"}),
+                  mode="fl2va", panel_mode="text_keyframes",
+                  media={"keyframe_open": "SELECT_YOUR_FIRST_FRAME.png",
+                         "keyframe_close": "SELECT_YOUR_LAST_FRAME.png"}),
     "l2va": dict(text="The glass tips, falls, and settles into the broken arrangement of the final frame.",
-                 mode="l2va", main_mode="text_keyframes",
-                 media={"last_frame": "SELECT_YOUR_LAST_FRAME.png"}),
-    "ref2va": dict(text=REF2VA_FORMAT_TEXT, mode="ref2va", main_mode="all_reference",
-                   prompt_source="format",
-                   media={"ref_image_1": "SELECT_YOUR_REFERENCE_IMAGE_1.png",
-                          "ref_video_1": "SELECT_YOUR_REFERENCE_VIDEO_1.mp4",
-                          "ref_audio_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"}),
+                 mode="l2va", panel_mode="text_keyframes",
+                 media={"keyframe_close": "SELECT_YOUR_LAST_FRAME.png"}),
+    "ref2va": dict(text=REF2VA_FORMAT_TEXT, mode="ref2va", panel_mode="all_reference",
+                   prompt_origin="format",
+                   media={"still_1": "SELECT_YOUR_REFERENCE_IMAGE_1.png",
+                          "footage_1": "SELECT_YOUR_REFERENCE_VIDEO_1.mp4",
+                          "track_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"}),
 }
 
 # ComfyUI 序列化 `widgets_values` 的位置对应节点 widget 的创建顺序。
 # 2026-09-26 实测（浏览器端以哨兵数组逐个校准，含修复后复验）：
-# - `prompt_override` 是 forceInput 输入，**加载时在它的 schema 位置占一个「幻影槽位」**
-#   （面板上不出现 widget）；曾排在 gh_state_json 之后导致尾部整段偏移。A4 修复后其输入
+# - `upstream_prompt` 是 forceInput 输入，**加载时在它的 schema 位置占一个「幻影槽位」**
+#   （面板上不出现 widget）；曾排在 panel_state 之后导致尾部整段偏移。A4 修复后其输入
 #   定义移到列表末位，幻影槽位随之固定在**末尾**（保存时由面板 DOM widget 的尾值回填）。
-# - `mxv_panel` 是面板注入的 DOM widget（serialize:false），**不属于** widgets_values。
-# video_nodes.py 增删 widget 时 aio_widget_values() 会报错，提醒同步更新。
+# - `h3k_panel` 是面板注入的 DOM widget（serialize:false），**不属于** widgets_values。
+# h3kit/node.py 增删 widget 时 aio_widget_values() 会报错，提醒同步更新。
 AIO_WIDGET_ORDER = (
-    "main_mode", "clip_name", "video_vae_name", "audio_vae_name", "aspect", "megapixels",
-    "duration_seconds", "prompt", "task_type", "audio_mode", "audio_denoise_strength",
-    "drive_audio_ordinal", "strict_prompt_tags", "ref_image_size", "no_subtitle", "soundscape",
-    "music", "steps", "shift_video", "shift_audio", "noise_seed",
+    "panel_mode", "text_encoder", "video_decoder", "audio_decoder", "frame_ratio", "pixel_budget",
+    "clip_seconds", "prompt", "task_hint", "audio_source", "audio_cleanup",
+    "driving_track", "tag_guard", "asset_scale", "subtitle_free", "soundscape",
+    "music", "sample_steps", "video_sigma_shift", "audio_sigma_shift", "seed_value",
     "control_after_generate",  # ComfyUI 为 seed 注入的控件
-    "prompt_source", "ai_text", "ai_language", "ai_mode", "ai_enrich", "ai_soundscape", "ai_music",
-    "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability", "ai_no_subtitles", "ai_anti_pop",
-    "ai_strict_validation", "ai_provider", "first_frame", "last_frame", "hybrid_audio",
-) + tuple(f"ref_image_{i}" for i in range(1, 10)) + tuple(
-    f"ref_video_{i}" for i in range(1, 4)) + tuple(
-    f"ref_audio_{i}" for i in range(1, 4)) + (
-    "gh_state_json",
-    "sampler_name", "scheduler", "ai_api_key", "ai_endpoint", "ai_model", "ai_timeout",
-    "prompt_override",  # forceInput 幻影槽位（A4）：必须固定在末位，否则具名 widget 加载/保存不对称
+    "prompt_origin", "ai_idea", "ai_locale", "ai_task", "ai_expand", "ai_ambience", "ai_score",
+    "ai_timeline", "ai_lock_camera", "ai_stabilize", "ai_subtitle_free", "ai_audio_guard",
+    "ai_strict_check", "ai_platform", "keyframe_open", "keyframe_close", "keyframe_audio",
+) + tuple(f"still_{i}" for i in range(1, 10)) + tuple(
+    f"footage_{i}" for i in range(1, 4)) + tuple(
+    f"track_{i}" for i in range(1, 4)) + (
+    "panel_state",
+    "sampler_id", "scheduler_id", "ai_key", "ai_base_url", "ai_model_name", "ai_deadline",
+    "upstream_prompt",  # forceInput 幻影槽位（A4）：必须固定在末位，否则具名 widget 加载/保存不对称
 )
 
-# 不在 AIO_BASE / spec 内的 widget：取 schema 默认值（见 sampling.py）或前端注入值。
+# 不在 AIO_BASE / spec 内的 widget：取 schema 默认值（见 h3kit/dualtime.py）或前端注入值。
 AIO_WIDGET_DEFAULTS = {
     "control_after_generate": "fixed",  # 示例固定种子，便于复现
-    "prompt_override": "",  # forceInput：永不连接时保持空字符串
-    "sampler_name": "dual_clock_euler",
-    "scheduler": "native_flow",
-    **{f"ref_image_{i}": "" for i in range(1, 10)},
-    **{f"ref_video_{i}": "" for i in range(1, 4)},
-    **{f"ref_audio_{i}": "" for i in range(1, 4)},
+    "upstream_prompt": "",  # forceInput：永不连接时保持空字符串
+    "sampler_id": "h3_dual_clock",
+    "scheduler_id": "h3_native_flow",
+    **{f"still_{i}": "" for i in range(1, 10)},
+    **{f"footage_{i}": "" for i in range(1, 4)},
+    **{f"track_{i}": "" for i in range(1, 4)},
 }
 
 
@@ -136,16 +136,16 @@ def aio_widget_values(values: dict) -> list:
 
 def canvas_prompt(spec: dict) -> str:
     """用运行期同一套引擎把示例文本整理成完整提示词（画布示例以编辑器内容为准）。"""
-    values = {**AIO_BASE, "ai_mode": spec["mode"], "main_mode": spec["main_mode"]}
+    values = {**AIO_BASE, "ai_task": spec["mode"], "panel_mode": spec["panel_mode"]}
     controls = {
-        "mode": spec["mode"], "lang": values["ai_language"], "duration": str(values["duration_seconds"]),
-        "ratio": values["aspect"], "model": values["ai_provider"],
-        "enrich_do_enrich": values["ai_enrich"], "enrich_soundscape": values["ai_soundscape"],
-        "enrich_music": values["ai_music"], "auto_timestamps": values["ai_auto_timestamps"],
-        "fixed_camera": values["ai_fixed_camera"], "visual_stability": values["ai_visual_stability"],
-        "no_subtitles": values["ai_no_subtitles"], "anti_pop": values["ai_anti_pop"],
+        "mode": spec["mode"], "lang": values["ai_locale"], "duration": str(values["clip_seconds"]),
+        "ratio": values["frame_ratio"], "model": values["ai_platform"],
+        "enrich_do_enrich": values["ai_expand"], "enrich_soundscape": values["ai_ambience"],
+        "enrich_music": values["ai_score"], "auto_timestamps": values["ai_timeline"],
+        "fixed_camera": values["ai_lock_camera"], "visual_stability": values["ai_stabilize"],
+        "no_subtitles": values["ai_subtitle_free"], "anti_pop": values["ai_audio_guard"],
     }
-    operation = spec.get("prompt_source", "offline")
+    operation = spec.get("prompt_origin", "offline")
     result = generate_prompt(spec["text"], operation, controls, None, lambda: None)
     if not result["valid"]:
         raise RuntimeError(f"{spec['mode']} 的 {operation} 结果未通过引擎严格校验：{result['report']}")
@@ -154,11 +154,11 @@ def canvas_prompt(spec: dict) -> str:
 
 def build_graph(spec):
     values = dict(AIO_BASE)
-    values["ai_text"] = spec["text"]
-    values["ai_mode"] = spec["mode"]
-    values["main_mode"] = spec["main_mode"]
-    values["task_type"] = spec["mode"]
-    values["prompt_source"] = spec.get("prompt_source", "offline")
+    values["ai_idea"] = spec["text"]
+    values["ai_task"] = spec["mode"]
+    values["panel_mode"] = spec["panel_mode"]
+    values["task_hint"] = spec["mode"]
+    values["prompt_origin"] = spec.get("prompt_origin", "offline")
     values.update(spec["media"])
 
     graph = {
@@ -187,9 +187,9 @@ def build_graph(spec):
     sizes = {1: [315, 106], 2: [520, 900], 3: [315, 266], 4: [315, 266]}
     # 画布示例与 API 示例参数一致（评估 A3）：主节点与 UNETLoader 此前均为 null。
     canvas_values = dict(values)
-    canvas_values["prompt_source"] = "panel"       # 面板迁移 v2 会把非 panel 来源改写为 panel
+    canvas_values["prompt_origin"] = "panel"       # 面板迁移 v2 会把非 panel 来源改写为 panel
     canvas_values["prompt"] = canvas_prompt(spec)  # 引擎校验过的完整提示词（编辑器内容）
-    canvas_values["ai_text"] = ""                  # panel 路径下 ai_text 只是编辑器镜像
+    canvas_values["ai_idea"] = ""                  # panel 路径下 ai_idea 只是编辑器镜像
     widgets_by_node = {
         1: [graph["1"]["inputs"]["unet_name"], graph["1"]["inputs"]["weight_dtype"]],
         2: aio_widget_values(canvas_values),

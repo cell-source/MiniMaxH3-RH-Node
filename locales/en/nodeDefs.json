@@ -2,17 +2,17 @@
   "MiniMaxH3IntegrationRH": {
     "display_name": "MiniMax H3 All-in-One (RH)",
     "inputs": {
-      "clip_name": {
+      "text_encoder": {
         "name": "CLIP model"
       },
-      "video_vae_name": {
+      "video_decoder": {
         "name": "video VAE"
       },
-      "audio_vae_name": {
+      "audio_decoder": {
         "name": "audio VAE"
       },
-      "aspect": {
-        "name": "aspect ratio",
+      "frame_ratio": {
+        "name": "frame_ratio ratio",
         "options": {
           "adaptive": "adaptive",
           "16:9": "16:9",
@@ -25,37 +25,37 @@
           "21:9": "21:9"
         }
       },
-      "megapixels": {
-        "name": "megapixels"
+      "pixel_budget": {
+        "name": "pixel_budget"
       },
-      "prompt_override": {
+      "upstream_prompt": {
         "name": "prompt"
       },
-      "duration_seconds": {
+      "clip_seconds": {
         "name": "duration (seconds)"
       },
       "model": {
         "name": "Diffusion Model"
       },
-      "steps": {
+      "sample_steps": {
         "name": "Steps"
       },
-      "shift_video": {
+      "video_sigma_shift": {
         "name": "Video Shift"
       },
-      "shift_audio": {
+      "audio_sigma_shift": {
         "name": "Audio Shift"
       },
-      "sampler_name": {
+      "sampler_id": {
         "name": "Sampler"
       },
-      "scheduler": {
+      "scheduler_id": {
         "name": "Scheduler"
       },
-      "noise_seed": {
+      "seed_value": {
         "name": "Seed"
       },
-      "prompt_source": {
+      "prompt_origin": {
         "name": "Prompt Source",
         "options": {
           "panel": "Prompt editor (default)",
@@ -64,10 +64,10 @@
           "format": "Format existing prompt"
         }
       },
-      "ai_text": {
+      "ai_idea": {
         "name": "Idea / prompt to process"
       },
-      "ai_language": {
+      "ai_locale": {
         "name": "Output Language",
         "options": {
           "zh": "Chinese",
@@ -75,7 +75,7 @@
           "en": "English"
         }
       },
-      "ai_mode": {
+      "ai_task": {
         "name": "H3 Structure",
         "options": {
           "auto": "Auto (inferred from panel mode and supplied media)",
@@ -86,34 +86,34 @@
           "ref2va": "All-purpose Reference"
         }
       },
-      "ai_enrich": {
+      "ai_expand": {
         "name": "Bounded AI Enrichment"
       },
-      "ai_soundscape": {
+      "ai_ambience": {
         "name": "Generate Soundscape"
       },
-      "ai_music": {
+      "ai_score": {
         "name": "Generate Music"
       },
-      "ai_auto_timestamps": {
+      "ai_timeline": {
         "name": "Auto Timestamps"
       },
-      "ai_fixed_camera": {
+      "ai_lock_camera": {
         "name": "Fixed Camera"
       },
-      "ai_visual_stability": {
+      "ai_stabilize": {
         "name": "Visual Stability"
       },
-      "ai_no_subtitles": {
+      "ai_subtitle_free": {
         "name": "No Subtitles"
       },
-      "ai_anti_pop": {
+      "ai_audio_guard": {
         "name": "Anti-Pop Inline Dialogue"
       },
-      "ai_strict_validation": {
+      "ai_strict_check": {
         "name": "Strict Validation"
       },
-      "ai_provider": {
+      "ai_platform": {
         "name": "AI Provider",
         "options": {
           "deepseek": "DeepSeek",
@@ -125,16 +125,16 @@
           "custom": "Custom (fill endpoint & model)"
         }
       },
-      "ai_api_key": {
+      "ai_key": {
         "name": "API Key (user-filled; clear before sharing)"
       },
-      "ai_endpoint": {
+      "ai_base_url": {
         "name": "Endpoint override (optional)"
       },
-      "ai_model": {
+      "ai_model_name": {
         "name": "Model override (optional)"
       },
-      "ai_timeout": {
+      "ai_deadline": {
         "name": "AI Timeout (s)"
       },
       "frames": {

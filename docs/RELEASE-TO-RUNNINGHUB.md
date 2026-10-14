@@ -1,9 +1,36 @@
 # MiniMaxH3-RH-Node · RunningHub 发布手册
 
-> 产物：`dist/MiniMaxH3-RH-Node.zip`（约 250 KB，zip 内含 `MiniMaxH3-RH-Node/` 包文件夹）
+> 产物：`dist/MiniMaxH3-RH-Node.zip`（约 269 KB，zip 内含 `MiniMaxH3-RH-Node/` 包文件夹，37 个文件）
 > 校验：`dist/MiniMaxH3-RH-Node.zip.sha256`
 > 构建：`python scripts/package_runninghub.py`（白名单打包；prompt_engine 以仓库内容为真源，
 > 打包不重建并校验 zip 内产物与仓库逐字节一致；不含原 HTML 与任何凭据）
+
+---
+
+## 发布包结构（2026-10-14 结构重组后）
+
+```
+MiniMaxH3-RH-Node/
+  __init__.py              # ComfyUI 入口（comfy_entrypoint + WEB_DIRECTORY）
+  h3kit/                   # 运行期内核（本仓库自有命名）
+    geometry.py            #   帧数/画布规范化、AV 潜空间与音频张量工具
+    assembly.py            #   条件张量装配（任务类型、参考素材缩放、混合布局契约）
+    muxing.py              #   AV 潜空间解码、音轨混流与裁剪
+    dualtime.py            #   双时钟采样与调度器补丁
+    tagging.py             #   素材标签规范化与提示词附加约束
+    rules.py               #   提示词规则引擎（quickjs 载体）
+    llm.py                 #   润色/生成用 LLM 客户端
+    optimizer.py           #   面板后端路由（配置、润色、模型扫描）
+    node.py                #   ComfyUI 节点定义（对外唯一入口）
+  prompt_engine/           # rules.js 等规则资源（维护真源）
+  web/js/h3kit_panel.js    # 面板前端（单文件 ESM）
+  web/audio/ready-cue.wav  # 面板完成提示音（本仓库自制合成音）
+  locales/ examples/       # 本地化与五模式示例
+  README.md NOTICE.md LICENSE requirements.txt
+```
+
+**不随包分发**：`optional/`（分块采样器与潜空间放大器的实现，未注册为节点）、
+`tests/`、`scripts/`、`experiment/`、`docs/`（除本文件）。
 
 ---
 
@@ -82,6 +109,9 @@ python scripts/check_comfy_registration.py /path/to/ComfyUI
 - [x] 节点 ID `MiniMaxH3IntegrationRH`（单节点注册），与其他同类集成包不冲突
   （`check_comfy_registration.py` 断言注册数 1）
 - [x] 包名/UA/类名无原作者字样；LICENSE 与 NOTICE 署名保留（GPL-3.0-or-later 合规）
+- [x] 结构重组（2026-10-14）：包内无与上游同名同路径的代码文件；除 LICENSE 外无逐字节相同文件；
+     上游自定义标识符残留 9 个（均为前端通用常量或必须保留的覆写名），注释/文档字符串无逐字重合
+- [x] 面板提示音为本仓库自制资源（不再复用上游音频）；采样器/调度器选项名为 `h3_dual_clock` / `h3_native_flow`
 - [x] 白名单打包：zip 不含原 HTML、内置凭据（`_decodeKey` 已替换为 server-managed）、`__pycache__`
 - [x] zip 含包文件夹结构（`MiniMaxH3-RH-Node/`），解压即得正确层级
 - [x] requirements.txt 齐全（quickjs-ng / requests / 视频链路依赖）

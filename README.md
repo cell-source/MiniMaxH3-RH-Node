@@ -4,7 +4,7 @@
 `MiniMaxH3IntegrationRH`（All-in-One）内置提示词生成（AI / 离线包装 / 整理已有）、条件构建、
 双时钟采样与音视频解码。支持 T2VA、I2VA、FL2VA、L2VA、Ref2VA；中文、英文、英文正文加原文对白；
 受限扩写、自动时间轴、固定镜头、画面稳定、无字幕、音景、配乐和抗残音开关。
-分块采样器与潜空间放大器的实现保留在包内（暂未注册为节点，供后续扩展），细节见包内 `tiled_sampler.py` 与 `latent_upscaler.py`。
+分块采样器与潜空间放大器的实现保留在仓库 `optional/` 目录（暂未注册为节点，供后续扩展），**不随发布包分发**。
 工具使用手册与维护文档见 `docs/使用说明.md`、`docs/技术文档.md`；发布流程见 `docs/RELEASE-TO-RUNNINGHUB.md`。
 
 ## 安装
@@ -100,7 +100,8 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 
 扩散模型放在 `models/diffusion_models`，文本编码器放在 `models/text_encoders`，
 视频和音频 VAE 放在 `models/vae`。默认模型文件名为 MiniMax H3 的常见命名，实际选择取决于安装环境。
-包内还包含分块采样器和潜空间放大器的实现（暂未注册为节点，供后续扩展）；细节见包内 `tiled_sampler.py` 与 `latent_upscaler.py`。
+仓库 `optional/` 目录保留分块采样器与潜空间放大器的实现（暂未注册为节点，供后续扩展），
+这两个实现不随发布包分发。
 本包不会自动下载大模型。真实生成需要兼容模型、足够显存和平台节点安装权限。
 
 ## 开发与打包

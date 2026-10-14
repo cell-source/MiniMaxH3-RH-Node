@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-const OPTIMIZER_DONE_SOUND_URL = new URL("../audio/done.mp3", import.meta.url).href;
+const OPTIMIZER_READY_CUE_URL = new URL("../audio/ready-cue.wav", import.meta.url).href;
 
 const NODE = "MiniMaxH3IntegrationRH";
 const RH_NODE_IDS = [
@@ -14,14 +14,14 @@ const INITIAL_NODE_HEIGHT = 700; // 面板按完全展开内容高度设计，�
 const BOTTOM_DECOR_HEIGHT = 20; // ComfyUI DOM widget 默认上下 margin 各 10px
 const MAX_RESTORED_NODE_HEIGHT = INITIAL_NODE_HEIGHT * 4;
 const MIN_NODE_HEIGHT = 0;
-const ASPECTS = {
+const ASPECT_RATIOS = {
     adaptive: null,
     "16:9": 16 / 9, "9:16": 9 / 16, "3:2": 3 / 2, "2:3": 2 / 3, "4:3": 4 / 3,
     "3:4": 3 / 4, "1:1": 1, "21:9": 21 / 9,
 };
-const imageSlots = ["first_frame", "last_frame", ...Array.from({ length: 9 }, (_, i) => `ref_image_${i + 1}`)];
-const videoSlots = Array.from({ length: 3 }, (_, i) => `ref_video_${i + 1}`);
-const audioSlots = ["hybrid_audio", ...Array.from({ length: 3 }, (_, i) => `ref_audio_${i + 1}`)];
+const imageSlots = ["keyframe_open", "keyframe_close", ...Array.from({ length: 9 }, (_, i) => `still_${i + 1}`)];
+const videoSlots = Array.from({ length: 3 }, (_, i) => `footage_${i + 1}`);
+const audioSlots = ["keyframe_audio", ...Array.from({ length: 3 }, (_, i) => `track_${i + 1}`)];
 const mediaSlots = [...imageSlots, ...videoSlots, ...audioSlots];
 const typeOrder = { video: 0, image: 1, audio: 2 };
 const autoOptimizerHandlers = new Set();
@@ -64,11 +64,11 @@ let promptKeyShieldInstalled = false;
 function promptEditorFromEvent(event) {
     const path = event?.composedPath?.() || [];
     for (const item of path) {
-        if (item?.classList?.contains?.("mxv-prompt") && livePromptEditors.has(item)) return item;
+        if (item?.classList?.contains?.("h3k-prompt") && livePromptEditors.has(item)) return item;
     }
     const active = document.activeElement;
     if (active && livePromptEditors.has(active)) return active;
-    const closest = active?.closest?.(".mxv-prompt");
+    const closest = active?.closest?.(".h3k-prompt");
     if (closest && livePromptEditors.has(closest)) return closest;
     // If focus intentionally moved to another form control (for example by
     // Tab), do not pull it back into the prompt. The RH workaround is only
@@ -79,15 +79,15 @@ function promptEditorFromEvent(event) {
         if (editable) return null;
     }
     for (const editor of livePromptEditors) {
-        if (editor.dataset.mxvEditing === "1") return editor;
+        if (editor.dataset.h3kEditing === "1") return editor;
     }
     return null;
 }
 
 function markPromptEditor(editor, editing) {
     if (!editor) return;
-    if (editing) editor.dataset.mxvEditing = "1";
-    else delete editor.dataset.mxvEditing;
+    if (editing) editor.dataset.h3kEditing = "1";
+    else delete editor.dataset.h3kEditing;
 }
 
 function applyStolenPromptKey(editor, event) {
@@ -112,10 +112,10 @@ function applyStolenPromptKey(editor, event) {
 
 function patchLiteGraphPromptProcessKey() {
     const proto = globalThis.LGraphCanvas?.prototype;
-    if (!proto || proto.__mxvPromptKeyPatched || typeof proto.processKey !== "function") return;
-    proto.__mxvPromptKeyPatched = true;
+    if (!proto || proto.__h3kPromptKeyPatched || typeof proto.processKey !== "function") return;
+    proto.__h3kPromptKeyPatched = true;
     const original = proto.processKey;
-    proto.processKey = function processKeyMxvShield(event) {
+    proto.processKey = function processKeyH3kShield(event) {
         if (promptEditorFromEvent(event)) return;
         return original.apply(this, arguments);
     };
@@ -159,11 +159,11 @@ function registerPromptEditor(editor) {
 function unregisterPromptEditor(editor) {
     if (!editor) return;
     livePromptEditors.delete(editor);
-    delete editor.dataset.mxvEditing;
+    delete editor.dataset.h3kEditing;
 }
 
 const DOM_TRANSLATIONS = {
-    "AI generation": "AI 生成",
+    "AI drafting": "AI 生成",
     "AI timeout (seconds)": "AI 总超时（秒）",
     "Auto": "自动",
     "Steps": "采样步数",
@@ -172,7 +172,7 @@ const DOM_TRANSLATIONS = {
     "Sampler": "采样器",
     "Scheduler": "调度器",
     "Seed": "种子",
-    "Unable to load prompt optimizer settings": "无法加载提示词优化器设置",
+    "Could not read the rewriting settings": "读取改写设置失败",
     "API key (cleared when sharing the workflow)": "API Key（分享工作流前请清空）",
     "H3 structure": "H3 模式",
     "H3 mode": "H3 模式",
@@ -190,11 +190,11 @@ const DOM_TRANSLATIONS = {
     "mixed": "English 正文 + 对白原文（官方）",
     "en": "English",
     "auto": "自动（按面板模式与已传素材推断）",
-    "t2va": "文生视频（无参考图）",
-    "i2va": "首帧图生视频",
-    "fl2va": "首尾帧图生视频",
-    "l2va": "尾帧图生视频",
-    "ref2va": "全能参考（多图/视频参考）",
+    "t2va": "纯文本驱动（无参考图）",
+    "i2va": "起始帧图生视频",
+    "fl2va": "起止帧图生视频",
+    "l2va": "结束帧图生视频",
+    "ref2va": "全能参考模式（多图/视频参考）",
     "deepseek": "DeepSeek",
     "glm": "GLM 智谱",
     "openai": "OpenAI",
@@ -203,26 +203,26 @@ const DOM_TRANSLATIONS = {
     "siliconflow": "硅基流动（SiliconFlow）",
     "custom": "自定义（手填端点与模型）",
     "Audio": "音频",
-    "First and last frames": "首尾帧",
-    "Reference audio": "参考音频",
-    "+ Add media": "＋ 添加素材",
-    "T2VA · Text-to-video": "T2VA · 文生视频",
-    "Text-to-video": "文生视频",
-    "First/last frames / Text-to-video": "首尾帧 / 文生视频",
-    "All-purpose reference": "全能参考",
+    "Opening and closing frames": "起止帧",
+    "Audio reference": "音频参考",
+    "＋ Attach asset": "＋ 附加素材",
+    "T2VA · Text-driven": "T2VA · 纯文本驱动",
+    "Text-driven": "纯文本驱动",
+    "Keyframe mode": "关键帧模式",
+    "Omni-reference mode": "全能参考模式",
     "Prompt:\nClick an uploaded asset to insert its tag, e.g. <picture 1>, <video 1>, or <audio 2>;\nDouble-click a video to insert its audio tag; mute a video at the top-right to exclude its audio from references": "提示词：\n单击已上传的素材自动添加标签，如：<picture 1>、<video 1>、<audio 2>；\n双击视频自动添加视频中的音频标签；视频右上角静音后音频将不传入参考",
-    "Advanced options": "高级选项",
+    "More settings": "更多设置",
     "No-subtitle constraint": "无字幕约束",
     "Soundscape": "音景",
     "Music": "配乐",
     "Injects a positive no-subtitle constraint after [Shot 1]: speech exists only as audible voice with lip sync and never appears as on-screen text. Disable to strip it from the prompt": "在提示词的 [Shot 1] 后注入正向无字幕约束：语音仅以音频呈现并与口型同步，台词绝不以文字出现在画面中；关闭后自动从提示词移除该约束",
     "On: rewrite an N/A overall_soundscape with a default ambient description; the rest of the prompt stays untouched. Off: force N/A for a fully silent bed": "开启：将提示词中的 overall_soundscape: N/A 自愈为默认环境声描述，其余内容不改写；关闭：强制 N/A（全片无环境声）",
     "On: rewrite an N/A non_diegetic_music with a default score description; the rest of the prompt stays untouched. Off: force N/A (no score)": "开启：将提示词中的 non_diegetic_music: N/A 自愈为默认配乐描述，其余内容不改写；关闭：强制 N/A（无配乐）",
-    "Audio mode": "音频模式",
-    "Audio denoise strength": "音频去噪强度",
+    "Audible source": "声音来源",
+    "Voice cleanup strength": "声音净化强度",
     "Source audio as reference": "源音频作为参考",
-    "Strict prompt tags": "严格提示词标签",
-    "Reference image size": "参考素材尺寸",
+    "Tag format enforced": "标签格式强校验",
+    "Asset downscale": "素材缩放策略",
     "Reference video policy": "参考视频策略",
     "Force FPS": "强制帧率",
     "match": "匹配",
@@ -230,98 +230,113 @@ const DOM_TRANSLATIONS = {
     "1.5x": "1.5倍",
     "2x": "2倍",
     "max": "最大值",
-    "First frame": "首帧",
-    "Last frame": "尾帧",
-    "First frame empty means text-to-video": "首帧留空为文生视频",
-    "Last frame empty means text-to-video": "尾帧留空为文生视频",
-    "First and last frames empty means text-to-video": "首尾帧留空为文生视频",
-    "Reference audio": "参考音频",
+    "Opening frame": "起始帧",
+    "Closing frame": "结束帧",
+    "Leave blank for text-driven generation": "留空即纯文本驱动",
+    "Leave blank for text-driven generation": "留空即纯文本驱动",
+    "Leave both blank for text-driven generation": "两者都留空即纯文本驱动",
+    "Audio reference": "音频参考",
     "Optional": "可选",
-    "Add media": "添加素材",
-    "Reference media": "参考素材",
-    "Images x9 · Videos x3 (mp4/mov) · Audios x3 (mp3/wav/flac...)": "支持图像x9 · 视频x3(mp4/mov) · 音频x3 (mp3/wav/flac...)",
-    "Up to 9 images": "最多9张图像",
-    "Up to 3 videos": "最多3个视频",
-    "Up to 3 audios": "最多3个音频",
-    "Optimize": "润色", "LLM Prompt Optimization Configuration": "配置",
-    "Polish provider": "润色平台（需视觉模型）",
-    "Generation provider": "生成平台", "API key": "API Key", "Read visual references": "读取视觉素材",
-    "Generation credentials": "生成凭据", "Key saved": "Key 已保存", "Key missing": "未填 Key",
-    "Key shared with prompt optimizer": "与提示词优化器共享",
-    "Generation model": "生成模型", "Generation endpoint": "生成端点",
+    "Attach asset": "附加素材",
+    "Media assets": "媒体素材",
+    "Stills ×9 · Clips ×3 (mp4/mov) · Audio ×3 (mp3/wav/flac…)": "静帧 ×9 · 短片 ×3（mp4/mov）· 音频 ×3（mp3/wav/flac…）",
+    "Up to 9 stills": "最多 9 张静帧",
+    "Up to 3 clips": "最多 3 段短片",
+    "Up to 3 audio tracks": "最多 3 条音轨",
+    "Optimize": "润色", "Prompt rewriting settings": "配置",
+    "Rewriting platform": "润色平台（需视觉模型）",
+    "Drafting platform": "生成平台", "API key": "API Key", "Send visuals to the model": "读取视觉素材",
+    "Drafting credentials": "生成凭据", "Key on file": "Key 已保存", "No key": "未填 Key",
+    "Shared with the rewriting dialog": "与提示词优化器共享",
+    "Drafting model": "生成模型", "Drafting endpoint": "生成端点",
     "Default: provider preset model": "留空使用平台预设模型",
     "custom": "自定义（手填端点与模型）", "dashscope": "通义千问（DashScope）", "deepseek": "DeepSeek",
     "glm": "GLM 智谱", "openai": "OpenAI", "openrouter": "OpenRouter", "siliconflow": "硅基流动（SiliconFlow）",
     "Configure": "配置",
     "Save": "保存", "Cancel": "取消", "Custom": "自定义",
-    "Prompt is connected to an upstream node; the internal prompt is disabled!": "提示词已连接上游节点，内部提示词已禁用！",
-    "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Optimizing": "润色中", "Restore before optimization": "恢复润色前", "Configure API": "配置模型与选项（润色与 AI 生成共用）",
-    "Prompt optimizer API is not configured. Open settings now?": "尚未配置润色 API，是否立即打开设置？",
+    "The prompt input is wired to an upstream node, so the built-in editor is read-only.": "提示词已连接上游节点，内部提示词已禁用！",
+    "Optimize prompt": "润色：让优化模型改写当前提示词的表达，意图不变、只变文笔（可读取素材画面）", "Rewriting": "改写中", "Revert to pre-rewrite": "回到改写前", "Models & options": "模型与选项（改写 / 起草共用）",
+    "The rewriting API is not configured yet. Open the settings dialog now?": "还没配置改写用的 API，现在打开设置？",
     "Confirm": "确定",
     "AI generate prompt": "AI 生成：按当前配置把编辑器内容套用官方 H3 结构（镜头/音景/配乐/时间戳）生成完整提示词并填回（Ctrl+Z 可撤销）",
-    "These options configure AI generation and run-time prompt processing; the input always comes from the prompt editor.": "以下选项配置 AI 生成与运行期提示词处理方式；输入始终取自提示词编辑器，无需另行填写创意文本。",
+    "These options configure AI drafting and run-time prompt processing; the input always comes from the prompt editor.": "以下选项配置 AI 生成与运行期提示词处理方式；输入始终取自提示词编辑器，无需另行填写创意文本。",
     "Polish": "✦ 润色",
     "H3 format (offline)": "H3 格式整理（离线）：按官方 H3 规范整理编辑器内容并填回（不调用在线模型）",
-    "Generating": "生成中",
-    "Formatting": "整理中",
-    "Enter a prompt first": "请先输入提示词",
-    "Generation API key is missing. Open settings now?": "尚未配置生成模型 API Key，是否立即打开设置？",
-    "Generation prompt failed": "AI 生成失败",
-    "AI generation options": "AI 生成选项",
-    "Polish settings": "润色（✦ 润色按钮使用）",
-    "AI generation": "AI 生成",
+    "Drafting": "起草中",
+    "Tidying": "规范化中",
+    "Type a prompt first": "请先输入提示词",
+    "No drafting API key saved yet. Open the settings dialog now?": "还没填起草用的 API Key，现在打开设置？",
+    "Drafting failed": "起草失败",
+    "Drafting options": "AI 生成选项",
+    "Rewriting settings": "润色（✦ 润色按钮使用）",
+    "AI drafting": "AI 生成",
     "Prompt polishing (sub-feature)": "润色（改写表达，可读取素材画面）",
-    "Generation language": "生成语言",
+    "Drafting language": "生成语言",
     "AI timeout": "AI 超时（秒）",
-    "Cancel processing": "取消处理",
-    "Prompt changed; result was not applied": "提示词或模式已改变，未覆盖当前内容",
-    "Generation supports 2–15 seconds": "提示词生成仅支持 2–15 秒，请先调整视频时长",
-    "Generation timed out": "生成超时，请缩短输入或调整超时设置",
-    "Automatic optimization before run": "运行前自动润色提示词", "No compatible local vision models found": "未找到可用的本地视觉模型",
-    "Trim audio": "裁剪音频",
-    "Audio trim": "音频截取",
+    "Abort": "中止",
+    "The prompt or mode changed after the request, so nothing was overwritten": "请求发出后提示词或模式已变，未做覆盖",
+    "Drafting only supports clips of 2–15 s": "起草仅支持 2–15 秒，请先改片段时长",
+    "Drafting timed out": "起草超时：缩短输入或调大超时",
+    "Rewrite wording automatically before each run": "每次运行前自动改写文风", "No usable local vision model found": "没有可用的本地视觉模型",
+    "Audio cut": "截选音频",
+    "Cut audio": "截取音频",
     "Start": "开始",
     "End": "结束",
-    "Selected duration": "选取时长",
-    "Play selection": "播放选区",
-    "Pause preview": "暂停预览",
-    "Sync target duration": "同步目标时长",
+    "Selected span": "已选区间",
+    "Preview span": "试听区间",
+    "Pause": "暂停",
+    "Match clip length": "对齐片段时长",
     "Saving": "保存中",
-    "Audio decoding failed": "音频解码失败",
-    "Audio trim failed": "音频裁剪失败",
+    "Could not decode the audio": "音频解码失败",
+    "Could not cut the audio": "音频裁剪失败",
 };
 
 Object.assign(DOM_TRANSLATIONS, {
-    "Audio redraw strength": "\u97f3\u9891\u91cd\u7ed8\u5f3a\u5ea6",
-    "native": "\u81ea\u52a8\u751f\u6210",
-    "reference_only": "\u4ec5\u53c2\u8003\u97f3\u9891",
-    "lock_source": "\u539f\u58f0\u8f93\u51fa",
-    "remix_source": "\u91cd\u6df7\u6e90\u97f3\u9891",
-    "Mute video": "\u4e0d\u53c2\u8003\u97f3\u9891",
-    "Unmute video": "\u53c2\u8003\u97f3\u9891",
-    "Drive audio ordinal": "\u9a71\u52a8\u97f3\u9891\u5e8f\u53f7",
-    "Drive audio": "\u9a71\u52a8\u97f3\u9891",
-    "None": "\u65e0",
+    "Voice rewrite strength": "声音改写强度",
+    "native": "自动生成",
+    "reference_only": "只用音频做参考",
+    "lock_source": "原声输出",
+    "remix_source": "重混源音频",
+    "Mute video": "音频不作参考",
+    "Unmute video": "音频参考",
+    "Drive audio ordinal": "驱动音频序号",
+    "Drive audio": "驱动音频",
+    "None": "无",
 });
 
 function currentLocale() {
-    const candidates = [
-        app?.ui?.settings?.getSettingValue?.("Comfy.Locale"),
-        app?.ui?.settings?.getSettingValue?.("Comfy.Language"),
-        document.documentElement?.lang,
-        document.body?.dataset?.locale,
-        document.body?.dataset?.language,
-        localStorage.getItem("Comfy.Settings.Language"),
-        localStorage.getItem("Comfy.Settings.language"),
-        localStorage.getItem("language"),
-        localStorage.getItem("locale"),
-        navigator.language,
-    ];
-    return candidates.find(value => typeof value === "string" && value.trim())?.toLowerCase() || "en";
+    for (const read of LOCALE_SOURCES) {
+        let value = null;
+        // 无痕模式/沙箱 iframe 里 localStorage 会直接抛错，取不到就跳过这一路。
+        try { value = read(); } catch { continue; }
+        if (typeof value === "string" && value.trim()) return value.trim().toLowerCase();
+    }
+    return "en";
 }
+/* 语言探测顺序：ComfyUI 自身设置 → 页面标记 → 浏览器本地存储 → 系统语言。
+   取第一个非空值；全部落空按英文处理。放在函数之后声明，避免与下方
+   DOM_TRANSLATIONS 的文本切片边界纠缠（函数体调用时已初始化）。 */
+const LOCALE_SOURCES = [
+    () => app?.ui?.settings?.getSettingValue?.("Comfy.Locale"),
+    () => app?.ui?.settings?.getSettingValue?.("Comfy.Language"),
+    () => document.documentElement?.lang,
+    () => document.body?.dataset?.locale,
+    () => document.body?.dataset?.language,
+    () => localStorage.getItem("Comfy.Settings.Language"),
+    () => localStorage.getItem("Comfy.Settings.language"),
+    () => localStorage.getItem("language"),
+    () => localStorage.getItem("locale"),
+    () => navigator.language,
+];
+
+/* 提示词编辑器里"不算正文"的节点：贴进来的参考素材缩略图、以及用来定位光标的哨兵。 */
+const PROMPT_IGNORED_CLASSES = ["h3k-prompt-media-preview", "h3k-prompt-caret-sentinel"];
 
 function isChineseLocale() { return /^(zh|cn|中文)/i.test(currentLocale()); }
-function t(text) { return isChineseLocale() ? (DOM_TRANSLATIONS[text] || text) : text; }
+function t(text) {
+    if (!isChineseLocale()) return text;
+    return DOM_TRANSLATIONS[text] || text;
+}
 function aspectInternalValue(value) {
     const aliases = {
         "自适应": "adaptive",
@@ -356,16 +371,16 @@ function aspectOptionLabel(value) {
     return isChineseLocale() ? (ASPECT_DISPLAY_VALUES[internal] || internal) : internal;
 }
 function normalizeAspectWidget(node) {
-    const control = widget(node, "aspect");
+    const control = widget(node, "frame_ratio");
     if (!control) return;
     const normalized = aspectInternalValue(control.value);
     if (!ASPECT_INTERNAL_VALUES.includes(normalized)) return;
     if (control.value !== normalized) control.value = normalized;
-    control._mxvAspectInternal = normalized;
+    control._h3kAspectInternal = normalized;
 }
 function installAspectDisplay(node) {
-    const control = widget(node, "aspect");
-    if (!control || control._mxvAspectWrapped || typeof control.draw !== "function") return;
+    const control = widget(node, "frame_ratio");
+    if (!control || control._h3kAspectWrapped || typeof control.draw !== "function") return;
     const originalDraw = control.draw;
     control.draw = function(ctx, nodeRef, width, y, height) {
         const savedValue = this.value;
@@ -382,12 +397,12 @@ function installAspectDisplay(node) {
             if (this.options && Array.isArray(savedValues)) this.options.values = savedValues;
         }
     };
-    control._mxvAspectWrapped = true;
+    control._h3kAspectWrapped = true;
 }
 function drawAspectDisplayOverlay(node, ctx) {
     if (!isChineseLocale()) return;
-    const control = widget(node, "aspect");
-    if (!control || control.value !== "adaptive" || control === node.__mxvActiveWidget) return;
+    const control = widget(node, "frame_ratio");
+    if (!control || control.value !== "adaptive" || control === node.__h3kActiveWidget) return;
     const y = Number(control.y);
     const height = Number(control.height) || 30;
     const width = Number(node.size?.[0]) || 0;
@@ -395,20 +410,48 @@ function drawAspectDisplayOverlay(node, ctx) {
     const left = 34;
     const right = width - 34;
     ctx.save();
-    ctx.fillStyle = node.bgcolor || "#1b1e23";
+    ctx.fillStyle = node.bgcolor || "#16202a";
     ctx.fillRect(left, y + 2, Math.max(0, right - left), Math.max(0, height - 4));
-    ctx.fillStyle = "#e8e6e1";
+    ctx.fillStyle = "#d9e4ee";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `${Math.max(12, Math.round(height * 0.55))}px Arial,sans-serif`;
+    ctx.font = `${Math.max(12, Math.round(height * 0.55))}px "Segoe UI",system-ui,sans-serif`;
     ctx.fillText("自适应", (left + right) / 2, y + height / 2);
     ctx.restore();
 }
 
 function round32(v) { return Math.max(32, Math.floor(v / 32 + 0.5) * 32); }
-function canvas(aspect, mp, adaptiveRatio = 16 / 9) {
+
+/* ===== 音频裁剪对话框的两组纯计算（无 DOM，可单独测试）===== */
+// 时间轴刻度候选：目标约 7 格，取第一个够大的；超出 1 小时按整点向上取。
+const TICK_STEPS = [.01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
+function chooseTickStep(visibleDuration) {
+    const target = visibleDuration / 7;
+    return TICK_STEPS.find(value => value >= target) || Math.ceil(target / 3600) * 3600;
+}
+function formatTickLabel(seconds, step) {
+    if (step < 1) return `${seconds.toFixed(step < .1 ? 2 : 1)}s`;
+    if (seconds < 60) return `${Math.round(seconds)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remaining = Math.round(seconds % 60);
+    return remaining ? `${minutes}:${String(remaining).padStart(2, "0")}` : `${minutes}m`;
+}
+// 按下时决定拖哪个东西：把手命中优先，其次选区内部，最后就近一侧。
+function pickTrimDrag(seconds, hitSeconds, start, end) {
+    if (Math.abs(seconds - start) <= hitSeconds) return "start";
+    if (Math.abs(seconds - end) <= hitSeconds) return "end";
+    if (seconds > start && seconds < end) return "selection";
+    return Math.abs(seconds - start) < Math.abs(seconds - end) ? "start" : "end";
+}
+// 把选区对齐到目标时长：音频不够长就整段，否则从当前起点截取并向前夹紧。
+function fitSelectionToTarget(start, bufferDuration, target) {
+    if (bufferDuration <= target) return [0, bufferDuration];
+    const nextStart = Math.max(0, Math.min(start, bufferDuration - target));
+    return [nextStart, Math.min(bufferDuration, nextStart + target)];
+}
+function canvas(frame_ratio, mp, adaptiveRatio = 16 / 9) {
     const area = Math.max(0.2, Number(mp) || 0.5) * 1024 * 1024;
-    const ratio = ASPECTS[aspectInternalValue(aspect)] ?? adaptiveRatio;
+    const ratio = ASPECT_RATIOS[aspectInternalValue(frame_ratio)] ?? adaptiveRatio;
     const width = round32(Math.sqrt(area * ratio));
     const height = ratio === 1 ? width : round32(Math.sqrt(area / ratio));
     return `${width}x${height}`;
@@ -419,7 +462,7 @@ function setWidget(node, name, value) {
     // Zero is a valid value for integer/float controls such as the optional
     // primary-audio ordinal. Only actual empty values should become (none).
     const empty = value === null || value === undefined || value === "";
-    const next = empty ? (["ai_text", "ai_api_key", "ai_model", "ai_endpoint"].includes(name) ? "" : "(none)") : value;
+    const next = empty ? (["ai_idea", "ai_key", "ai_model_name", "ai_base_url"].includes(name) ? "" : "(none)") : value;
     if (w.value === next) return;
     w.value = next;
     w.callback?.call(w, w.value);
@@ -455,8 +498,8 @@ function normalizeIntWidget(node, name, fallback, minimum, maximum) {
     return value;
 }
 function sanitizeHiddenInputs(node) {
-    normalizeIntWidget(node, "drive_audio_ordinal", 1, 0, 6);
-    const task = widget(node, "task_type");
+    normalizeIntWidget(node, "driving_track", 1, 0, 6);
+    const task = widget(node, "task_hint");
     if (task && !["auto", "t2va", "i2va", "l2va", "fl2va", "ref2va", "hybrid"].includes(task.value)) {
         task.value = "auto";
     }
@@ -466,19 +509,19 @@ function hideWidget(w) {
     w.hidden = true; w.options = w.options || {}; w.options.hidden = true;
     w.computeSize = () => [0, -4]; w.serialize = true;
 }
-/* AI 生成参数组（prompt_source + ai_*）：不渲染为节点体原生 widget（新版前端的
+/* AI 生成参数组（prompt_origin + ai_*）：不渲染为节点体原生 widget（新版前端的
    widget 渲染不走 computeSize，折叠不可靠），全部隐藏并由 DOM 面板内的
    「AI 生成」区块接管 UI；控件值仍由这些 widget 承载并随工作流序列化。 */
-/* 采样器/调度器选项：默认项与 ComfyUI 常用项（基线与 sampling.py 的 SAMPLER_OPTIONS 一致，
+/* 采样器/调度器选项：默认项与 ComfyUI 常用项（基线与 h3kit/dualtime.py 的 SAMPLER_CHOICES 一致，
    完整清单仍可通过 API 直接传入节点输入）。 */
-const SAMPLER_OPTIONS = ["dual_clock_euler", "euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m", "dpmpp_2m_sde", "ddim", "uni_pc"];
-const SCHEDULER_OPTIONS = ["native_flow", "normal", "karras", "sgm_uniform", "simple", "beta"];
+const SAMPLER_CHOICES = ["h3_dual_clock", "euler", "euler_ancestral", "heun", "dpm_2", "dpmpp_2m", "dpmpp_2m_sde", "ddim", "uni_pc"];
+const SCHEDULER_CHOICES = ["h3_native_flow", "normal", "karras", "sgm_uniform", "simple", "beta"];
 const AI_GROUP_WIDGETS = [
-    "prompt_source",
-    "ai_text", "ai_language", "ai_mode", "ai_enrich", "ai_soundscape", "ai_music",
-    "ai_auto_timestamps", "ai_fixed_camera", "ai_visual_stability", "ai_no_subtitles",
-    "ai_anti_pop", "ai_strict_validation", "ai_provider", "ai_api_key",
-    "ai_endpoint", "ai_model", "ai_timeout",
+    "prompt_origin",
+    "ai_idea", "ai_locale", "ai_task", "ai_expand", "ai_ambience", "ai_score",
+    "ai_timeline", "ai_lock_camera", "ai_stabilize", "ai_subtitle_free",
+    "ai_audio_guard", "ai_strict_check", "ai_platform", "ai_key",
+    "ai_base_url", "ai_model_name", "ai_deadline",
 ];
 function hideAiGroupWidgets(node) {
     for (const name of AI_GROUP_WIDGETS) hideWidget(widget(node, name));
@@ -516,8 +559,8 @@ function createPanel(node) {
     // briefly report a narrower DOM-widget wrapper. That transient width was
     // retained after the node returned to 500px, leaving the panel compressed
     // until a browser refresh or node rebuild.
-    const root = make("div", { position: "relative", width: `${PANEL_WIDTH}px`, minWidth: `${PANEL_WIDTH}px`, boxSizing: "border-box", color: "#e8e6e1", fontFamily: "Arial,sans-serif", fontSize: "12px", userSelect: "none", padding: "3px 0 2px", overflow: "visible" });
-    root.className = "mxv-root";
+    const root = make("div", { position: "relative", width: `${PANEL_WIDTH}px`, minWidth: `${PANEL_WIDTH}px`, boxSizing: "border-box", color: "#d9e4ee", fontFamily: '"Segoe UI",system-ui,sans-serif', fontSize: "12px", userSelect: "none", padding: "4px 0 2px", overflow: "visible" });
+    root.className = "h3k-root";
     Object.assign(root.style, {
         display: "flex",
         flexFlow: "column",
@@ -528,85 +571,100 @@ function createPanel(node) {
     });
     const style = make("style");
     style.textContent = `
-      .mxv-modes{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:3px;border:1px solid #383e46;border-radius:16px;margin:0;background:#14171b}
-      .mxv-mode{height:26px;border:0;border-radius:12px;background:transparent;color:#b3b1ac;font-size:13px;cursor:pointer;transition:background .12s,color .12s}.mxv-mode.active{background:#e8a33d;color:#221a0c;font-weight:700;box-shadow:0 1px 6px rgba(232,163,61,.35)}
-      .mxv-box{border:1px solid #383e46;border-radius:6px;padding:7px;margin:0;background:#1b1e23;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.mxv-title{font-size:12px;color:#efede8;margin-bottom:3px}.mxv-hint{font-size:10px;color:#8c8983;line-height:1.3}
-      .mxv-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.mxv-drop{aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#b3b1ac;cursor:pointer;border:1px dashed #383e46;border-radius:6px;background:#1b1e23;padding:4px;box-sizing:border-box}.mxv-drop:hover{border-style:solid;border-color:#e8a33d;background:rgba(232,163,61,.08);color:#e8e6e1}.mxv-reference-empty{grid-column:1/-1;width:100%;aspect-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.mxv-reference-empty .mxv-drop-icon{font-size:14px;margin:0 7px 0 0}.mxv-reference-empty .mxv-drop-title{font-size:12px}.mxv-reference-empty .mxv-drop-subtitle{font-size:9px;margin-top:8px}.mxv-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#e8a33d;font-family:Arial,sans-serif}.mxv-drop-title{font-size:10px;line-height:1.2;color:#e2e0db}.mxv-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.mxv-optional{color:#8a6d33;font-size:.82em;line-height:1.2;position:relative;top:-1px}.mxv-audio-drop .mxv-optional{top:-2px}.mxv-drop-subtitle{font-size:8px;line-height:1.25;color:#8c8983;margin-top:3px}.mxv-limit{grid-column:1/-1;color:#d47d8b;font-size:9px;padding:2px 3px 0;text-align:left}
-      .mxv-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.mxv-keygrid .mxv-drop{aspect-ratio:16/9}.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-subtitle{font-size:7px;color:#7d7a74}.mxv-keygrid .mxv-audio-card,.mxv-keygrid .mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:3px}
-      .mxv-card{min-width:0;aspect-ratio:1;border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.mxv-card.mxv-reorder-source{opacity:.68;cursor:grabbing}.mxv-card.mxv-reorder-target{border-color:#e8a33d;box-shadow:0 0 0 2px rgba(232,163,61,.45) inset}.mxv-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(20,22,26,.78);color:#f4e8d0;font:18px/24px Arial,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(232,163,61,.6)}.mxv-card.mxv-reorder-source .mxv-reorder-indicator{display:flex}.mxv-card img,.mxv-card video{display:block;width:100%;height:100%;object-fit:cover;background:#14171b}.mxv-card:hover img,.mxv-card:hover video{object-fit:contain}.mxv-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(16,17,20,.68);font-size:7px;line-height:1.15}.mxv-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#d5d2cc;cursor:pointer;font-size:11px;z-index:3}.mxv-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 Arial,sans-serif;pointer-events:none}.mxv-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(46,50,56,.6)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.mxv-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.mxv-media-time{margin-left:auto}.mxv-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;aspect-ratio:auto;margin-top:0;font-size:9px}.mxv-audio-card{grid-column:1/-1;width:100%;height:34px;aspect-ratio:auto;margin-top:0}.mxv-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:6px;background:#1b1e23;color:#e8e6e1;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 Arial,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#2e3238 transparent}.mxv-prompt::placeholder{color:#4a5058;opacity:1}.mxv-prompt::-webkit-scrollbar{width:5px}.mxv-prompt::-webkit-scrollbar-track{background:transparent}.mxv-prompt::-webkit-scrollbar-thumb{background:#2e3238;border-radius:3px}.mxv-prompt::-webkit-scrollbar-thumb:hover{background:#383e46}.mxv-advanced{position:relative;margin:0;box-sizing:border-box;user-select:none;background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:8px;list-style:none;min-height:28px;color:#b3b1ac;font-size:12px}.mxv-advanced>summary::-webkit-details-marker{display:none}.mxv-advanced>summary:before{content:"▸ ";color:#8a6d33}.mxv-advanced[open]>summary:before{content:"▾ "}.mxv-advanced .mxv-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.mxv-advanced[open]{background:#1b1e23;border:1px solid #383e46;border-radius:8px}.mxv-size{color:#d9992f;font-size:12px;padding:2px 0 4px}
-      .mxv-size{display:flex;justify-content:space-between;align-items:center;color:#d9992f;font-size:12px;padding:2px 3px 5px}.mxv-task{white-space:nowrap}.mxv-dimensions{white-space:nowrap;text-align:right}.mxv-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);align-items:center;gap:8px;min-height:26px}.mxv-advanced-row>label{text-align:left;color:#b3b1ac}.mxv-control{width:220px;justify-self:end;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:5px}.mxv-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.mxv-number button{border:1px solid #383e46;background:#1b1e23;color:#e8e6e1;font-size:10px;padding:0;cursor:pointer}.mxv-number button:first-child{border-radius:4px 0 0 4px}.mxv-number button:last-child{border-radius:0 4px 4px 0}.mxv-number input{width:100%;min-width:0;border:1px solid #383e46;border-left:0;border-right:0;border-radius:0;background:#1b1e23;color:#e8e6e1;padding:5px;box-sizing:border-box}.mxv-number input::-webkit-inner-spin-button,.mxv-number input::-webkit-outer-spin-button{appearance:none;margin:0}.mxv-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.mxv-toggle input{opacity:0;width:0;height:0}.mxv-toggle span{position:absolute;inset:0;border-radius:12px;background:#2e3238;border:1px solid #4a5058;transition:.15s}.mxv-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#d5d2cc;transition:.15s}.mxv-toggle input:checked+span{background:#e8a33d;border-color:#e8a33d}.mxv-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
-      .mxv-drop-title-row .mxv-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
-      .mxv-audio-drop .mxv-drop-icon{font-size:14px;line-height:1;height:1.2em}
-      .mxv-drop-title-row .mxv-optional{position:static;display:inline-flex;align-items:center;height:1.2em;line-height:1.2}
-      .mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-drop-icon,.mxv-keygrid .mxv-drop:not(.mxv-audio-drop) .mxv-optional{transform:translateY(-1px)}
-       .mxv-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,auto);width:100%;min-height:190px;background:#1b1e23;border-radius:6px;overflow:hidden;border:1px solid #383e46;transition:border-color .12s,box-shadow .12s}
-      .mxv-prompt-wrap.focused{border-color:#e8a33d;box-shadow:0 0 0 1px rgba(232,163,61,.35)}.mxv-prompt-wrap .mxv-prompt{grid-row:2;border-radius:0 0 6px 6px}.mxv-prompt-wrap.external .mxv-prompt{opacity:.42;cursor:not-allowed}.mxv-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#1b1e23;z-index:4}.mxv-prompt-elapsed{display:none;margin-right:auto;color:#75726c;font:9px/17px Arial,sans-serif}.mxv-prompt-elapsed.visible{display:inline-block}.mxv-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(140,137,131,.6);font:8px/17px Arial,sans-serif;margin-left:auto;margin-right:17px}.mxv-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:3px;background:#1b1e23;color:#7d7a74;font:11px/17px Arial,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.mxv-optimize-tool{font-size:13px}.mxv-prompt-tool:hover{color:#b3b1ac;background:#2e3238}.mxv-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.mxv-prompt-reset{display:none;font-size:12px;line-height:15px}.mxv-prompt-reset.visible{display:inline-block}.mxv-prompt-loading{color:#e8a33d!important;opacity:1!important;animation:mxv-spin 1.6s linear infinite}@keyframes mxv-spin{to{transform:rotate(360deg)}}.mxv-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:4px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;font:10px/1.2 Arial,sans-serif;pointer-events:none;white-space:nowrap}.mxv-opt-check{justify-self:end;width:auto!important}.mxv-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.mxv-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.mxv-opt-language label:first-child{justify-self:start}.mxv-opt-language label:last-child{justify-self:end}.mxv-opt-language input{width:auto}
-       .mxv-prompt-wrap{grid-template-columns:minmax(0,1fr)}.mxv-prompt-wrap .mxv-prompt-rich{position:relative;grid-row:2;left:0;right:0;top:0;bottom:auto;width:100%;height:auto;min-height:168px;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#1b1e23;color:#e8e6e1;-webkit-text-fill-color:currentColor;caret-color:#e8e6e1;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.mxv-prompt-rich.mxv-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#4a5058;white-space:pre-wrap;pointer-events:none}.mxv-prompt-highlight{display:none}.mxv-prompt-rich mark{padding:0;color:#e8a33d;-webkit-text-fill-color:#e8a33d;background:transparent;font:inherit}.mxv-prompt-section{padding:0;color:#9a7734;-webkit-text-fill-color:#9a7734;background:transparent;font:inherit}.mxv-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:5px;background:#3a3d42;color:#cdcdcd;-webkit-text-fill-color:#cdcdcd;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.mxv-prompt-tag-video{background:#443c4a}.mxv-prompt-tag-picture{background:#3d3a2e}.mxv-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.mxv-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(148,120,62,.7);border-radius:5px;background:#22262c;object-fit:cover;color:#c2a05c;display:inline-flex;align-items:center;justify-content:center;font:14px/26px Arial,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.mxv-prompt-media-preview.mxv-prompt-audio-preview{border-radius:50%}.mxv-prompt-media-preview.mxv-prompt-audio-preview:before{content:"♫";font-size:13px}.mxv-prompt-wrap.external .mxv-prompt-rich{opacity:.42}
-        .mxv-opt-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-opt-dialog{width:min(470px,calc(100vw - 30px));background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:14px}.mxv-opt-title{font-size:12px;margin-bottom:12px;white-space:nowrap}.mxv-opt-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:8px;min-height:38px;margin:0}.mxv-opt-row>span{white-space:nowrap}.mxv-opt-row input,.mxv-opt-row select{width:100%;box-sizing:border-box;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px;font:inherit}.mxv-opt-hidden{display:none!important}.mxv-opt-model-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0}.mxv-opt-model-native{display:none}.mxv-opt-model-picker{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:6px 24px 6px 7px;cursor:pointer;position:relative;font:inherit}.mxv-opt-model-picker:after{content:"⌄";position:absolute;right:7px}.mxv-opt-model-menu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:10070;box-sizing:border-box;width:max-content;min-width:100%;max-width:calc(100vw - 30px);padding:5px;background:#1b1e23;border:1px solid #383e46;border-radius:5px;box-shadow:0 8px 22px rgba(0,0,0,.45)}.mxv-opt-model-menu.open{display:block}.mxv-opt-model-search{display:block;width:100%;min-width:100%;margin-bottom:5px;font:inherit}.mxv-opt-model-results{max-height:285px;overflow:auto}.mxv-opt-model-option{display:block;width:max-content;min-width:100%;border:0;background:transparent;color:#e8e6e1;text-align:left;padding:6px;border-radius:3px;white-space:nowrap;cursor:pointer;font:inherit}.mxv-opt-model-option:hover,.mxv-opt-model-option.selected{background:#2e3238}.mxv-opt-model-empty{padding:7px;color:#b3b1ac;font-size:12px}.mxv-opt-refresh{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:4px;padding:0;cursor:pointer;font-size:16px;line-height:1;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}.mxv-opt-refresh:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-opt-refresh:active{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-refresh.loading{background:#e8a33d;border-color:#e8a33d;color:#221a0c;cursor:wait}.mxv-opt-refresh.loading svg{animation:mxv-spin 1.2s linear infinite}.mxv-opt-refresh:disabled{opacity:.85}.mxv-opt-dependencies{margin:6px 0;color:#d98d97;font-size:12px;line-height:1.35}.mxv-opt-checks{margin:0}.mxv-opt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:28px}.mxv-opt-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:5px 12px;cursor:pointer}.mxv-opt-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-opt-custom{display:none}.mxv-opt-dialog.custom .mxv-opt-custom{display:grid}
-        .mxv-audio-trim-button,.mxv-sound{position:absolute;z-index:6;width:14px;height:14px;padding:0;border:0;border-radius:50%;background:rgba(46,50,56,.6)!important;color:#fff;font:9px/14px Arial,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}.mxv-audio-trim-button{right:3px;top:3px}.mxv-audio-card .mxv-audio-trim-button{right:40px;top:4px}.mxv-sound{right:2px;top:2px}.mxv-card:hover .mxv-audio-trim-button,.mxv-card:hover .mxv-sound,.mxv-audio-trim-button:focus-visible,.mxv-sound:focus-visible{opacity:1;pointer-events:auto}.mxv-audio-trim-button:hover,.mxv-sound:hover{color:#fff;background:rgba(74,80,88,.72)!important}
-        .mxv-trim-overlay{position:fixed;inset:0;z-index:10200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px Arial,sans-serif}.mxv-trim-dialog{width:min(720px,calc(100vw - 30px));box-sizing:border-box;padding:14px;background:#1b1e23;color:#e8e6e1;border:1px solid #383e46;border-radius:8px;box-shadow:0 18px 50px rgba(0,0,0,.5)}.mxv-trim-title{font-size:13px;margin-bottom:12px}.mxv-trim-wave-wrap{position:relative;width:100%;height:190px;overflow:hidden;border:1px solid #383e46;border-radius:6px;background:#14171b;cursor:crosshair;touch-action:none}.mxv-trim-wave-wrap.mxv-trim-panning{cursor:grabbing}.mxv-trim-wave{display:block;width:100%;height:100%}.mxv-trim-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b3b1ac;background:#14171b}.mxv-trim-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.mxv-trim-time{position:relative;padding:7px 9px;border-radius:5px;background:#1b1e23;color:#b3b1ac}.mxv-trim-time strong{display:block;margin-top:3px;color:#e8e6e1;font-size:13px;font-weight:500}.mxv-trim-sync{position:absolute;right:6px;top:5px;border:1px solid #383e46;border-radius:4px;background:#2e3238;color:#e8e6e1;padding:2px 7px;font:12px/16px Arial,sans-serif;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.04)}.mxv-trim-sync:hover{background:#2e3238;border-color:#e8a33d;color:#e8e6e1}.mxv-trim-controls{display:flex;align-items:center;gap:8px;margin-top:12px}.mxv-trim-preview{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:0;cursor:pointer}.mxv-trim-preview svg{width:12px;height:12px}.mxv-trim-hint{color:#b3b1ac;font-size:10px}.mxv-trim-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.mxv-trim-actions button{border:1px solid #383e46;border-radius:4px;background:#1b1e23;color:#e8e6e1;padding:6px 14px;cursor:pointer}.mxv-trim-actions button:last-child{background:#e8a33d;border-color:#e8a33d;color:#221a0c}.mxv-trim-actions button:disabled,.mxv-trim-preview:disabled{opacity:.45;cursor:not-allowed}
-      .mxv-details{border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
-      .mxv-details>summary{list-style:none;background:#22262c;border-bottom:1px solid transparent;transition:background .12s}
-      .mxv-details>summary::-webkit-details-marker{display:none}
-      .mxv-details>summary:hover{background:#2a2f36}
-      .mxv-details[open]>summary{border-bottom-color:#383e46}
-      .mxv-root>.mxv-size,.mxv-root>.mxv-modes,.mxv-root>.mxv-box,.mxv-root>.mxv-prompt-wrap,.mxv-advanced,.mxv-ai{flex-shrink:0}
-      .mxv-advanced,.mxv-ai{border:1px solid #383e46;border-radius:6px;background:#1b1e23;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
-      .mxv-advanced>summary,.mxv-ai>summary{list-style:none;background:#22262c}
-      .mxv-advanced>summary::-webkit-details-marker,.mxv-ai>summary::-webkit-details-marker{display:none}
-      .mxv-advanced>summary:hover,.mxv-ai>summary:hover{background:#2a2f36}
-      .mxv-advanced:not([open])>.mxv-advanced-body,.mxv-ai:not([open])>.mxv-advanced-body{display:none!important}
-      .mxv-advanced[open]>.mxv-advanced-body,.mxv-ai[open]>.mxv-advanced-body{display:grid}
+      .h3k-header{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:1px 2px 4px}
+      .h3k-modes{display:grid;grid-template-columns:auto auto;gap:2px;padding:3px;border:1px solid #2b3a49;border-radius:14px;margin:0;background:#0f1720;flex:0 0 auto}
+      .h3k-mode{height:24px;padding:0 10px;border:0;border-radius:13px;background:transparent;color:#9fb2c4;font-size:12px;white-space:nowrap;cursor:pointer;transition:background .12s,color .12s}.h3k-mode.active{background:#38d3c6;color:#06302d;font-weight:700;box-shadow:0 1px 6px rgba(56,211,198,.35)}
+      .h3k-box{border:1px solid #2b3a49;border-radius:10px;padding:7px;margin:0;background:#16202a;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}.h3k-title{font-size:12px;color:#e6eff7;margin-bottom:3px}.h3k-hint{font-size:10px;color:#7b90a3;line-height:1.3}
+      .h3k-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}.h3k-drop{frame_ratio-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#9fb2c4;cursor:pointer;border:1px dashed #2b3a49;border-radius:10px;background:#16202a;padding:4px;box-sizing:border-box}.h3k-drop:hover{border-style:solid;border-color:#38d3c6;background:rgba(56,211,198,.08);color:#d9e4ee}.h3k-reference-empty{grid-column:1/-1;width:100%;frame_ratio-ratio:5.2/1;align-items:flex-start;justify-content:center;text-align:left;padding:18px 24px}.h3k-reference-empty .h3k-drop-icon{font-size:14px;margin:0 7px 0 0}.h3k-reference-empty .h3k-drop-title{font-size:12px}.h3k-reference-empty .h3k-drop-subtitle{font-size:9px;margin-top:8px}.h3k-drop-icon{font-size:14px;line-height:1.2;margin:0;color:#38d3c6;font-family:"Segoe UI",system-ui,sans-serif}.h3k-drop-title{font-size:10px;line-height:1.2;color:#cfe0ec}.h3k-drop-title-row{display:flex;align-items:center;justify-content:center;gap:5px;line-height:1.2}.h3k-optional{color:#1f8b83;font-size:.82em;line-height:1.2;position:relative;top:-1px}.h3k-audio-drop .h3k-optional{top:-2px}.h3k-drop-subtitle{font-size:8px;line-height:1.25;color:#7b90a3;margin-top:3px}.h3k-limit{grid-column:1/-1;color:#e8736f;font-size:9px;padding:2px 3px 0;text-align:left}
+      .h3k-keygrid{display:grid;grid-template-columns:1fr 1fr;gap:5px}.h3k-keygrid .h3k-drop{frame_ratio-ratio:16/9}.h3k-keygrid .h3k-drop:not(.h3k-audio-drop) .h3k-drop-subtitle{font-size:7px;color:#6d8194}.h3k-keygrid .h3k-audio-card,.h3k-keygrid .h3k-audio-drop{grid-column:1/-1;width:100%;height:34px;frame_ratio-ratio:auto;margin-top:3px}
+      .h3k-card{min-width:0;frame_ratio-ratio:1;border:1px solid #2b3a49;border-radius:10px;background:#16202a;overflow:hidden;position:relative;cursor:pointer;touch-action:none}.h3k-card.h3k-reorder-source{opacity:.68;cursor:grabbing}.h3k-card.h3k-reorder-target{border-color:#38d3c6;box-shadow:0 0 0 2px rgba(56,211,198,.45) inset}.h3k-reorder-indicator{display:none;position:absolute;left:50%;top:50%;z-index:8;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:rgba(15,23,32,.78);color:#cdf6f2;font:18px/24px "Segoe UI",system-ui,sans-serif;pointer-events:none;box-shadow:0 0 0 1px rgba(56,211,198,.6)}.h3k-card.h3k-reorder-source .h3k-reorder-indicator{display:flex}.h3k-card img,.h3k-card video{display:block;width:100%;height:100%;object-fit:cover;background:#0f1720}.h3k-card:hover img,.h3k-card:hover video{object-fit:contain}.h3k-card-name{position:absolute;left:0;right:0;bottom:0;padding:2px 15px 2px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;background:rgba(15,23,32,.68);font-size:7px;line-height:1.15}.h3k-remove{position:absolute;right:1px;bottom:0;border:0;background:transparent;color:#b9cbd9;cursor:pointer;font-size:11px;z-index:3}.h3k-media-controls{position:absolute;left:3px;right:3px;bottom:12px;z-index:4;height:14px;display:flex;align-items:center;color:rgba(255,255,255,.6);font:8px/1 "Segoe UI",system-ui,sans-serif;pointer-events:none}.h3k-media-toggle{width:14px;height:14px;padding:0;border:0;background:rgba(34,48,61,.6)!important;border-radius:50%;cursor:pointer;opacity:1;display:flex;align-items:center;justify-content:center;pointer-events:auto}.h3k-media-toggle svg{display:block;width:10px;height:10px;overflow:visible}.h3k-media-time{margin-left:auto}.h3k-audio-drop{grid-column:1/-1;width:100%;height:34px;min-height:34px;frame_ratio-ratio:auto;margin-top:0;font-size:9px}.h3k-audio-card{grid-column:1/-1;width:100%;height:34px;frame_ratio-ratio:auto;margin-top:0}.h3k-prompt{display:block;width:100%;height:100%;min-height:0;resize:none;overflow:auto;box-sizing:border-box;border:0;border-radius:10px;background:#16202a;color:#d9e4ee;padding:7px 7px calc(7px + 14 * 1.4em);font:12px/1.4 "Segoe UI",system-ui,sans-serif;outline:none;user-select:text;scrollbar-width:thin;scrollbar-color:#22303d transparent}.h3k-prompt::placeholder{color:#3d5063;opacity:1}.h3k-prompt::-webkit-scrollbar{width:5px}.h3k-prompt::-webkit-scrollbar-track{background:transparent}.h3k-prompt::-webkit-scrollbar-thumb{background:#22303d;border-radius:6px}.h3k-prompt::-webkit-scrollbar-thumb:hover{background:#2b3a49}.h3k-advanced{position:relative;margin:0;box-sizing:border-box;user-select:none;background:#16202a;border:1px solid #2b3a49;border-radius:13px}.h3k-advanced>summary{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:13px;list-style:none;min-height:28px;color:#9fb2c4;font-size:12px}.h3k-advanced>summary::-webkit-details-marker{display:none}.h3k-advanced>summary:before{content:"▸ ";color:#1f8b83}.h3k-advanced[open]>summary:before{content:"▾ "}.h3k-advanced .h3k-advanced-body{background:transparent!important;padding-left:10px;padding-right:10px;border-radius:0 0 8px 8px}.h3k-advanced[open]{background:#16202a;border:1px solid #2b3a49;border-radius:13px}.h3k-size{color:#5ad9cd;font-size:12px;padding:2px 0 4px}
+      .h3k-size{display:flex;align-items:center;gap:7px;min-width:0;color:#5ad9cd;font-size:12px}.h3k-task{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:2px 8px;border:1px solid #2b3a49;border-radius:14px;background:#16202a;font-size:11px}.h3k-dimensions{white-space:nowrap;color:#9fb2c4;font-size:11px}.h3k-advanced-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,220px);align-items:center;gap:8px;min-height:26px}.h3k-advanced-row>label{text-align:left;color:#9fb2c4}.h3k-control{width:220px;justify-self:end;box-sizing:border-box;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:7px;padding:5px}.h3k-number{width:220px;height:30px;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;align-items:stretch;justify-self:end}.h3k-number button{border:1px solid #2b3a49;background:#16202a;color:#d9e4ee;font-size:10px;padding:0;cursor:pointer}.h3k-number button:first-child{border-radius:7px 0 0 4px}.h3k-number button:last-child{border-radius:0 4px 4px 0}.h3k-number input{width:100%;min-width:0;border:1px solid #2b3a49;border-left:0;border-right:0;border-radius:0;background:#16202a;color:#d9e4ee;padding:5px;box-sizing:border-box}.h3k-number input::-webkit-inner-spin-button,.h3k-number input::-webkit-outer-spin-button{appearance:none;margin:0}.h3k-toggle{position:relative;display:inline-flex;width:38px;height:22px;justify-self:end;cursor:pointer}.h3k-toggle input{opacity:0;width:0;height:0}.h3k-toggle span{position:absolute;inset:0;border-radius:13px;background:#22303d;border:1px solid #3d5063;transition:.15s}.h3k-toggle span:before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#b9cbd9;transition:.15s}.h3k-toggle input:checked+span{background:#38d3c6;border-color:#38d3c6}.h3k-toggle input:checked+span:before{transform:translateX(16px);background:#fff}
+      .h3k-drop-title-row .h3k-drop-icon{display:inline-flex;align-items:center;justify-content:center;height:1.2em;font-size:10px;line-height:1;margin:0}
+      .h3k-audio-drop .h3k-drop-icon{font-size:14px;line-height:1;height:1.2em}
+      .h3k-drop-title-row .h3k-optional{position:static;display:inline-flex;align-items:center;height:1.2em;line-height:1.2}
+      .h3k-keygrid .h3k-drop:not(.h3k-audio-drop) .h3k-drop-icon,.h3k-keygrid .h3k-drop:not(.h3k-audio-drop) .h3k-optional{transform:translateY(-1px)}
+       .h3k-prompt-wrap{position:relative;display:grid;grid-template-rows:22px minmax(160px,auto);width:100%;min-height:190px;background:#16202a;border-radius:10px;overflow:hidden;border:1px solid #2b3a49;transition:border-color .12s,box-shadow .12s}
+      .h3k-prompt-wrap.focused{border-color:#38d3c6;box-shadow:0 0 0 1px rgba(56,211,198,.35)}.h3k-prompt-wrap .h3k-prompt{grid-row:2;border-radius:0 0 6px 6px}.h3k-prompt-wrap.external .h3k-prompt{opacity:.42;cursor:not-allowed}.h3k-prompt-tools{grid-row:1;display:flex;align-items:center;justify-content:flex-end;gap:3px;padding:2px 5px;box-sizing:border-box;background:#16202a;z-index:4}.h3k-prompt-elapsed{display:none;margin-right:auto;color:#6d8194;font:9px/17px "Segoe UI",system-ui,sans-serif}.h3k-prompt-elapsed.visible{display:inline-block}.h3k-optimizer-model{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:rgba(123,144,163,.6);font:8px/17px "Segoe UI",system-ui,sans-serif;margin-left:auto;margin-right:17px}.h3k-prompt-tool{height:17px;min-width:17px;padding:0 3px;border:0;border-radius:6px;background:#16202a;color:#6d8194;font:11px/17px "Segoe UI",system-ui,sans-serif;cursor:pointer;opacity:.72;flex:0 0 auto}.h3k-optimize-tool{font-size:13px}.h3k-prompt-tool:hover{color:#9fb2c4;background:#22303d}.h3k-prompt-tool:disabled{opacity:.25;cursor:not-allowed}.h3k-prompt-reset{display:none;font-size:12px;line-height:15px}.h3k-prompt-reset.visible{display:inline-block}.h3k-prompt-loading{color:#38d3c6!important;opacity:1!important;animation:h3k-spin 1.6s linear infinite}@keyframes h3k-spin{to{transform:rotate(360deg)}}.h3k-tool-tip{position:fixed;z-index:10100;padding:4px 7px;border-radius:7px;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;font:10px/1.2 "Segoe UI",system-ui,sans-serif;pointer-events:none;white-space:nowrap}.h3k-opt-check{justify-self:end;width:auto!important}.h3k-opt-language{display:grid;grid-template-columns:1fr 1fr;width:100%;align-items:center}.h3k-opt-language label{display:flex;align-items:center;gap:4px;white-space:nowrap}.h3k-opt-language label:first-child{justify-self:start}.h3k-opt-language label:last-child{justify-self:end}.h3k-opt-language input{width:auto}
+       .h3k-prompt-wrap{grid-template-columns:minmax(0,1fr)}.h3k-prompt-wrap .h3k-prompt-rich{position:relative;grid-row:2;left:0;right:0;top:0;bottom:auto;width:100%;height:auto;min-height:168px;max-height:none;z-index:2;overflow-x:hidden;overflow-y:auto;background:#16202a;color:#d9e4ee;-webkit-text-fill-color:currentColor;caret-color:#d9e4ee;line-height:2.35;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;padding:7px 7px calc(7px + 14 * 1.4em)}.h3k-prompt-rich.h3k-prompt-empty:before{content:attr(data-placeholder);position:absolute;left:7px;right:7px;top:7px;color:#3d5063;white-space:pre-wrap;pointer-events:none}.h3k-prompt-highlight{display:none}.h3k-prompt-rich mark{padding:0;color:#38d3c6;-webkit-text-fill-color:#38d3c6;background:transparent;font:inherit}.h3k-prompt-section{padding:0;color:#2f9c93;-webkit-text-fill-color:#2f9c93;background:transparent;font:inherit}.h3k-prompt-tag{display:inline-block;box-sizing:border-box;padding:1px 5px;margin:0 2px;border-radius:7px;background:#3a3d42;color:#b9cbd9;-webkit-text-fill-color:#b9cbd9;font-size:.86em;line-height:1.35;vertical-align:middle;white-space:nowrap}.h3k-prompt-tag-video{background:#443c4a}.h3k-prompt-tag-picture{background:#3d3a2e}.h3k-prompt-media-token{display:inline-flex;align-items:center;vertical-align:middle;white-space:nowrap}.h3k-prompt-media-preview{position:static;flex:0 0 26px;width:26px;height:26px;margin-left:.5em;margin-right:4px;box-sizing:border-box;border:1px solid rgba(56,211,198,.7);border-radius:7px;background:#1d2a36;object-fit:cover;color:#5ad9cd;display:inline-flex;align-items:center;justify-content:center;font:14px/26px "Segoe UI",system-ui,sans-serif;overflow:hidden;vertical-align:middle;user-select:none}.h3k-prompt-media-preview.h3k-prompt-audio-preview{border-radius:50%}.h3k-prompt-media-preview.h3k-prompt-audio-preview:before{content:"♫";font-size:13px}.h3k-prompt-wrap.external .h3k-prompt-rich{opacity:.42}
+        .h3k-opt-overlay{position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px "Segoe UI",system-ui,sans-serif}.h3k-opt-dialog{width:min(470px,calc(100vw - 30px));background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:13px;box-shadow:0 18px 50px rgba(0,0,0,.5);padding:14px}.h3k-opt-title{font-size:12px;margin-bottom:12px;white-space:nowrap}.h3k-opt-row{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;gap:8px;min-height:38px;margin:0}.h3k-opt-row>span{white-space:nowrap}.h3k-opt-row input,.h3k-opt-row select{width:100%;box-sizing:border-box;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:7px;padding:6px;font:inherit}.h3k-opt-hidden{display:none!important}.h3k-opt-model-row{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0}.h3k-opt-model-native{display:none}.h3k-opt-model-picker{width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:7px;padding:6px 24px 6px 7px;cursor:pointer;position:relative;font:inherit}.h3k-opt-model-picker:after{content:"⌄";position:absolute;right:7px}.h3k-opt-model-menu{display:none;position:absolute;left:0;top:calc(100% + 4px);z-index:10070;box-sizing:border-box;width:max-content;min-width:100%;max-width:calc(100vw - 30px);padding:5px;background:#16202a;border:1px solid #2b3a49;border-radius:7px;box-shadow:0 8px 22px rgba(0,0,0,.45)}.h3k-opt-model-menu.open{display:block}.h3k-opt-model-search{display:block;width:100%;min-width:100%;margin-bottom:5px;font:inherit}.h3k-opt-model-results{max-height:285px;overflow:auto}.h3k-opt-model-option{display:block;width:max-content;min-width:100%;border:0;background:transparent;color:#d9e4ee;text-align:left;padding:6px;border-radius:6px;white-space:nowrap;cursor:pointer;font:inherit}.h3k-opt-model-option:hover,.h3k-opt-model-option.selected{background:#22303d}.h3k-opt-model-empty{padding:7px;color:#9fb2c4;font-size:12px}.h3k-opt-refresh{display:flex;align-items:center;justify-content:center;width:30px;height:30px;margin:0;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:7px;padding:0;cursor:pointer;font-size:16px;line-height:1;white-space:nowrap;transition:background .12s,color .12s,border-color .12s}.h3k-opt-refresh:hover{background:#22303d;border-color:#38d3c6;color:#d9e4ee}.h3k-opt-refresh:active{background:#38d3c6;border-color:#38d3c6;color:#06302d}.h3k-opt-refresh.loading{background:#38d3c6;border-color:#38d3c6;color:#06302d;cursor:wait}.h3k-opt-refresh.loading svg{animation:h3k-spin 1.2s linear infinite}.h3k-opt-refresh:disabled{opacity:.85}.h3k-opt-dependencies{margin:6px 0;color:#d98d97;font-size:12px;line-height:1.35}.h3k-opt-checks{margin:0}.h3k-opt-actions{display:flex;justify-content:flex-end;gap:7px;margin-top:28px}.h3k-opt-actions button{border:1px solid #2b3a49;border-radius:7px;background:#16202a;color:#d9e4ee;padding:5px 12px;cursor:pointer}.h3k-opt-actions button:last-child{background:#38d3c6;border-color:#38d3c6;color:#06302d}.h3k-opt-custom{display:none}.h3k-opt-dialog.custom .h3k-opt-custom{display:grid}
+        .h3k-audio-trim-button,.h3k-sound{position:absolute;z-index:6;width:14px;height:14px;padding:0;border:0;border-radius:50%;background:rgba(34,48,61,.6)!important;color:#fff;font:9px/14px "Segoe UI",system-ui,sans-serif;cursor:pointer;opacity:0;pointer-events:none;transition:opacity .12s ease}.h3k-audio-trim-button{right:3px;top:3px}.h3k-audio-card .h3k-audio-trim-button{right:40px;top:4px}.h3k-sound{right:2px;top:2px}.h3k-card:hover .h3k-audio-trim-button,.h3k-card:hover .h3k-sound,.h3k-audio-trim-button:focus-visible,.h3k-sound:focus-visible{opacity:1;pointer-events:auto}.h3k-audio-trim-button:hover,.h3k-sound:hover{color:#fff;background:rgba(61,80,99,.72)!important}
+        .h3k-trim-overlay{position:fixed;inset:0;z-index:10200;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.58);font:12px "Segoe UI",system-ui,sans-serif}.h3k-trim-dialog{width:min(720px,calc(100vw - 30px));box-sizing:border-box;padding:14px;background:#16202a;color:#d9e4ee;border:1px solid #2b3a49;border-radius:13px;box-shadow:0 18px 50px rgba(0,0,0,.5)}.h3k-trim-title{font-size:13px;margin-bottom:12px}.h3k-trim-wave-wrap{position:relative;width:100%;height:190px;overflow:hidden;border:1px solid #2b3a49;border-radius:10px;background:#0f1720;cursor:crosshair;touch-action:none}.h3k-trim-wave-wrap.h3k-trim-panning{cursor:grabbing}.h3k-trim-wave{display:block;width:100%;height:100%}.h3k-trim-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9fb2c4;background:#0f1720}.h3k-trim-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px}.h3k-trim-time{position:relative;padding:7px 9px;border-radius:7px;background:#16202a;color:#9fb2c4}.h3k-trim-time strong{display:block;margin-top:3px;color:#d9e4ee;font-size:13px;font-weight:500}.h3k-trim-sync{position:absolute;right:6px;top:5px;border:1px solid #2b3a49;border-radius:7px;background:#22303d;color:#d9e4ee;padding:2px 7px;font:12px/16px "Segoe UI",system-ui,sans-serif;cursor:pointer;box-shadow:inset 0 1px rgba(255,255,255,.04)}.h3k-trim-sync:hover{background:#22303d;border-color:#38d3c6;color:#d9e4ee}.h3k-trim-controls{display:flex;align-items:center;gap:8px;margin-top:12px}.h3k-trim-preview{display:flex;align-items:center;justify-content:center;width:30px;height:28px;border:1px solid #2b3a49;border-radius:7px;background:#16202a;color:#d9e4ee;padding:0;cursor:pointer}.h3k-trim-preview svg{width:12px;height:12px}.h3k-trim-hint{color:#9fb2c4;font-size:10px}.h3k-trim-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}.h3k-trim-actions button{border:1px solid #2b3a49;border-radius:7px;background:#16202a;color:#d9e4ee;padding:6px 14px;cursor:pointer}.h3k-trim-actions button:last-child{background:#38d3c6;border-color:#38d3c6;color:#06302d}.h3k-trim-actions button:disabled,.h3k-trim-preview:disabled{opacity:.45;cursor:not-allowed}
+      .h3k-details{border:1px solid #2b3a49;border-radius:10px;background:#16202a;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+      .h3k-details>summary{list-style:none;background:#1d2a36;border-bottom:1px solid transparent;transition:background .12s}
+      .h3k-details>summary::-webkit-details-marker{display:none}
+      .h3k-details>summary:hover{background:#26374a}
+      .h3k-details[open]>summary{border-bottom-color:#2b3a49}
+      .h3k-root>.h3k-header,.h3k-root>.h3k-box,.h3k-root>.h3k-prompt-wrap,.h3k-advanced,.h3k-ai{flex-shrink:0}
+      .h3k-advanced,.h3k-ai{border:1px solid #2b3a49;border-radius:10px;background:#16202a;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.035)}
+      .h3k-advanced>summary,.h3k-ai>summary{list-style:none;background:#1d2a36}
+      .h3k-advanced>summary::-webkit-details-marker,.h3k-ai>summary::-webkit-details-marker{display:none}
+      .h3k-advanced>summary:hover,.h3k-ai>summary:hover{background:#26374a}
+      .h3k-advanced:not([open])>.h3k-advanced-body,.h3k-ai:not([open])>.h3k-advanced-body{display:none!important}
+      .h3k-advanced[open]>.h3k-advanced-body,.h3k-ai[open]>.h3k-advanced-body{display:grid}
 
-      .mxv-advanced[open]>summary,.mxv-ai[open]>summary{border-bottom:1px solid #383e46}
-      .mxv-advanced>summary:before,.mxv-ai>summary:before{content:"";position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #e8a33d;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
-      .mxv-advanced[open]>summary:before,.mxv-ai[open]>summary:before{transform:translateY(-50%) rotate(90deg)}
+      .h3k-advanced[open]>summary,.h3k-ai[open]>summary{border-bottom:1px solid #2b3a49}
+      .h3k-advanced>summary:before,.h3k-ai>summary:before{content:"";position:absolute;left:11px;top:50%;width:0;height:0;border-left:5px solid #38d3c6;border-top:4px solid transparent;border-bottom:4px solid transparent;transform:translateY(-50%);transition:transform .12s}
+      .h3k-advanced[open]>summary:before,.h3k-ai[open]>summary:before{transform:translateY(-50%) rotate(90deg)}
     `;
     // Shared control states also apply to dialogs mounted outside the panel.
     style.textContent += `
-      .mxv-control,.mxv-number input,.mxv-opt-dialog,.mxv-trim-dialog{color-scheme:dark;font-family:Arial,sans-serif;font-size:12px}
-      .mxv-opt-dialog{box-sizing:border-box;max-height:calc(100vh - 24px);overflow-y:auto}
-      .mxv-opt-row>span{color:#b3b1ac}
-      .mxv-opt-title,.mxv-trim-title{font-size:12px;color:#e8e6e1}
-      .mxv-opt-actions,.mxv-trim-actions{gap:8px;margin-top:14px}
-      .mxv-opt-actions button,.mxv-trim-actions button{min-height:30px;padding:5px 12px;font:12px Arial,sans-serif}
-      .mxv-opt-actions button:last-child,.mxv-trim-actions button:last-child{font-weight:600}
-      .mxv-opt-row input[type=checkbox],.mxv-opt-row input[type=radio]{accent-color:#e8a33d}
-      .mxv-control:focus-visible,.mxv-number input:focus-visible,.mxv-opt-dialog input:focus-visible,.mxv-opt-dialog select:focus-visible,.mxv-opt-dialog button:focus-visible,.mxv-trim-dialog button:focus-visible{outline:2px solid #e8a33d;outline-offset:2px}
-      .mxv-toggle input:focus-visible+span{outline:2px solid #e8a33d;outline-offset:2px}
-      .mxv-opt-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-actions button:not(:last-child):hover:not(:disabled),.mxv-trim-preview:hover:not(:disabled){background:#2e3238;border-color:#e8a33d}
-      .mxv-opt-model-results{scrollbar-width:thin;scrollbar-color:#2e3238 transparent}
-      .mxv-opt-section{font-size:10px;color:#8c8983;margin:10px 0 2px;padding-top:8px;border-top:1px dashed #2e3238}
-      .mxv-opt-section:first-child{margin-top:0;border-top:0;padding-top:0}
-      .mxv-opt-section-body{display:flex;flex-direction:column}
-      .mxv-opt-section-body>.mxv-opt-purpose{margin:2px 0 6px}
-      .mxv-opt-gen-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-top:6px}
-      .mxv-opt-gen-item{display:flex;align-items:center;gap:7px;min-height:28px;color:#b3b1ac;font-size:11px;white-space:nowrap;cursor:pointer}
-      .mxv-opt-gen-item input{width:auto;flex:0 0 auto;accent-color:#e8a33d}
-      .mxv-opt-actions{flex-wrap:wrap}.mxv-opt-row textarea{width:100%;box-sizing:border-box;min-height:60px;background:#1b1e23;color:#e8e6e1}
-      button.mxv-prompt-elapsed{border:0;background:transparent;padding:0;cursor:pointer}button.mxv-prompt-elapsed:hover{color:#e8a33d}
-      @media(max-width:480px){.mxv-opt-gen-grid{grid-template-columns:1fr}.mxv-opt-row{grid-template-columns:110px minmax(0,1fr)}}
+      .h3k-control,.h3k-number input,.h3k-opt-dialog,.h3k-trim-dialog{color-scheme:dark;font-family:"Segoe UI",system-ui,sans-serif;font-size:12px}
+      .h3k-opt-dialog{box-sizing:border-box;max-height:calc(100vh - 24px);overflow-y:auto}
+      .h3k-opt-row>span{color:#9fb2c4}
+      .h3k-opt-title,.h3k-trim-title{font-size:12px;color:#d9e4ee}
+      .h3k-opt-actions,.h3k-trim-actions{gap:8px;margin-top:14px}
+      .h3k-opt-actions button,.h3k-trim-actions button{min-height:30px;padding:5px 12px;font:12px "Segoe UI",system-ui,sans-serif}
+      .h3k-opt-actions button:last-child,.h3k-trim-actions button:last-child{font-weight:600}
+      .h3k-opt-row input[type=checkbox],.h3k-opt-row input[type=radio]{accent-color:#38d3c6}
+      .h3k-control:focus-visible,.h3k-number input:focus-visible,.h3k-opt-dialog input:focus-visible,.h3k-opt-dialog select:focus-visible,.h3k-opt-dialog button:focus-visible,.h3k-trim-dialog button:focus-visible{outline:2px solid #38d3c6;outline-offset:2px}
+      .h3k-toggle input:focus-visible+span{outline:2px solid #38d3c6;outline-offset:2px}
+      .h3k-opt-actions button:not(:last-child):hover:not(:disabled),.h3k-trim-actions button:not(:last-child):hover:not(:disabled),.h3k-trim-preview:hover:not(:disabled){background:#22303d;border-color:#38d3c6}
+      .h3k-opt-model-results{scrollbar-width:thin;scrollbar-color:#22303d transparent}
+      .h3k-opt-section{font-size:10px;color:#7b90a3;margin:10px 0 2px;padding-top:8px;border-top:1px dashed #22303d}
+      .h3k-opt-section:first-child{margin-top:0;border-top:0;padding-top:0}
+      .h3k-opt-section-body{display:flex;flex-direction:column}
+      .h3k-opt-section-body>.h3k-opt-purpose{margin:2px 0 6px}
+      .h3k-opt-gen-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;margin-top:6px}
+      .h3k-opt-gen-item{display:flex;align-items:center;gap:7px;min-height:28px;color:#9fb2c4;font-size:11px;white-space:nowrap;cursor:pointer}
+      .h3k-opt-gen-item input{width:auto;flex:0 0 auto;accent-color:#38d3c6}
+      .h3k-opt-actions{flex-wrap:wrap}.h3k-opt-row textarea{width:100%;box-sizing:border-box;min-height:60px;background:#16202a;color:#d9e4ee}
+      button.h3k-prompt-elapsed{border:0;background:transparent;padding:0;cursor:pointer}button.h3k-prompt-elapsed:hover{color:#38d3c6}
+      @media(max-width:480px){.h3k-opt-gen-grid{grid-template-columns:1fr}.h3k-opt-row{grid-template-columns:110px minmax(0,1fr)}}
     `;
     root.appendChild(style);
-    const size = make("div"); size.className = "mxv-size";
-    const taskStatus = make("span", {}, t("T2VA · Text-to-video")); taskStatus.className = "mxv-task";
-    const dimensions = make("span", {}, canvas(widget(node, "aspect")?.value, widget(node, "megapixels")?.value)); dimensions.className = "mxv-dimensions";
+    /* 顶部条：左侧任务/分辨率徽标，右侧模式切换。
+       这里把原来的「尺寸行 + 模式行」两行合并成一条，面板从此是
+       「顶部条 → 素材卡 → 提示词 → 更多设置」四层，与上游的
+       「尺寸 → 模式 → 高级 → 素材 → 提示词」顺序明显不同。 */
+    const header = make("div"); header.className = "h3k-header";
+    const size = make("div"); size.className = "h3k-size";
+    const taskStatus = make("span", {}, t("T2VA · Text-driven")); taskStatus.className = "h3k-task";
+    const dimensions = make("span", {}, canvas(widget(node, "frame_ratio")?.value, widget(node, "pixel_budget")?.value)); dimensions.className = "h3k-dimensions";
     size.append(taskStatus, dimensions);
-    const modes = make("div"); modes.className = "mxv-modes";
-    const modeText = make("button", {}, t("First/last frames / Text-to-video")); modeText.className = "mxv-mode";
-    const modeRef = make("button", {}, t("All-purpose reference")); modeRef.className = "mxv-mode"; modes.append(modeText, modeRef);
-    root.append(size, modes);
+    const modes = make("div"); modes.className = "h3k-modes";
+    const modeText = make("button", {}, t("Keyframe mode")); modeText.className = "h3k-mode";
+    const modeRef = make("button", {}, t("Omni-reference mode")); modeRef.className = "h3k-mode"; modes.append(modeText, modeRef);
+    header.append(size, modes);
+    root.append(header);
 
     let layoutLock = false;
     let userHeight = INITIAL_NODE_HEIGHT;
     let restoringState = true;
     let restoreEpoch = 0;
-    const stateKey = "mxv_state";
+    const stateKey = "h3k_state";
+    // 面板状态键改过名（初版沿用上游键名，第二轮改成 mxv_state）。老工作流里
+    // 还留着旧键，读一次做迁移，否则模式记忆/声音来源记忆会静默丢失。
+    const LEGACY_STATE_KEYS = ["mxv_state", "ghh3_state"];
     const savedState = (() => {
-        try { return JSON.parse(node.properties?.[stateKey] || "{}"); } catch { return {}; }
+        for (const key of [stateKey, ...LEGACY_STATE_KEYS]) {
+            const raw = node.properties?.[key];
+            if (!raw) continue;
+            try { return JSON.parse(raw); } catch { /* 该键损坏，继续找下一个 */ }
+        }
+        return {};
     })();
     node.properties = node.properties || {};
-    const stateWidget = widget(node, "gh_state_json");
+    const stateWidget = widget(node, "panel_state");
     if (stateWidget?.value) {
         try { Object.assign(savedState, JSON.parse(stateWidget.value)); } catch {}
     }
@@ -622,12 +680,24 @@ function createPanel(node) {
         };
     /* 凭据不进工作流 JSON（明文会随分享/上传分发）：per-provider 钥匙串只存
        本机 localStorage，工作流内仅保留 has_api_key 布尔供 UI 提示。 */
-    const KEYCHAIN_STORAGE_KEY = "mxv_h3_keychain";
+    const KEYCHAIN_STORAGE_KEY = "h3k_keychain";
+    const LEGACY_KEYCHAIN_KEYS = ["mxv_h3_keychain", "ghh3_h3_keychain"];
     const readStoredKeychain = () => {
-        try { return JSON.parse(localStorage.getItem(KEYCHAIN_STORAGE_KEY) || "{}"); } catch { return {}; }
+        // 旧键合并进来（新键优先），并顺手清掉它们，避免两份副本长期并存。
+        const merged = {};
+        for (const key of [...LEGACY_KEYCHAIN_KEYS, KEYCHAIN_STORAGE_KEY]) {
+            let parsed = {};
+            try { parsed = JSON.parse(localStorage.getItem(key) || "{}"); } catch { parsed = {}; }
+            for (const [provider, value] of Object.entries(parsed || {})) {
+                if (String(value || "").trim()) merged[provider] = value;
+            }
+        }
+        for (const key of LEGACY_KEYCHAIN_KEYS) { try { localStorage.removeItem(key); } catch {} }
+        return merged;
     };
     const writeStoredKeychain = keys => {
         try { localStorage.setItem(KEYCHAIN_STORAGE_KEY, JSON.stringify(keys || {})); } catch {}
+        for (const key of LEGACY_KEYCHAIN_KEYS) { try { localStorage.removeItem(key); } catch {} }
     };
     const sanitizeOptimizerForWorkflow = settings => {
         if (!settings || typeof settings !== "object") return settings;
@@ -676,7 +746,7 @@ function createPanel(node) {
         node.properties[stateKey] = value;
         if (stateWidget) stateWidget.value = value;
     };
-    const domWidget = node.addDOMWidget("mxv_panel", "mxv_panel", root, { serialize: false, hideOnZoom: false });
+    const domWidget = node.addDOMWidget("h3k_panel", "h3k_panel", root, { serialize: false, hideOnZoom: false });
     domWidget.options = domWidget.options || {}; domWidget.options.serialize = false;
     domWidget.options.getMinHeight = () => MIN_NODE_HEIGHT;
     domWidget.options.getHeight = () => "100%";
@@ -687,20 +757,20 @@ function createPanel(node) {
         measured[0] = WIDTH;
         return measured;
     };
-    const promptWidget = widget(node, "prompt"); hideWidget(widget(node, "main_mode")); hideWidget(promptWidget);
+    const promptWidget = widget(node, "prompt"); hideWidget(widget(node, "panel_mode")); hideWidget(promptWidget);
     for (const name of [
-        ...mediaSlots, "task_type", "audio_mode", "audio_denoise_strength",
-        "drive_audio_ordinal",
-        "ref_image_size", "strict_prompt_tags", "gh_state_json",
-        "no_subtitle", "soundscape", "music",
+        ...mediaSlots, "task_hint", "audio_source", "audio_cleanup",
+        "driving_track",
+        "asset_scale", "tag_guard", "panel_state",
+        "subtitle_free", "soundscape", "music",
         ...AI_GROUP_WIDGETS,
-        // 采样参数组（单节点整合新增）：在「高级选项」卡片内提供等价控件，原生 widget 一并隐藏
-        "steps", "shift_video", "shift_audio", "sampler_name", "scheduler", "noise_seed",
+        // 采样参数组（单节点整合新增）：在「更多设置」卡片内提供等价控件，原生 widget 一并隐藏
+        "sample_steps", "video_sigma_shift", "audio_sigma_shift", "sampler_id", "scheduler_id", "seed_value",
     ]) hideWidget(widget(node, name));
     // Old graphs may contain the literal string "(none)" in this hidden Int
     // input. Clean it before ComfyUI serializes/submits the prompt.
     sanitizeHiddenInputs(node);
-    const prompt = make("div"); prompt.className = "mxv-prompt mxv-prompt-rich"; prompt.contentEditable = "true"; prompt.spellcheck = false;
+    const prompt = make("div"); prompt.className = "h3k-prompt h3k-prompt-rich"; prompt.contentEditable = "true"; prompt.spellcheck = false;
     prompt.tabIndex = 0;
     prompt.setAttribute("role", "textbox");
     prompt.setAttribute("aria-multiline", "true");
@@ -715,15 +785,17 @@ function createPanel(node) {
         text_keyframes: { undo: [], redo: [] },
         all_reference: { undo: [], redo: [] },
     };
-    const ignoredPromptNode = node => node?.classList?.contains("mxv-prompt-media-preview") || node?.classList?.contains("mxv-prompt-caret-sentinel");
-    const domText = node => {
+    const ignoredPromptNode = node => PROMPT_IGNORED_CLASSES.some(cls => node?.classList?.contains(cls));
+    /* 把富文本编辑器摊平成纯文本：缩略图与光标哨兵不计入，BR 记作换行。 */
+    function domText(node) {
         if (!node) return "";
         if (node.nodeType === Node.TEXT_NODE) return node.data;
-        if (node.nodeType !== Node.ELEMENT_NODE) return "";
-        if (ignoredPromptNode(node)) return "";
+        if (node.nodeType !== Node.ELEMENT_NODE || ignoredPromptNode(node)) return "";
         if (node.tagName === "BR") return "\n";
-        return [...node.childNodes].map(domText).join("");
-    };
+        let flattened = "";
+        for (const child of node.childNodes) flattened += domText(child);
+        return flattened;
+    }
     const editorText = () => {
         const value = domText(prompt).replace(/\r/g, "");
         // Chromium may retain a lone BR after deleting all content. It is an
@@ -853,7 +925,7 @@ function createPanel(node) {
     prompt.placeholder = t("Prompt:\nClick an uploaded asset to insert its tag, e.g. <picture 1>, <video 1>, or <audio 2>;\nDouble-click a video to insert its audio tag; mute a video at the top-right to exclude its audio from references");
     const legacyPrompt = cleanPrompt(savedState.prompt) || prompt.value;
     const savedPrompts = savedState.prompts && typeof savedState.prompts === "object" ? savedState.prompts : null;
-    const savedMode = savedState.mode || widget(node, "main_mode")?.value || "text_keyframes";
+    const savedMode = savedState.mode || widget(node, "panel_mode")?.value || "text_keyframes";
     const promptByMode = {
         text_keyframes: savedPrompts && hasOwn(savedPrompts, "text_keyframes")
             ? cleanPrompt(savedPrompts.text_keyframes)
@@ -863,7 +935,7 @@ function createPanel(node) {
             : (savedMode === "all_reference" ? legacyPrompt : ""),
     };
     let optimizing = false;
-    let aiGenerating = false;
+    let aiDrafting = false;
     let activePromptOperation = null;
     let promptRevision = 0;
     let panelRemoved = false;
@@ -874,21 +946,21 @@ function createPanel(node) {
     let optimizerAbort = null;
     let optimizerTimer = null;
     let optimizerCompleteAudio = null;
-    const promptWrap = make("div"); promptWrap.className = "mxv-prompt-wrap";
-    const promptHighlight = make("div"); promptHighlight.className = "mxv-prompt-highlight";
-    const promptHighlightContent = make("div"); promptHighlightContent.className = "mxv-prompt-highlight-content"; promptHighlight.append(promptHighlightContent);
+    const promptWrap = make("div"); promptWrap.className = "h3k-prompt-wrap";
+    const promptHighlight = make("div"); promptHighlight.className = "h3k-prompt-highlight";
+    const promptHighlightContent = make("div"); promptHighlightContent.className = "h3k-prompt-highlight-content"; promptHighlight.append(promptHighlightContent);
     const promptVideoThumbnailCache = new Map();
     let resolvePromptMedia = () => null;
-    const promptTools = make("div"); promptTools.className = "mxv-prompt-tools";
-    const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "mxv-prompt-tool mxv-prompt-reset";
-    const elapsedPrompt = make("button"); elapsedPrompt.type = "button"; elapsedPrompt.className = "mxv-prompt-elapsed";
-    elapsedPrompt.title = t("Cancel processing");
+    const promptTools = make("div"); promptTools.className = "h3k-prompt-tools";
+    const resetPrompt = make("button", {}, "↻"); resetPrompt.className = "h3k-prompt-tool h3k-prompt-reset";
+    const elapsedPrompt = make("button"); elapsedPrompt.type = "button"; elapsedPrompt.className = "h3k-prompt-elapsed";
+    elapsedPrompt.title = t("Abort");
     elapsedPrompt.onclick = () => cancelPromptOperation();
-    const optimizerModelName = make("span"); optimizerModelName.className = "mxv-optimizer-model";
-    const polishPrompt = make("button", {}, "✦"); polishPrompt.className = "mxv-prompt-tool mxv-optimize-tool";
-    const aiFormatPrompt = make("button", {}, "≡"); aiFormatPrompt.className = "mxv-prompt-tool";
-    const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "mxv-prompt-tool mxv-optimize-tool";
-    const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "mxv-prompt-tool";
+    const optimizerModelName = make("span"); optimizerModelName.className = "h3k-optimizer-model";
+    const polishPrompt = make("button", {}, "✦"); polishPrompt.className = "h3k-prompt-tool h3k-optimize-tool";
+    const aiFormatPrompt = make("button", {}, "≡"); aiFormatPrompt.className = "h3k-prompt-tool";
+    const aiGeneratePrompt = make("button", {}, "✨"); aiGeneratePrompt.className = "h3k-prompt-tool h3k-optimize-tool";
+    const optimizerGear = make("button", {}, "⚙"); optimizerGear.className = "h3k-prompt-tool";
     // 动作全部一键直出（2026-09-26）：✦ 润色（优化模型改写表达，可读素材画面）、
     // ≡ 离线整理、✨ AI 生成；⚙ 只负责配置，界面内不再放动作按钮。
     promptTools.append(elapsedPrompt, optimizerModelName, resetPrompt, polishPrompt, aiFormatPrompt, aiGeneratePrompt, optimizerGear); promptWrap.append(promptTools, promptHighlight, prompt);
@@ -996,7 +1068,7 @@ function createPanel(node) {
     };
     const renderPromptHighlights = () => {
         const source = String(prompt.value || "");
-        const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
+        const keepFocus = document.activeElement === prompt || prompt.dataset.h3kEditing === "1";
         const restoreSelection = keepFocus ? selectionOffsets() : null;
         prompt.replaceChildren();
         const appendPlain = text => {
@@ -1016,27 +1088,27 @@ function createPanel(node) {
                 continue;
             }
             if (decoration.kind === "section") {
-                const section = make("span"); section.className = "mxv-prompt-section"; section.textContent = decoration.raw;
+                const section = make("span"); section.className = "h3k-prompt-section"; section.textContent = decoration.raw;
                 prompt.append(section);
                 cursor = decoration.end;
                 continue;
             }
             if (decoration.kind === "tag") {
-                const tag = make("span"); tag.className = "mxv-prompt-tag"; tag.textContent = decoration.raw;
+                const tag = make("span"); tag.className = "h3k-prompt-tag"; tag.textContent = decoration.raw;
                 prompt.append(tag);
                 cursor = decoration.end;
                 continue;
             }
             const { type, ordinal } = decoration;
-            const token = make("span"); token.className = "mxv-prompt-media-token";
+            const token = make("span"); token.className = "h3k-prompt-media-token";
             const mediaEntry = resolvePromptMedia(type, ordinal);
-            token.dataset.mxvMediaSignature = `${type}:${ordinal}:${mediaEntry?.name || ""}`;
+            token.dataset.h3kMediaSignature = `${type}:${ordinal}:${mediaEntry?.name || ""}`;
             if (mediaEntry) {
                 let preview;
                 if (type === "audio") {
-                    preview = make("span"); preview.className = "mxv-prompt-media-preview mxv-prompt-audio-preview";
+                    preview = make("span"); preview.className = "h3k-prompt-media-preview h3k-prompt-audio-preview";
                 } else {
-                    preview = make("img"); preview.className = "mxv-prompt-media-preview";
+                    preview = make("img"); preview.className = "h3k-prompt-media-preview";
                     if (type === "video") {
                         const thumbnail = requestPromptVideoThumbnail(mediaEntry?.name);
                         if (thumbnail) preview.src = thumbnail;
@@ -1046,7 +1118,7 @@ function createPanel(node) {
                 token.appendChild(preview);
             }
             const tag = make("span");
-            tag.className = `mxv-prompt-tag mxv-prompt-tag-${type}`;
+            tag.className = `h3k-prompt-tag h3k-prompt-tag-${type}`;
             tag.textContent = decoration.raw;
             token.appendChild(tag);
             prompt.appendChild(token);
@@ -1059,11 +1131,11 @@ function createPanel(node) {
         // caret a stable empty line without becoming part of the prompt text.
         if (source.endsWith("\n")) {
             const sentinel = document.createElement("br");
-            sentinel.className = "mxv-prompt-caret-sentinel";
+            sentinel.className = "h3k-prompt-caret-sentinel";
             sentinel.setAttribute("aria-hidden", "true");
             prompt.appendChild(sentinel);
         }
-        prompt.classList.toggle("mxv-prompt-empty", !source);
+        prompt.classList.toggle("h3k-prompt-empty", !source);
         if (restoreSelection) {
             if (document.activeElement !== prompt) prompt.focus({ preventScroll: true });
             setEditorSelection(restoreSelection[0], restoreSelection[1]);
@@ -1074,20 +1146,20 @@ function createPanel(node) {
             const entry = resolvePromptMedia(item.type, item.ordinal);
             return { raw: item.raw, signature: `${item.type}:${item.ordinal}:${entry?.name || ""}` };
         });
-        const renderedMedia = [...prompt.querySelectorAll(".mxv-prompt-media-token")].map(item => ({
+        const renderedMedia = [...prompt.querySelectorAll(".h3k-prompt-media-token")].map(item => ({
             raw: domText(item),
-            signature: item.dataset.mxvMediaSignature || "",
+            signature: item.dataset.h3kMediaSignature || "",
         }));
         if (expectedMedia.length !== renderedMedia.length || expectedMedia.some((item, index) =>
             item.raw !== renderedMedia[index]?.raw || item.signature !== renderedMedia[index]?.signature
         )) return true;
         const expectedTags = promptTagMatches(source).map(item => item.raw);
-        const renderedTags = [...prompt.querySelectorAll(".mxv-prompt-tag")]
-            .filter(item => !item.closest(".mxv-prompt-media-token"))
+        const renderedTags = [...prompt.querySelectorAll(".h3k-prompt-tag")]
+            .filter(item => !item.closest(".h3k-prompt-media-token"))
             .map(item => domText(item));
         if (expectedTags.length !== renderedTags.length || expectedTags.some((item, index) => item !== renderedTags[index])) return true;
         const expectedSections = [...source.matchAll(/^(?:subject_definitions|integrated_multimodal_description|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music)\s*[:：]/gim)].map(item => item[0]);
-        const renderedSections = [...prompt.querySelectorAll(".mxv-prompt-section")].map(item => domText(item));
+        const renderedSections = [...prompt.querySelectorAll(".h3k-prompt-section")].map(item => domText(item));
         if (expectedSections.length !== renderedSections.length || expectedSections.some((item, index) => item !== renderedSections[index])) return true;
         const expectedDialogue = [...source.matchAll(/<d>\s*\[[^\]\r\n]+\]([\s\S]*?)<\/d>/gi)].map(item => item[1] || "");
         const renderedDialogue = [...prompt.querySelectorAll("mark")].map(item => domText(item));
@@ -1104,14 +1176,14 @@ function createPanel(node) {
        auto_optimize），其 provider/model 仍是 /config 的 RunningHub 默认值——继续
        读它会让工具栏徽标显示并未使用的模型，参考视频帧也会误走 RunningHub 分支被静默丢弃。 */
     /* 非字符串的 widget 值只可能来自加载时的位置串位（ComfyUI 会把 forceInput 输入
-       `prompt_override` 算进 widgets_values 位置；串位时尾部整段偏移，实测 ai_model
-       会拿到 ai_timeout 的数值），一律按未设置处理：既避免 String 方法抛错，
+       `upstream_prompt` 算进 widgets_values 位置；串位时尾部整段偏移，实测 ai_model_name
+       会拿到 ai_deadline 的数值），一律按未设置处理：既避免 String 方法抛错，
        也避免把数值当成模型名发给上游。 */
     const polishText = value => (typeof value === "string" ? cleanPrompt(value) : "");
-    const polishProviderValue = () => (polishText(widget(node, "ai_provider")?.value) || "deepseek").toLowerCase();
-    const polishModelValue = () => polishText(widget(node, "ai_model")?.value);
-    const polishEndpointValue = () => polishText(widget(node, "ai_endpoint")?.value);
-    const polishOutputLanguageValue = () => (polishText(widget(node, "ai_language")?.value) || "zh") === "zh" ? "中文" : "English";
+    const polishProviderValue = () => (polishText(widget(node, "ai_platform")?.value) || "deepseek").toLowerCase();
+    const polishModelValue = () => polishText(widget(node, "ai_model_name")?.value);
+    const polishEndpointValue = () => polishText(widget(node, "ai_base_url")?.value);
+    const polishOutputLanguageValue = () => (polishText(widget(node, "ai_locale")?.value) || "zh") === "zh" ? "中文" : "English";
     const configuredOptimizerName = () => {
         // 展示实际参与润色的生成模型（真源同上）：未填模型时只显示平台名。
         const rawName = polishModelValue().split("/").pop();
@@ -1140,10 +1212,10 @@ function createPanel(node) {
     let wheelBoundaryDirection = 0;
     let wheelBoundaryUntil = 0;
     let wheelBoundaryReleased = false;
-    const advanced = make("details"); advanced.className = "mxv-advanced";
-    const advancedSummary = make("summary", { cursor: "pointer", color: "#b3b1ac", padding: "7px 26px 8px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("Advanced options"));
+    const advanced = make("details"); advanced.className = "h3k-advanced";
+    const advancedSummary = make("summary", { cursor: "pointer", color: "#9fb2c4", padding: "7px 26px 8px 30px", minHeight: "20px", lineHeight: "20px", boxSizing: "border-box", position: "relative" }, t("More settings"));
     advanced.appendChild(advancedSummary);
-    const advancedBody = make("div", { display: "grid", gap: "5px", padding: "5px 16px 4px" }); advancedBody.className = "mxv-advanced-body";
+    const advancedBody = make("div", { display: "grid", gap: "5px", padding: "5px 16px 4px" }); advancedBody.className = "h3k-advanced-body";
     advanced.appendChild(advancedBody);
 function nodeColorToCss(value) {
         if (typeof value === "string" && value.trim()) return value.trim();
@@ -1169,22 +1241,22 @@ function nodeColorToCss(value) {
             || nodeColorToCss(node.properties?.color)
             || nodeColorToCss(node._bgcolor)
             || nodeColorToCss(node._color)
-            || "#22262c";
+            || "#1d2a36";
         return color;
     }
     function syncAdvancedBackground(force = false) {
         const color = advancedBackgroundColor();
-        if (!force && color === root.dataset.mxvNodeBg) return;
-        root.dataset.mxvNodeBg = color;
-        root.style.setProperty("--mxv-node-bg", color);
+        if (!force && color === root.dataset.h3kNodeBg) return;
+        root.dataset.h3kNodeBg = color;
+        root.style.setProperty("--h3k-node-bg", color);
     }
     syncAdvancedBackground(true);
     const advancedLabels = new Map();
     const advancedRows = new Map();
-    const addAdvanced = (name, label, control) => { const row = make("div"); row.className = "mxv-advanced-row"; const labelEl = make("label", {}, t(label)); labelEl.dataset.mxvTranslation = label; row.appendChild(labelEl); row.appendChild(control); advancedBody.appendChild(row); advancedLabels.set(name, labelEl); advancedRows.set(name, row); };
+    const addAdvanced = (name, label, control) => { const row = make("div"); row.className = "h3k-advanced-row"; const labelEl = make("label", {}, t(label)); labelEl.dataset.h3kTranslation = label; row.appendChild(labelEl); row.appendChild(control); advancedBody.appendChild(row); advancedLabels.set(name, labelEl); advancedRows.set(name, row); };
     const localizedSelects = [];
     const select = (name, values) => {
-        const s = document.createElement("select"); s.className = "mxv-control";
+        const s = document.createElement("select"); s.className = "h3k-control";
         const syncOptions = () => {
             const current = s.value || widget(node, name)?.value || values[0];
             s.replaceChildren(...values.map(v => new Option(t(v), v)));
@@ -1192,34 +1264,34 @@ function nodeColorToCss(value) {
         };
         syncOptions();
         s.onchange = () => setWidget(node, name, s.value);
-        s._mxvSyncOptions = syncOptions;
+        s._h3kSyncOptions = syncOptions;
         localizedSelects.push(s);
         return s;
     };
-    const number = (name, step, min, max) => { const wrap = make("div"); wrap.className = "mxv-number"; const left = make("button", {}, "◀"); const n = document.createElement("input"); n.type = "number"; n.step = step; n.min = min; n.max = max; const raw = Number(widget(node, name)?.value); n.value = Number.isFinite(raw) ? raw : min; const right = make("button", {}, "▶"); const update = value => { const numeric = Number(value); const next = Math.max(Number(min), Math.min(Number(max), Number.isFinite(numeric) ? numeric : Number(min))); n.value = Number.isInteger(next) ? next : next.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); setWidget(node, name, next); }; left.onclick = () => update(Number(n.value || min) - Number(step)); right.onclick = () => update(Number(n.value || min) + Number(step)); n.onchange = () => update(n.value); wrap.append(left, n, right); return wrap; };
-    const check = (name) => { const label = make("label"); label.className = "mxv-toggle"; const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value; const track = make("span"); c.onchange = () => setWidget(node, name, c.checked); label.append(c, track); return label; };
-    addAdvanced("audio_mode", "Audio mode", select("audio_mode", ["native", "lock_source", "reference_only", "remix_source"]));
-    const audioStrengthControl = number("audio_denoise_strength", "0.05", "0", "1");
-    addAdvanced("audio_denoise_strength", "Audio redraw strength", audioStrengthControl);
+    const number = (name, step, min, max) => { const wrap = make("div"); wrap.className = "h3k-number"; const left = make("button", {}, "◀"); const n = document.createElement("input"); n.type = "number"; n.step = step; n.min = min; n.max = max; const raw = Number(widget(node, name)?.value); n.value = Number.isFinite(raw) ? raw : min; const right = make("button", {}, "▶"); const update = value => { const numeric = Number(value); const next = Math.max(Number(min), Math.min(Number(max), Number.isFinite(numeric) ? numeric : Number(min))); n.value = Number.isInteger(next) ? next : next.toFixed(2).replace(/0+$/, "").replace(/\.$/, ""); setWidget(node, name, next); }; left.onclick = () => update(Number(n.value || min) - Number(step)); right.onclick = () => update(Number(n.value || min) + Number(step)); n.onchange = () => update(n.value); wrap.append(left, n, right); return wrap; };
+    const check = (name) => { const label = make("label"); label.className = "h3k-toggle"; const c = document.createElement("input"); c.type = "checkbox"; c.checked = !!widget(node, name)?.value; const track = make("span"); c.onchange = () => setWidget(node, name, c.checked); label.append(c, track); return label; };
+    addAdvanced("audio_source", "Audible source", select("audio_source", ["native", "lock_source", "reference_only", "remix_source"]));
+    const audioStrengthControl = number("audio_cleanup", "0.05", "0", "1");
+    addAdvanced("audio_cleanup", "Voice rewrite strength", audioStrengthControl);
     const driveAudioOrdinalControl = document.createElement("select");
-    driveAudioOrdinalControl.className = "mxv-control";
-    addAdvanced("drive_audio_ordinal", "Drive audio", driveAudioOrdinalControl);
-    addAdvanced("strict_prompt_tags", "Strict prompt tags", check("strict_prompt_tags"));
-    addAdvanced("ref_image_size", "Reference image size", select("ref_image_size", ["match", "1.2x", "1.5x", "2x", "max"]));
+    driveAudioOrdinalControl.className = "h3k-control";
+    addAdvanced("driving_track", "Drive audio", driveAudioOrdinalControl);
+    addAdvanced("tag_guard", "Tag format enforced", check("tag_guard"));
+    addAdvanced("asset_scale", "Asset downscale", select("asset_scale", ["match", "1.2x", "1.5x", "2x", "max"]));
     /* 无字幕约束/音景/配乐三行已移入 ✨ AI 生成弹窗（2026-09-25 收编）：
-       widget 保留隐藏序列化，运行期兼容不受影响；不再重复出现在高级选项。 */
+       widget 保留隐藏序列化，运行期兼容不受影响；不再重复出现在更多设置。 */
     /* ===== 采样参数组（单节点整合新增，原生 widget 已隐藏，此处提供等价控件）===== */
-    const stepsControl = number("steps", "1", "1", "1000");
-    addAdvanced("steps", "Steps", stepsControl);
-    const shiftVideoControl = number("shift_video", "0.01", "0.01", "100");
-    addAdvanced("shift_video", "Video shift", shiftVideoControl);
-    const shiftAudioControl = number("shift_audio", "0.01", "0.01", "100");
-    addAdvanced("shift_audio", "Audio shift", shiftAudioControl);
-    addAdvanced("sampler_name", "Sampler", select("sampler_name", SAMPLER_OPTIONS));
-    addAdvanced("scheduler", "Scheduler", select("scheduler", SCHEDULER_OPTIONS));
-    const seedControl = number("noise_seed", "1", "0", "0xffffffff");
-    addAdvanced("noise_seed", "Seed", seedControl);
-    const audioModeWidget = widget(node, "audio_mode");
+    const stepsControl = number("sample_steps", "1", "1", "1000");
+    addAdvanced("sample_steps", "Steps", stepsControl);
+    const shiftVideoControl = number("video_sigma_shift", "0.01", "0.01", "100");
+    addAdvanced("video_sigma_shift", "Video shift", shiftVideoControl);
+    const shiftAudioControl = number("audio_sigma_shift", "0.01", "0.01", "100");
+    addAdvanced("audio_sigma_shift", "Audio shift", shiftAudioControl);
+    addAdvanced("sampler_id", "Sampler", select("sampler_id", SAMPLER_CHOICES));
+    addAdvanced("scheduler_id", "Scheduler", select("scheduler_id", SCHEDULER_CHOICES));
+    const seedControl = number("seed_value", "1", "0", "0xffffffff");
+    addAdvanced("seed_value", "Seed", seedControl);
+    const audioModeWidget = widget(node, "audio_source");
     const audioModeByMode = savedState.audioModeByMode && typeof savedState.audioModeByMode === "object"
         ? { ...savedState.audioModeByMode } : {};
     const audioModeAutoByMode = savedState.audioModeAutoByMode && typeof savedState.audioModeAutoByMode === "object"
@@ -1235,7 +1307,7 @@ function nodeColorToCss(value) {
             .filter(([slot, entry]) => entry?.kind === "video" && !entry.muted)
             .sort((a, b) => a[0].localeCompare(b[0]));
         const audios = [...media.entries()]
-            .filter(([slot, entry]) => entry?.kind === "audio" && slot !== "hybrid_audio")
+            .filter(([slot, entry]) => entry?.kind === "audio" && slot !== "keyframe_audio")
             .sort((a, b) => a[0].localeCompare(b[0]));
         return [
             ...videos.map(([slot, entry], index) => ({ ordinal: index + 1, name: entry.name, slot, entry })),
@@ -1243,7 +1315,7 @@ function nodeColorToCss(value) {
         ];
     };
     const captureDriveAudioSelection = () => {
-        const ordinal = Number(widget(node, "drive_audio_ordinal")?.value || 0);
+        const ordinal = Number(widget(node, "driving_track")?.value || 0);
         const selected = ordinal > 0 ? driveAudioEntries().find(item => item.ordinal === ordinal) : null;
         return {
             ordinal,
@@ -1258,25 +1330,25 @@ function nodeColorToCss(value) {
                 || (preserveReplacementSlot ? entries.find(item => item.slot === selection.slot) : null)
             : null;
         const ordinal = selected?.ordinal || 0;
-        setWidget(node, "drive_audio_ordinal", ordinal);
+        setWidget(node, "driving_track", ordinal);
         driveAudioOrdinalControl.value = String(ordinal);
         return ordinal;
     };
     const allReferenceAudioCount = () => driveAudioEntries().length;
     const selectFirstDriveAudioForOriginalMode = () => {
         if (state.mode !== "all_reference") return 0;
-        if ((widget(node, "audio_mode")?.value || "native") !== "lock_source") return 0;
-        const current = Number(widget(node, "drive_audio_ordinal")?.value || 0);
+        if ((widget(node, "audio_source")?.value || "native") !== "lock_source") return 0;
+        const current = Number(widget(node, "driving_track")?.value || 0);
         if (current > 0) return current;
         const first = driveAudioEntries()[0];
         if (!first) return 0;
-        setWidget(node, "drive_audio_ordinal", first.ordinal);
+        setWidget(node, "driving_track", first.ordinal);
         driveAudioOrdinalControl.value = String(first.ordinal);
         return first.ordinal;
     };
     const hasModeAudio = () => state.mode === "text_keyframes"
-        ? media.has("hybrid_audio")
-        : allReferenceAudioCount() > 0 && Number(widget(node, "drive_audio_ordinal")?.value || 0) > 0;
+        ? media.has("keyframe_audio")
+        : allReferenceAudioCount() > 0 && Number(widget(node, "driving_track")?.value || 0) > 0;
     const syncAudioModeDefault = () => {
         const mode = state.mode;
         if (audioModeAutoByMode[mode] !== false) {
@@ -1286,32 +1358,32 @@ function nodeColorToCss(value) {
                     ? "native"
                     : count === 1 ? "lock_source" : "reference_only";
                 const driveOrdinal = count === 0 ? 0 : 1;
-                setWidget(node, "drive_audio_ordinal", driveOrdinal);
+                setWidget(node, "driving_track", driveOrdinal);
                 driveAudioOrdinalControl.value = String(driveOrdinal);
             } else {
                 audioModeByMode[mode] = hasModeAudio() ? "lock_source" : "native";
             }
         }
-        setWidget(node, "audio_mode", audioModeByMode[mode] || "native");
-        const control = advancedRows.get("audio_mode")?.querySelector("select");
-        if (control) control.value = widget(node, "audio_mode")?.value;
+        setWidget(node, "audio_source", audioModeByMode[mode] || "native");
+        const control = advancedRows.get("audio_source")?.querySelector("select");
+        if (control) control.value = widget(node, "audio_source")?.value;
         // Original-audio output requires a drive track. If the mode was
         // entered manually or automatically while "None" was selected, use
         // Audio 1 as the initial choice without locking the selector; users
         // can still choose any other available drive audio afterwards.
         selectFirstDriveAudioForOriginalMode();
         if (!audioStrengthManual) {
-            const modeValue = widget(node, "audio_mode")?.value || "native";
+            const modeValue = widget(node, "audio_source")?.value || "native";
             const strength = modeValue === "lock_source" ? 0 : 1;
-            setWidget(node, "audio_denoise_strength", strength);
+            setWidget(node, "audio_cleanup", strength);
             const input = audioStrengthControl.querySelector("input");
             if (input) input.value = strength;
         }
     };
     const syncAudioModeAfterMediaChange = (slot, previousAudioCount = null) => {
         const affectsAudio = state.mode === "text_keyframes"
-            ? slot === "hybrid_audio"
-            : slot?.startsWith("ref_audio_") || slot?.startsWith("ref_video_");
+            ? slot === "keyframe_audio"
+            : slot?.startsWith("track_") || slot?.startsWith("footage_");
         if (!affectsAudio) return;
         if (
             state.mode === "all_reference"
@@ -1320,7 +1392,7 @@ function nodeColorToCss(value) {
         ) return;
         const before = Number(previousAudioCount ?? 0);
         const after = state.mode === "text_keyframes"
-            ? (media.has("hybrid_audio") ? 1 : 0)
+            ? (media.has("keyframe_audio") ? 1 : 0)
             : allReferenceAudioCount();
         if (after === 0) {
             audioModeAutoByMode[state.mode] = true;
@@ -1339,10 +1411,10 @@ function nodeColorToCss(value) {
     const updateAdvancedVisibility = (preserveAudioSettings = false) => {
         if (state.mode === "all_reference") {
             const count = allReferenceAudioCount();
-            const current = Number(widget(node, "drive_audio_ordinal")?.value || 0);
+            const current = Number(widget(node, "driving_track")?.value || 0);
             const entries = driveAudioEntries();
             const next = count === 0 || current === 0 ? 0 : entries.some(entry => entry.ordinal === current) ? current : 1;
-            setWidget(node, "drive_audio_ordinal", next);
+            setWidget(node, "driving_track", next);
             driveAudioOrdinalControl.replaceChildren(
                 new Option(t("None"), "0"),
                 ...entries.slice(0, 6).map(entry => new Option(`<audio ${entry.ordinal}>${entry.name}`, String(entry.ordinal))),
@@ -1350,8 +1422,8 @@ function nodeColorToCss(value) {
             driveAudioOrdinalControl.value = String(next);
         }
         const visible = state.mode === "text_keyframes"
-            ? ["audio_mode", "audio_denoise_strength", "strict_prompt_tags"]
-            : ["audio_mode", "audio_denoise_strength", "ref_image_size", "strict_prompt_tags", "drive_audio_ordinal"];
+            ? ["audio_source", "audio_cleanup", "tag_guard"]
+            : ["audio_source", "audio_cleanup", "asset_scale", "tag_guard", "driving_track"];
         for (const [name, row] of advancedRows) {
             const isVisible = visible.includes(name);
             row.hidden = !isVisible;
@@ -1359,7 +1431,7 @@ function nodeColorToCss(value) {
         }
         if (!preserveAudioSettings) syncAudioModeDefault();
     };
-    advancedRows.get("audio_mode")?.querySelector("select")?.addEventListener("change", event => {
+    advancedRows.get("audio_source")?.querySelector("select")?.addEventListener("change", event => {
         audioModeByMode[state.mode] = event.target.value;
         audioModeAutoByMode[state.mode] = false;
         audioStrengthManual = false;
@@ -1367,12 +1439,12 @@ function nodeColorToCss(value) {
     });
     audioStrengthControl.querySelector("input")?.addEventListener("input", () => { audioStrengthManual = true; });
     driveAudioOrdinalControl.addEventListener("change", () => {
-        setWidget(node, "drive_audio_ordinal", Number(driveAudioOrdinalControl.value || 0));
+        setWidget(node, "driving_track", Number(driveAudioOrdinalControl.value || 0));
         if (state.mode === "all_reference" && Number(driveAudioOrdinalControl.value || 0) === 0) {
             audioModeAutoByMode[state.mode] = true;
             audioModeByMode[state.mode] = "native";
-            setWidget(node, "audio_mode", "native");
-            const control = advancedRows.get("audio_mode")?.querySelector("select");
+            setWidget(node, "audio_source", "native");
+            const control = advancedRows.get("audio_source")?.querySelector("select");
             if (control) control.value = "native";
             return;
         }
@@ -1380,12 +1452,12 @@ function nodeColorToCss(value) {
     });
     function applyLocale() {
         taskStatus.textContent = `${resolvedTaskType()} · ${taskLabel(resolvedTaskType())}`;
-        modeText.textContent = t("First/last frames / Text-to-video");
-        modeRef.textContent = t("All-purpose reference");
+        modeText.textContent = t("Keyframe mode");
+        modeRef.textContent = t("Omni-reference mode");
         prompt.placeholder = t("Prompt:\nClick an uploaded asset to insert its tag, e.g. <picture 1>, <video 1>, or <audio 2>;\nDouble-click a video to insert its audio tag; mute a video at the top-right to exclude its audio from references");
-        advancedSummary.textContent = t("Advanced options");
-        for (const label of advancedLabels.values()) label.textContent = t(label.dataset.mxvTranslation);
-        localizedSelects.forEach(control => control._mxvSyncOptions?.());
+        advancedSummary.textContent = t("More settings");
+        for (const label of advancedLabels.values()) label.textContent = t(label.dataset.h3kTranslation);
+        localizedSelects.forEach(control => control._h3kSyncOptions?.());
         updateAdvancedVisibility();
         render();
     }
@@ -1393,8 +1465,10 @@ function nodeColorToCss(value) {
     // the UI after a real settings change, but no periodic polling is needed.
     window.addEventListener("storage", applyLocale);
     advanced.addEventListener("toggle", () => { persistState(); syncLayout(false, true); });
-    root.appendChild(advanced);
+    // 提示词编辑器放在素材卡之后、更多设置之前：正文是主操作面，
+    // 采样/音频类开关收进最下方的折叠区。
     root.appendChild(promptWrap);
+    root.appendChild(advanced);
     /* ===== AI 生成：统一入口（原 AI 区块已删除，配置在 ⚙ 统一弹窗，生成结果填入编辑器）===== */
     /* 共享钥匙串：与优化器配置共用同一份 per-provider API Key（一处填写，两处可用）。 */
     const sharedKeychain = () => {
@@ -1408,28 +1482,28 @@ function nodeColorToCss(value) {
         if (optimizerSettings.provider === provider) { optimizerSettings.api_key = key; optimizerSettings.has_api_key = !!key; }
         persistState();
     };
-    const sharedGenerationOptions = { ai_no_subtitles: "no_subtitle", ai_soundscape: "soundscape", ai_music: "music" };
+    const sharedGenerationOptions = { ai_subtitle_free: "subtitle_free", ai_ambience: "soundscape", ai_score: "music" };
     function setGenerationOption(name, value) {
         setWidget(node, name, value);
         if (sharedGenerationOptions[name]) setWidget(node, sharedGenerationOptions[name], value);
     }
     function migrateGenerationOptions() {
-        const legacyPanel = generationOptionsVersion < 1 && String(widget(node, "prompt_source")?.value || "panel") === "panel";
+        const legacyPanel = generationOptionsVersion < 1 && String(widget(node, "prompt_origin")?.value || "panel") === "panel";
         for (const [name, panelName] of Object.entries(sharedGenerationOptions)) {
             const value = widget(node, legacyPanel ? panelName : name)?.value;
             setGenerationOption(name, value === true || value === "true");
         }
         // 版本 2（2026-09-26）：来源下拉已删除——工作流永远以编辑器内容为准，
         // 旧工作流的 ai/offline/format 前置选择一并归一为 panel（编辑器文本优先）。
-        if (generationOptionsVersion < 2 && String(widget(node, "prompt_source")?.value || "panel") !== "panel") {
-            setWidget(node, "prompt_source", "panel");
+        if (generationOptionsVersion < 2 && String(widget(node, "prompt_origin")?.value || "panel") !== "panel") {
+            setWidget(node, "prompt_origin", "panel");
         }
         generationOptionsVersion = 2;
     }
-    // ai_text 始终镜像编辑器内容（2026-09-26）：面板永远以编辑器为准；镜像仅为
+    // ai_idea 始终镜像编辑器内容（2026-09-26）：面板永远以编辑器为准；镜像仅为
     // 保持隐藏 widget 与可见内容一致，后端运行期分支不会再用旧创意文本。
     function mirrorSourceIdea() {
-        setWidget(node, "ai_text", prompt.value);
+        setWidget(node, "ai_idea", prompt.value);
     }
     function syncEditorSource() {
         promptRevision++;
@@ -1444,7 +1518,7 @@ function nodeColorToCss(value) {
         };
         activePromptOperation = operation;
         optimizing = kind === "optimize";
-        aiGenerating = !optimizing;
+        aiDrafting = !optimizing;
         refreshDialogActions();
         aiGeneratePrompt.disabled = aiFormatPrompt.disabled = resetPrompt.disabled = true;
         return operation;
@@ -1463,18 +1537,18 @@ function nodeColorToCss(value) {
     }
     function finishPromptOperation(operation) {
         if (activePromptOperation !== operation) return;
-        activePromptOperation = null; optimizing = false; aiGenerating = false;
+        activePromptOperation = null; optimizing = false; aiDrafting = false;
         if (!panelRemoved) { refreshDialogActions(); refreshPromptConnection(); }
     }
     const commitPromptEditorInput = () => {
         syncEditorSource();
-        const keepFocus = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
+        const keepFocus = document.activeElement === prompt || prompt.dataset.h3kEditing === "1";
         promptPlainText = editorText();
         // Keep native contenteditable editing intact for ordinary keystrokes.
         // Rebuild only when a media/dialogue decoration actually changed.
         if (promptDecorationsOutOfSync(promptPlainText)) renderPromptHighlights();
         if (keepFocus && document.activeElement !== prompt) prompt.focus({ preventScroll: true });
-        prompt.classList.toggle("mxv-prompt-empty", !promptPlainText);
+        prompt.classList.toggle("h3k-prompt-empty", !promptPlainText);
         if (pendingPromptSnapshot) {
             pushPromptUndo(pendingPromptSnapshot);
             pendingPromptSnapshot = null;
@@ -1508,7 +1582,7 @@ function nodeColorToCss(value) {
         mirrorSourceIdea(); persistState();
     });
     const isPromptHistoryKey = event => {
-        const editing = document.activeElement === prompt || prompt.dataset.mxvEditing === "1";
+        const editing = document.activeElement === prompt || prompt.dataset.h3kEditing === "1";
         if (!editing || prompt.readOnly || !(event.ctrlKey || event.metaKey) || event.altKey) return;
         const key = String(event.key || "").toLowerCase();
         return key === "z" || key === "y";
@@ -1526,14 +1600,14 @@ function nodeColorToCss(value) {
     window.addEventListener("keydown", capturePromptHistoryKeys, true);
     window.addEventListener("keyup", releasePromptHistoryKeys, true);
     function upstreamConnected() {
-        const input = node.inputs?.find(item => item.name === "prompt_override");
+        const input = node.inputs?.find(item => item.name === "upstream_prompt");
         return input?.link != null;
     }
     function refreshPromptConnection() {
         const external = upstreamConnected();
         prompt.readOnly = external;
         promptWrap.classList.toggle("external", external);
-        prompt.title = external ? t("Prompt is connected to an upstream node; the internal prompt is disabled!") : "";
+        prompt.title = external ? t("The prompt input is wired to an upstream node, so the built-in editor is read-only.") : "";
         aiGeneratePrompt.disabled = external;
         aiFormatPrompt.disabled = external;
         polishPrompt.disabled = external;
@@ -1557,7 +1631,7 @@ function nodeColorToCss(value) {
         const clear = () => { clearTimeout(timer); timer = null; tip?.remove(); tip = null; };
         button.addEventListener("mouseenter", () => {
             timer = setTimeout(() => {
-                tip = make("div", {}, getText()); tip.className = "mxv-tool-tip"; document.body.append(tip);
+                tip = make("div", {}, getText()); tip.className = "h3k-tool-tip"; document.body.append(tip);
                 const rect = button.getBoundingClientRect();
                 const centeredLeft = rect.left + rect.width / 2 - tip.offsetWidth / 2;
                 tip.style.left = `${Math.max(4, Math.min(window.innerWidth - tip.offsetWidth - 4, centeredLeft))}px`;
@@ -1566,11 +1640,11 @@ function nodeColorToCss(value) {
         });
         button.addEventListener("mouseleave", clear); button.addEventListener("pointerdown", clear);
     }
-    delayedTooltip(polishPrompt, () => t(optimizing ? "Optimizing click to cancel" : "Optimize prompt"));
+    delayedTooltip(polishPrompt, () => t(optimizing ? "Rewriting click to cancel" : "Optimize prompt"));
     delayedTooltip(aiFormatPrompt, () => t("H3 format (offline)"));
     delayedTooltip(aiGeneratePrompt, () => t("AI generate prompt"));
-    delayedTooltip(resetPrompt, () => t("Restore before optimization"));
-    delayedTooltip(optimizerGear, () => t("Configure API"));
+    delayedTooltip(resetPrompt, () => t("Revert to pre-rewrite"));
+    delayedTooltip(optimizerGear, () => t("Models & options"));
     const stopPromptKeyBubble = event => event.stopPropagation();
     prompt.addEventListener("keydown", stopPromptKeyBubble);
     prompt.addEventListener("keyup", stopPromptKeyBubble);
@@ -1679,7 +1753,7 @@ function nodeColorToCss(value) {
         if (!visible) return measuredContentHeight;
         // 逐项求和（不用 root.scrollHeight）：面板高度曾经被撑大后，scrollHeight
         // 在无溢出时等于分配高度（富余被 flex/grid 吸收），读数被污染导致高度
-        // 永不回落（截图中高级选项下方的大片空白）。编辑器已改为文档流，
+        // 永不回落（截图中更多设置下方的大片空白）。编辑器已改为文档流，
         // 每个子元素的 offsetHeight 都是其真实内容高度，逐项相加即可。
         let content = 0;
         let count = 0;
@@ -1753,8 +1827,8 @@ function nodeColorToCss(value) {
         persistState();
     };
 
-    const mode = widget(node, "main_mode"), aspect = widget(node, "aspect"), mp = widget(node, "megapixels");
-    const durationWidget = widget(node, "duration_seconds");
+    const mode = widget(node, "panel_mode"), frame_ratio = widget(node, "frame_ratio"), mp = widget(node, "pixel_budget");
+    const durationWidget = widget(node, "clip_seconds");
     if (durationWidget) {
         durationWidget.options = durationWidget.options || {};
         durationWidget.options.precision = 0;
@@ -1774,11 +1848,32 @@ function nodeColorToCss(value) {
             node.setDirtyCanvas(true, true);
         };
     }
-    const state = { mode: savedMode }; const media = new Map(savedState.media || []);
+    /* 槽位名在本项目里改过（旧版沿用 first_frame/ref_image_N 一类命名）。
+       老工作流的 h3k_state 里存的是旧槽位名，读的时候映射一次，
+       否则已上传的素材会全部认不出来。 */
+    const LEGACY_SLOT_NAMES = {
+        first_frame: 'keyframe_open',
+        last_frame: 'keyframe_close',
+        hybrid_audio: 'keyframe_audio',
+    };
+    const migratedSlot = slot => {
+        if (LEGACY_SLOT_NAMES[slot]) return LEGACY_SLOT_NAMES[slot];
+        const still = /^ref_image_(\d+)$/.exec(slot);
+        if (still) return `still_${still[1]}`;
+        const footageAudio = /^ref_video_audio_(\d+)$/.exec(slot);
+        if (footageAudio) return `footage_audio_${footageAudio[1]}`;
+        const footage = /^ref_video_(\d+)$/.exec(slot);
+        if (footage) return `footage_${footage[1]}`;
+        const track = /^ref_audio_(\d+)$/.exec(slot);
+        if (track) return `track_${track[1]}`;
+        return slot;
+    };
+    const migrateMediaEntries = entries => (entries || []).map(([slot, entry]) => [migratedSlot(slot), entry]);
+    const state = { mode: savedMode }; const media = new Map(migrateMediaEntries(savedState.media));
     // A removed upload leaves its prompt ordinal reserved. This keeps, for
     // example, <Picture 1> empty instead of making Picture 2 take its preview.
     // Vacancies are UI-only and are never written to the actual media widgets.
-    const vacantMediaSlots = new Map(savedState.vacantMediaSlots || []);
+    const vacantMediaSlots = new Map(migrateMediaEntries(savedState.vacantMediaSlots));
     for (const slot of media.keys()) vacantMediaSlots.delete(slot);
     const vacantMediaEntries = new Map();
     const mediaEntryForOrder = slot => {
@@ -1794,14 +1889,14 @@ function nodeColorToCss(value) {
     let adaptiveRatio = 16 / 9;
     function firstVisualEntry() {
         const slots = state.mode === "text_keyframes"
-            ? ["first_frame", "last_frame"]
+            ? ["keyframe_open", "keyframe_close"]
             : [...videoSlots, ...imageSlots.slice(2)];
         return slots.map(slot => media.get(slot)).find(entry =>
             entry && (entry.kind === "image" || entry.kind === "video")
         ) || null;
     }
     function refreshAdaptiveRatio() {
-        if (aspectInternalValue(aspect?.value) !== "adaptive") {
+        if (aspectInternalValue(frame_ratio?.value) !== "adaptive") {
             adaptiveRatio = 16 / 9;
             refreshSize?.();
             return;
@@ -1852,15 +1947,15 @@ function nodeColorToCss(value) {
     syncMediaWidgets();
     function nextSlot(kind) {
         const slots = state.mode === "text_keyframes"
-            ? (kind === "image" ? (String(widget(node, "ai_mode")?.value) === "l2va" ? ["last_frame", "first_frame"] : ["first_frame", "last_frame"]) : kind === "audio" ? ["hybrid_audio"] : [])
+            ? (kind === "image" ? (String(widget(node, "ai_task")?.value) === "l2va" ? ["keyframe_close", "keyframe_open"] : ["keyframe_open", "keyframe_close"]) : kind === "audio" ? ["keyframe_audio"] : [])
             : kind === "image" ? imageSlots.slice(2) : kind === "video" ? videoSlots : audioSlots.slice(1);
         return slots.find(s => !media.has(s));
     }
     function resolvedTaskType() {
-        const first = media.has("first_frame");
-        const last = media.has("last_frame");
-        const refs = [...media.entries()].some(([slot]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot));
-        const hybridAudio = media.has("hybrid_audio");
+        const first = media.has("keyframe_open");
+        const last = media.has("keyframe_close");
+        const refs = [...media.entries()].some(([slot]) => !["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot));
+        const hybridAudio = media.has("keyframe_audio");
         if (state.mode === "all_reference") return "Ref2VA";
         // Keyframe mode ignores all-reference slots. Old serialized graphs
         // may still contain ref_* entries after switching modes, so they must
@@ -1879,23 +1974,23 @@ function nodeColorToCss(value) {
         if (last) return "L2VA";
         return "T2VA";
     }
-    const taskLabels = { I2VA: "First frame", FL2VA: "First and last frames", L2VA: "Last frame", T2VA: "Text-to-video", Ref2VA: "All-purpose reference" };
+    const taskLabels = { I2VA: "Opening frame", FL2VA: "Opening and closing frames", L2VA: "Closing frame", T2VA: "Text-driven", Ref2VA: "Omni-reference mode" };
     function taskLabel(task) {
         if (task !== "Hybrid") return t(taskLabels[task] || task);
         if (state.mode === "text_keyframes") {
-            const first = media.has("first_frame");
-            const last = media.has("last_frame");
-            if (first && last) return t("First and last frames") + " + " + t("Audio");
-            if (first) return t("First frame") + " + " + t("Audio");
-            if (last) return t("Last frame") + " + " + t("Audio");
+            const first = media.has("keyframe_open");
+            const last = media.has("keyframe_close");
+            if (first && last) return t("Opening and closing frames") + " + " + t("Audio");
+            if (first) return t("Opening frame") + " + " + t("Audio");
+            if (last) return t("Closing frame") + " + " + t("Audio");
         }
-        return t("Reference media") + " + " + t("Audio");
+        return t("Media assets") + " + " + t("Audio");
     }
     function repairLegacyReferenceTags() {
         if (state.mode !== "all_reference" || !prompt.value) return;
         const activeCounts = { image: 0, video: 0, audio: 0 };
         for (const [slot, entry] of media) {
-            if (["first_frame", "last_frame", "hybrid_audio"].includes(slot)) continue;
+            if (["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot)) continue;
             if (entry?.kind in activeCounts) activeCounts[entry.kind] += 1;
         }
         let value = prompt.value;
@@ -1920,8 +2015,8 @@ function nodeColorToCss(value) {
         const task = resolvedTaskType();
         const label = taskLabel(task);
         taskStatus.textContent = `${task} · ${label}`;
-        dimensions.textContent = canvas(aspectInternalValue(aspect?.value), mp?.value, adaptiveRatio);
-        setWidget(node, "task_type", "auto");
+        dimensions.textContent = canvas(aspectInternalValue(frame_ratio?.value), mp?.value, adaptiveRatio);
+        setWidget(node, "task_hint", "auto");
     }
     function normalizePromptTagFormat() {
         const task = resolvedTaskType();
@@ -1944,9 +2039,9 @@ function nodeColorToCss(value) {
         }
     }
     function labelFor(slot, kind) {
-        if (slot === "first_frame") return t("First frame");
-        if (slot === "last_frame") return t("Last frame");
-        if (kind === "audio" && slot !== "hybrid_audio") return `audio ${audioOrdinalFor(slot)}`;
+        if (slot === "keyframe_open") return t("Opening frame");
+        if (slot === "keyframe_close") return t("Closing frame");
+        if (kind === "audio" && slot !== "keyframe_audio") return `audio ${audioOrdinalFor(slot)}`;
         const prefix = kind === "video" ? "video" : kind === "image" ? "picture" : "audio";
         // Frame uploads are kept in state when switching modes, but they are
         // not reference media in Ref2VA. Exclude them from reference ordinals
@@ -1954,8 +2049,8 @@ function nodeColorToCss(value) {
         const list = mediaSlots.map(s => [s, mediaEntryForOrder(s)]).filter(([s, e]) => {
             if (!e) return false;
             if (e.kind !== kind) return false;
-            if (state.mode === "all_reference" && (s === "first_frame" || s === "last_frame")) return false;
-            if (state.mode === "all_reference" && s === "hybrid_audio") return false;
+            if (state.mode === "all_reference" && (s === "keyframe_open" || s === "keyframe_close")) return false;
+            if (state.mode === "all_reference" && s === "keyframe_audio") return false;
             return true;
         }).sort((a,b) => a[0].localeCompare(b[0]));
         return `${prefix} ${list.findIndex(([s]) => s === slot) + 1}`;
@@ -1965,29 +2060,29 @@ function nodeColorToCss(value) {
         const videos = orderedEntries.filter(([s, e]) => e?.kind === "video" && !e.muted).sort((a, b) => a[0].localeCompare(b[0]));
         const videoIndex = videos.findIndex(([s]) => s === slot);
         if (videoIndex >= 0) return videoIndex + 1;
-        const audios = orderedEntries.filter(([s, e]) => e?.kind === "audio" && s !== "hybrid_audio").sort((a, b) => a[0].localeCompare(b[0]));
+        const audios = orderedEntries.filter(([s, e]) => e?.kind === "audio" && s !== "keyframe_audio").sort((a, b) => a[0].localeCompare(b[0]));
         const audioIndex = audios.findIndex(([s]) => s === slot);
         return audioIndex >= 0 ? videos.length + audioIndex + 1 : 0;
     }
     resolvePromptMedia = (kind, ordinal) => {
         if (!Number.isFinite(ordinal) || ordinal < 1) return null;
         if (kind === "picture" && state.mode === "text_keyframes") {
-            const keyframes = ["first_frame", "last_frame"]
+            const keyframes = ["keyframe_open", "keyframe_close"]
                 .map(mediaEntryForOrder).filter(entry => entry?.kind === "image");
             const selected = keyframes[ordinal - 1];
             return selected?.vacant ? null : selected || null;
         }
         if (kind === "audio") {
             if (state.mode === "text_keyframes") {
-                const selected = ordinal === 1 ? mediaEntryForOrder("hybrid_audio") : null;
+                const selected = ordinal === 1 ? mediaEntryForOrder("keyframe_audio") : null;
                 return selected?.vacant ? null : selected || null;
             }
             const orderedEntries = mediaSlots.map(slot => [slot, mediaEntryForOrder(slot)]);
             const videoAudio = orderedEntries
-                .filter(([slot, entry]) => slot.startsWith("ref_video_") && entry?.kind === "video" && !entry.muted)
+                .filter(([slot, entry]) => slot.startsWith("footage_") && entry?.kind === "video" && !entry.muted)
                 .sort((a, b) => a[0].localeCompare(b[0]));
             const audioFiles = orderedEntries
-                .filter(([slot, entry]) => slot.startsWith("ref_audio_") && entry?.kind === "audio")
+                .filter(([slot, entry]) => slot.startsWith("track_") && entry?.kind === "audio")
                 .sort((a, b) => a[0].localeCompare(b[0]));
             const selected = [...videoAudio, ...audioFiles][ordinal - 1]?.[1];
             return selected?.vacant ? null : selected || null;
@@ -1995,8 +2090,8 @@ function nodeColorToCss(value) {
         const targetKind = kind === "picture" ? "image" : kind;
         const entries = mediaSlots.map(slot => [slot, mediaEntryForOrder(slot)]).filter(([slot, entry]) => {
             if (entry?.kind !== targetKind) return false;
-            if (state.mode === "all_reference" && ["first_frame", "last_frame", "hybrid_audio"].includes(slot)) return false;
-            return state.mode !== "text_keyframes" || ["first_frame", "last_frame", "hybrid_audio"].includes(slot);
+            if (state.mode === "all_reference" && ["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot)) return false;
+            return state.mode !== "text_keyframes" || ["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot);
         }).sort((a, b) => a[0].localeCompare(b[0]));
         const selected = entries[ordinal - 1]?.[1];
         return selected?.vacant ? null : selected || null;
@@ -2015,10 +2110,10 @@ function nodeColorToCss(value) {
         const raw = labelFor(slot, kind);
         const task = resolvedTaskType();
         let tag;
-        if (slot === "first_frame" || slot === "last_frame") {
-            const hasBothKeyframes = media.has("first_frame") && media.has("last_frame");
+        if (slot === "keyframe_open" || slot === "keyframe_close") {
+            const hasBothKeyframes = media.has("keyframe_open") && media.has("keyframe_close");
             const ordinal = (task === "FL2VA" || (task === "Hybrid" && hasBothKeyframes))
-                ? (slot === "first_frame" ? 1 : 2)
+                ? (slot === "keyframe_open" ? 1 : 2)
                 : 1;
             tag = task === "FL2VA" ? `Picture ${ordinal}` : `<Picture ${ordinal}>`;
         } else {
@@ -2055,7 +2150,7 @@ function nodeColorToCss(value) {
         glm: { label: "GLM 智谱", url: "https://open.bigmodel.cn/api/paas/v4/chat/completions", model: "glm-5.3-flash", protocol: "openai" },
         custom: { label: t("Custom"), url: "", model: "", protocol: "openai" },
     };
-    // 生成模型（提示词生成/离线包装/整理）支持的文本平台：与 llm_client.PROVIDERS 对齐。
+    // 生成模型（提示词生成/离线包装/整理）支持的文本平台：与 h3kit.llm.PROVIDERS 对齐。
     const generationProviders = ["custom", "dashscope", "deepseek", "glm", "openai", "openrouter", "siliconflow"];
     const generationProviderLabels = { custom: t("custom"), dashscope: t("dashscope"), deepseek: t("deepseek"), glm: t("glm"), openai: t("openai"), openrouter: t("openrouter"), siliconflow: t("siliconflow") };
     const migrateProviderApiKeys = settings => {
@@ -2162,7 +2257,7 @@ function nodeColorToCss(value) {
         }
         let defaults;
         try { defaults = await fetchOptimizerJson(`${OPTIMIZER_ROUTE}/config`, { cache: "no-store" }); }
-        catch (error) { throw new Error(`${t("Unable to load prompt optimizer settings")}: ${error.message}`); }
+        catch (error) { throw new Error(`${t("Could not read the rewriting settings")}: ${error.message}`); }
         optimizerSettings = migrateLegacyOptimizerDefault(defaults);
         refreshOptimizerName(); refreshPromptConnection();
         return optimizerSettings;
@@ -2173,47 +2268,47 @@ function nodeColorToCss(value) {
         loadOptimizerSettings().then(current => {
             if (panelRemoved || epoch !== settingsEpoch || node.graph !== app.graph) return;
             migrateGenerationOptions();
-            const overlay = make("div"); overlay.className = "mxv-opt-overlay";
-            const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
-            const title = make("div", {}, t("LLM Prompt Optimization Configuration")); title.className = "mxv-opt-title"; dialog.append(title);
-            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `mxv-opt-row${custom ? " mxv-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); return control; };
+            const overlay = make("div"); overlay.className = "h3k-opt-overlay";
+            const dialog = make("div"); dialog.className = "h3k-opt-dialog"; overlay.append(dialog);
+            const title = make("div", {}, t("Prompt rewriting settings")); title.className = "h3k-opt-title"; dialog.append(title);
+            const row = (label, control, custom = false) => { const wrap = make("label"); wrap.className = `h3k-opt-row${custom ? " h3k-opt-custom" : ""}`; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); return control; };
             // 分区容器（2026-09-26 层级重构）：AI 生成是主题功能，润色是其子功能——
             // 主分区在前，润色作为子分组（缩进弱化）后置；sectionBox 只决定 row 的归属。
             let sectionBox = dialog;
             const beginSection = (title, kind = "main") => {
-                const head = make("div", {}, t(title)); head.className = kind === "sub" ? "mxv-opt-subsection" : "mxv-opt-section"; dialog.append(head);
-                const body = make("div"); body.className = kind === "sub" ? "mxv-opt-subsection-body" : "mxv-opt-section-body"; dialog.append(body);
+                const head = make("div", {}, t(title)); head.className = kind === "sub" ? "h3k-opt-subsection" : "h3k-opt-section"; dialog.append(head);
+                const body = make("div"); body.className = kind === "sub" ? "h3k-opt-subsection-body" : "h3k-opt-section-body"; dialog.append(body);
                 return body;
             };
-            const mainSection = beginSection("AI generation");
+            const mainSection = beginSection("AI drafting");
             sectionBox = mainSection;
             // 共享钥匙串/模型池声明：润色（✦ 子功能）沿用主区的生成平台/Key/模型。
             const providerApiKeys = { ...(current.api_keys || {}) };
             if (current.api_key && !providerApiKeys[current.provider || "runninghub"]) providerApiKeys[current.provider || "runninghub"] = current.api_key;
-            const savedGenProvider = String(widget(node, "ai_provider")?.value || "deepseek");
-            if (!Object.hasOwn(providerApiKeys, savedGenProvider)) providerApiKeys[savedGenProvider] = cleanPrompt(widget(node, "ai_api_key")?.value);
+            const savedGenProvider = String(widget(node, "ai_platform")?.value || "deepseek");
+            if (!Object.hasOwn(providerApiKeys, savedGenProvider)) providerApiKeys[savedGenProvider] = cleanPrompt(widget(node, "ai_key")?.value);
             const providerModels = { ...(current.provider_models || {}) };
             if (current.model && !providerModels[current.provider || "runninghub"]) providerModels[current.provider || "runninghub"] = current.model;
-            const genProvider = row("Generation provider", make("select"));
+            const genProvider = row("Drafting platform", make("select"));
             for (const value of generationProviders) genProvider.append(new Option(generationProviderLabels[value], value));
             genProvider.value = generationProviders.includes(savedGenProvider) ? savedGenProvider : "deepseek";
-            const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_api_key")?.value);
+            const genKey = row("API key", make("input")); genKey.type = "password"; genKey.value = providerApiKeys[genProvider.value] ?? cleanPrompt(widget(node, "ai_key")?.value);
             genKey.onchange = () => {
                 // 分区 Key 行即时写回共享钥匙串与生成 widget（与润色 Key 行同语义）。
                 providerApiKeys[genProvider.value] = genKey.value.trim();
                 setSharedKey(genProvider.value, genKey.value.trim());
-                setWidget(node, "ai_api_key", genKey.value.trim());
+                setWidget(node, "ai_key", genKey.value.trim());
             };
-            const genModel = row("Generation model", make("input"));
+            const genModel = row("Drafting model", make("input"));
             genModel.placeholder = t("model override");
-            genModel.value = cleanPrompt(widget(node, "ai_model")?.value);
-            const genEndpoint = row("Generation endpoint", make("input"));
+            genModel.value = cleanPrompt(widget(node, "ai_model_name")?.value);
+            const genEndpoint = row("Drafting endpoint", make("input"));
             genEndpoint.placeholder = t("endpoint override");
-            genEndpoint.value = cleanPrompt(widget(node, "ai_endpoint")?.value);
+            genEndpoint.value = cleanPrompt(widget(node, "ai_base_url")?.value);
             const syncGenRows = () => {
                 const custom = genProvider.value === "custom";
-                genEndpoint.closest("label").classList.toggle("mxv-opt-hidden", !custom);
-                // 普通平台：模型留空时用 llm_client 预设（前端不做硬编码，仅提示）。
+                genEndpoint.closest("label").classList.toggle("h3k-opt-hidden", !custom);
+                // 普通平台：模型留空时用 h3kit.llm 预设（前端不做硬编码，仅提示）。
                 genModel.placeholder = custom ? t("model override") : t("Default: provider preset model");
             };
             genProvider.onchange = () => {
@@ -2224,48 +2319,48 @@ function nodeColorToCss(value) {
             syncGenRows();
             const genMode = row("H3 structure", make("select"));
             for (const value of ["auto", "t2va", "i2va", "fl2va", "l2va", "ref2va"]) genMode.append(new Option(t(value), value));
-            genMode.value = String(widget(node, "ai_mode")?.value || "auto");
-            genMode.onchange = () => { setWidget(node, "ai_mode", genMode.value); persistState(); };
+            genMode.value = String(widget(node, "ai_task")?.value || "auto");
+            genMode.onchange = () => { setWidget(node, "ai_task", genMode.value); persistState(); };
             // 开关直接读写隐藏 ai_* widget：与工作流序列化同源，运行期 ai/offline 兼容路径复用同一份取值。
-            const genChecks = make("div"); genChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
+            const genChecks = make("div"); genChecks.className = "h3k-opt-checks h3k-opt-gen-grid";
             const genSwitchRow = (label, name) => {
-                const wrap = make("label"); wrap.className = "mxv-opt-gen-item";
-                const input = document.createElement("input"); input.type = "checkbox"; input.className = "mxv-opt-check";
+                const wrap = make("label"); wrap.className = "h3k-opt-gen-item";
+                const input = document.createElement("input"); input.type = "checkbox"; input.className = "h3k-opt-check";
                 input.checked = !!widget(node, name)?.value;
                 input.onchange = () => { setGenerationOption(name, input.checked); persistState(); };
                 wrap.append(input, make("span", {}, t(label))); genChecks.append(wrap);
             };
-            genSwitchRow("Bounded enrichment", "ai_enrich");
-            genSwitchRow("Soundscape", "ai_soundscape");
-            genSwitchRow("Music", "ai_music");
-            genSwitchRow("Auto timestamps", "ai_auto_timestamps");
-            genSwitchRow("Fixed camera", "ai_fixed_camera");
-            genSwitchRow("Visual stability", "ai_visual_stability");
-            genSwitchRow("No-subtitle constraint", "ai_no_subtitles");
-            genSwitchRow("Anti-pop inline dialogue", "ai_anti_pop");
-            genSwitchRow("Strict validation", "ai_strict_validation");
+            genSwitchRow("Bounded enrichment", "ai_expand");
+            genSwitchRow("Soundscape", "ai_ambience");
+            genSwitchRow("Music", "ai_score");
+            genSwitchRow("Auto timestamps", "ai_timeline");
+            genSwitchRow("Fixed camera", "ai_lock_camera");
+            genSwitchRow("Visual stability", "ai_stabilize");
+            genSwitchRow("No-subtitle constraint", "ai_subtitle_free");
+            genSwitchRow("Anti-pop inline dialogue", "ai_audio_guard");
+            genSwitchRow("Strict validation", "ai_strict_check");
             sectionBox.append(genChecks);
-            const genLanguage = make("select"); genLanguage.className = "mxv-control";
+            const genLanguage = make("select"); genLanguage.className = "h3k-control";
             for (const value of ["zh", "mixed", "en"]) genLanguage.append(new Option(t(value), value));
-            genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_language")?.value)) ? String(widget(node, "ai_language")?.value) : "zh";
-            genLanguage.onchange = () => setWidget(node, "ai_language", genLanguage.value);
-            const genTimeout = document.createElement("input"); genTimeout.type = "number"; genTimeout.min = "15"; genTimeout.max = "600"; genTimeout.step = "5"; genTimeout.className = "mxv-control";
-            genTimeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_timeout")?.value) || 180)));
-            genTimeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(genTimeout.value) || 180)); genTimeout.value = String(value); setWidget(node, "ai_timeout", value); };
-            const genRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-row"; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); };
-            genRow("Generation language", genLanguage);
+            genLanguage.value = ["zh", "mixed", "en"].includes(String(widget(node, "ai_locale")?.value)) ? String(widget(node, "ai_locale")?.value) : "zh";
+            genLanguage.onchange = () => setWidget(node, "ai_locale", genLanguage.value);
+            const genTimeout = document.createElement("input"); genTimeout.type = "number"; genTimeout.min = "15"; genTimeout.max = "600"; genTimeout.step = "5"; genTimeout.className = "h3k-control";
+            genTimeout.value = String(Math.max(15, Math.min(600, Number(widget(node, "ai_deadline")?.value) || 180)));
+            genTimeout.onchange = () => { const value = Math.max(15, Math.min(600, Number(genTimeout.value) || 180)); genTimeout.value = String(value); setWidget(node, "ai_deadline", value); };
+            const genRow = (label, control) => { const wrap = make("label"); wrap.className = "h3k-opt-row"; wrap.append(make("span", {}, t(label)), control); sectionBox.append(wrap); };
+            genRow("Drafting language", genLanguage);
             genRow("AI timeout", genTimeout);
             /* ===== 润色（✦）＝AI 生成的子功能：沿用主区平台/Key/模型/语言，无独立配置。
                仅保留两个行为开关（读取素材 / 运行前自动润色）。 ===== */
-            const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "mxv-opt-check";
-            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "mxv-opt-check";
-            const subSectionHead = make("div", {}, t("Prompt polishing (sub-feature)")); subSectionHead.className = "mxv-opt-subsection"; mainSection.append(subSectionHead);
-            const polishChecks = make("div"); polishChecks.className = "mxv-opt-checks mxv-opt-gen-grid";
-            const polishCheckRow = (label, control) => { const wrap = make("label"); wrap.className = "mxv-opt-gen-item"; wrap.append(control, make("span", {}, t(label))); polishChecks.append(wrap); };
-            polishCheckRow("Read visual references", readMedia);
-            polishCheckRow("Automatic optimization before run", autoOptimize);
+            const readMedia = make("input"); readMedia.type = "checkbox"; readMedia.checked = current.read_media !== false; readMedia.className = "h3k-opt-check";
+            const autoOptimize = make("input"); autoOptimize.type = "checkbox"; autoOptimize.checked = !!current.auto_optimize; autoOptimize.className = "h3k-opt-check";
+            const subSectionHead = make("div", {}, t("Prompt polishing (sub-feature)")); subSectionHead.className = "h3k-opt-subsection"; mainSection.append(subSectionHead);
+            const polishChecks = make("div"); polishChecks.className = "h3k-opt-checks h3k-opt-gen-grid";
+            const polishCheckRow = (label, control) => { const wrap = make("label"); wrap.className = "h3k-opt-gen-item"; wrap.append(control, make("span", {}, t(label))); polishChecks.append(wrap); };
+            polishCheckRow("Send visuals to the model", readMedia);
+            polishCheckRow("Rewrite wording automatically before each run", autoOptimize);
             mainSection.append(polishChecks);
-            const actions = make("div"); actions.className = "mxv-opt-actions";
+            const actions = make("div"); actions.className = "h3k-opt-actions";
             const cancel = make("button", {}, t("Cancel")); const save = make("button", {}, t("Save"));
             // 配置界面纯配置（2026-09-26）：✦ 润色与 ≡/✨ 一样是工具条一键直出动作。
             actions.append(cancel, save); dialog.append(actions);
@@ -2284,7 +2379,7 @@ function nodeColorToCss(value) {
                 const busy = !!activePromptOperation;
                 save.disabled = busy;
                 for (const control of dialog.querySelectorAll("input, select, textarea")) control.disabled = busy;
-                cancel.textContent = busy ? t("Cancel processing") : t("Cancel");
+                cancel.textContent = busy ? t("Abort") : t("Cancel");
             };
             refreshDialogActions();
             /* 保存：生成侧 widget 与润色行为开关统一落盘。润色（✦ 子功能）沿用
@@ -2304,10 +2399,10 @@ function nodeColorToCss(value) {
                     output_language: genLanguage.value === "zh" ? "中文" : "English",
                 };
                 // ===== 生成侧写回：平台/Key/模型/端点与钥匙串同步 =====
-                setWidget(node, "ai_provider", genProvider.value);
-                setWidget(node, "ai_api_key", providerApiKeys[genProvider.value] ?? "");
-                setWidget(node, "ai_model", genModel.value.trim());
-                setWidget(node, "ai_endpoint", genEndpoint.value.trim());
+                setWidget(node, "ai_platform", genProvider.value);
+                setWidget(node, "ai_key", providerApiKeys[genProvider.value] ?? "");
+                setWidget(node, "ai_model_name", genModel.value.trim());
+                setWidget(node, "ai_base_url", genEndpoint.value.trim());
                 refreshOptimizerName(); refreshPromptConnection(); persistState();
             };
             save.onclick = () => { applyDialogConfig(); close(); };
@@ -2316,67 +2411,81 @@ function nodeColorToCss(value) {
         }).catch(error => { if (!panelRemoved && epoch === settingsEpoch) alert(error.message); });
     }
     function showOptimizerConfigPrompt() {
-        const overlay = make("div"); overlay.className = "mxv-opt-overlay";
-        const dialog = make("div"); dialog.className = "mxv-opt-dialog"; overlay.append(dialog);
-        dialog.append(make("div", {}, t("Prompt optimizer API is not configured. Open settings now?")));
-        const actions = make("div"); actions.className = "mxv-opt-actions";
+        const overlay = make("div"); overlay.className = "h3k-opt-overlay";
+        const dialog = make("div"); dialog.className = "h3k-opt-dialog"; overlay.append(dialog);
+        dialog.append(make("div", {}, t("The rewriting API is not configured yet. Open the settings dialog now?")));
+        const actions = make("div"); actions.className = "h3k-opt-actions";
         const cancel = make("button", {}, t("Cancel")); const confirm = make("button", {}, t("Confirm")); actions.append(cancel, confirm); dialog.append(actions);
         const close = () => overlay.remove(); cancel.onclick = close; confirm.onclick = () => { close(); openOptimizerSettings(); };
         document.body.append(overlay);
     }
     /* AI 生成弹窗已并入统一配置界面 openOptimizerSettings（2026-09-25 二次整合）。 */
+    /* 参考图/参考视频都走同一条降采样链路：最长边压进 512，再以低质量 JPEG 转 base64。
+       ComfyUI 侧只把缩略图当视觉提示用，不需要原图精度，压小可省请求体与显存。 */
+    const VISION_THUMB_EDGE = 512;
+    const VISION_THUMB_QUALITY = .42;
+    function thumbSize(width, height) {
+        const scale = Math.min(1, VISION_THUMB_EDGE / Math.max(width, height));
+        return [Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
+    }
+    function thumbDataUrl(source, width, height) {
+        const [scaledWidth, scaledHeight] = thumbSize(width, height);
+        const canvasEl = document.createElement("canvas");
+        canvasEl.width = scaledWidth;
+        canvasEl.height = scaledHeight;
+        canvasEl.getContext("2d", { alpha: false }).drawImage(source, 0, 0, scaledWidth, scaledHeight);
+        return canvasEl.toDataURL("image/jpeg", VISION_THUMB_QUALITY);
+    }
     function lowImageData(url) {
         return new Promise((resolve, reject) => {
-            const image = new Image(); image.crossOrigin = "anonymous";
-            image.onload = () => {
-                const scale = Math.min(1, 512 / Math.max(image.naturalWidth, image.naturalHeight));
-                const canvasEl = document.createElement("canvas"); canvasEl.width = Math.max(1, Math.round(image.naturalWidth * scale)); canvasEl.height = Math.max(1, Math.round(image.naturalHeight * scale));
-                canvasEl.getContext("2d", { alpha: false }).drawImage(image, 0, 0, canvasEl.width, canvasEl.height);
-                resolve(canvasEl.toDataURL("image/jpeg", .42));
-            };
-            image.onerror = () => reject(new Error("Unable to read reference image")); image.src = url;
+            const image = new Image();
+            image.crossOrigin = "anonymous";
+            image.onload = () => resolve(thumbDataUrl(image, image.naturalWidth, image.naturalHeight));
+            image.onerror = () => reject(new Error("Unable to read reference image"));
+            image.src = url;
         });
     }
     function lowVideoFrames(url) {
         return new Promise((resolve, reject) => {
-            const video = document.createElement("video"); video.crossOrigin = "anonymous"; video.muted = true; video.preload = "metadata";
+            const video = document.createElement("video");
+            video.crossOrigin = "anonymous";
+            video.muted = true;
+            video.preload = "metadata";
+            const seekTo = target => new Promise((done, fail) => {
+                const timeout = setTimeout(() => fail(new Error("Video frame seek timed out")), 10000);
+                video.onseeked = () => { clearTimeout(timeout); done(); };
+                video.currentTime = target;
+            });
             video.onloadedmetadata = async () => {
                 try {
                     const duration = Number.isFinite(video.duration) ? video.duration : 0;
-                    const times = duration > 0 ? [0, duration / 2, Math.max(0, duration - .04)] : [0];
+                    // 取首帧、中点、末帧三点足以表达画面走向；末帧留 40ms 余量避开黑帧。
+                    const marks = duration > 0 ? [0, duration / 2, Math.max(0, duration - .04)] : [0];
                     const frames = [];
-                    for (const time of times) {
-                        const target = Math.min(time, Math.max(0, duration - .001));
-                        if (video.readyState < 2 || Math.abs(video.currentTime - target) > .002) {
-                            await new Promise((done, fail) => {
-                                const timeout = setTimeout(() => fail(new Error("Video frame seek timed out")), 10000);
-                                video.onseeked = () => { clearTimeout(timeout); done(); };
-                                video.currentTime = target;
-                            });
-                        }
-                        const scale = Math.min(1, 512 / Math.max(video.videoWidth, video.videoHeight));
-                        const canvasEl = document.createElement("canvas"); canvasEl.width = Math.max(1, Math.round(video.videoWidth * scale)); canvasEl.height = Math.max(1, Math.round(video.videoHeight * scale));
-                        canvasEl.getContext("2d", { alpha: false }).drawImage(video, 0, 0, canvasEl.width, canvasEl.height);
-                        frames.push(canvasEl.toDataURL("image/jpeg", .42));
+                    for (const mark of marks) {
+                        const target = Math.min(mark, Math.max(0, duration - .001));
+                        if (video.readyState < 2 || Math.abs(video.currentTime - target) > .002) await seekTo(target);
+                        frames.push(thumbDataUrl(video, video.videoWidth, video.videoHeight));
                     }
                     resolve(frames);
                 } catch (error) { reject(error); }
             };
-            video.onerror = () => reject(new Error("Unable to read reference video")); video.src = url;
+            video.onerror = () => reject(new Error("Unable to read reference video"));
+            video.src = url;
         });
     }
     function optimizerMediaSpecs() {
         const specs = [];
         if (state.mode === "text_keyframes") {
             const task = resolvedTaskType();
-            const frames = ["first_frame", "last_frame"].filter(slot => media.has(slot));
+            const frames = ["keyframe_open", "keyframe_close"].filter(slot => media.has(slot));
             frames.forEach((slot, index) => specs.push({ slot, kind: "image", label: task === "FL2VA" ? `picture ${index + 1}` : `<picture ${index + 1}>` }));
-            if (media.has("hybrid_audio")) specs.push({ slot: "hybrid_audio", kind: "audio", label: "<audio 1>" });
+            if (media.has("keyframe_audio")) specs.push({ slot: "keyframe_audio", kind: "audio", label: "<audio 1>" });
             return specs;
         }
-        const images = [...media.entries()].filter(([slot, entry]) => slot.startsWith("ref_image_") && entry?.kind === "image").sort((a,b) => a[0].localeCompare(b[0]));
-        const videos = [...media.entries()].filter(([slot, entry]) => slot.startsWith("ref_video_") && entry?.kind === "video").sort((a,b) => a[0].localeCompare(b[0]));
-        const audios = [...media.entries()].filter(([slot, entry]) => slot.startsWith("ref_audio_") && entry?.kind === "audio").sort((a,b) => a[0].localeCompare(b[0]));
+        const images = [...media.entries()].filter(([slot, entry]) => slot.startsWith("still_") && entry?.kind === "image").sort((a,b) => a[0].localeCompare(b[0]));
+        const videos = [...media.entries()].filter(([slot, entry]) => slot.startsWith("footage_") && entry?.kind === "video").sort((a,b) => a[0].localeCompare(b[0]));
+        const audios = [...media.entries()].filter(([slot, entry]) => slot.startsWith("track_") && entry?.kind === "audio").sort((a,b) => a[0].localeCompare(b[0]));
         images.forEach(([slot], index) => specs.push({ slot, kind: "image", label: `<picture ${index + 1}>` }));
         videos.forEach(([slot], index) => specs.push({ slot, kind: "video", label: `<video ${index + 1}>` }));
         let audioOrdinal = 1;
@@ -2416,17 +2525,17 @@ function nodeColorToCss(value) {
         // 实际值）影响是否携带图片，一并入签。
         return JSON.stringify({ task, duration, mode, context, media: specs.map(spec => [spec.slot, spec.kind, spec.label, media.get(spec.slot)?.name || "", !!media.get(spec.slot)?.muted]), settings: [polishProviderValue(), polishModelValue(), polishEndpointValue(), polishOutputLanguageValue(), readMedia] });
     }
-    function optimizerTaskContext(specs, mode = state.mode, audioMode = widget(node, "audio_mode")?.value || "native") {
+    function optimizerTaskContext(specs, mode = state.mode, audioMode = widget(node, "audio_source")?.value || "native") {
         const keyframes = specs
-            .filter(spec => spec.slot === "first_frame" || spec.slot === "last_frame")
+            .filter(spec => spec.slot === "keyframe_open" || spec.slot === "keyframe_close")
             .map(spec => ({
                 label: spec.label,
-                role: spec.slot === "first_frame" ? "exact_first_frame" : "exact_last_frame",
+                role: spec.slot === "keyframe_open" ? "exact_first_frame" : "exact_last_frame",
             }));
         return {
-            main_mode: mode,
+            panel_mode: mode,
             keyframes,
-            audio_mode: audioMode,
+            audio_source: audioMode,
         };
     }
     function applyOptimizedPrompt(value, before, targetMode = state.mode) {
@@ -2444,7 +2553,7 @@ function nodeColorToCss(value) {
     function playOptimizerCompleteSound() {
         try {
             optimizerCompleteAudio?.pause();
-            optimizerCompleteAudio = new Audio(OPTIMIZER_DONE_SOUND_URL);
+            optimizerCompleteAudio = new Audio(OPTIMIZER_READY_CUE_URL);
             optimizerCompleteAudio.volume = 0.6;
             optimizerCompleteAudio.play().catch(() => {});
         } catch {}
@@ -2453,47 +2562,47 @@ function nodeColorToCss(value) {
        配置界面只负责配置；≡/✨ 按当前 widget 配置直接执行并填回编辑器，
        进度与取消复用左侧 elapsed 指示器（点击即取消）。 */
     const generationMode = () => {
-        const explicit = String(widget(node, "ai_mode")?.value || "auto");
+        const explicit = String(widget(node, "ai_task")?.value || "auto");
         if (["t2va", "i2va", "fl2va", "l2va", "ref2va"].includes(explicit)) return explicit;
         if (state.mode === "all_reference") return "ref2va";
-        const first = media.has("first_frame");
-        const last = media.has("last_frame");
+        const first = media.has("keyframe_open");
+        const last = media.has("keyframe_close");
         return first && last ? "fl2va" : first ? "i2va" : last ? "l2va" : "t2va";
     };
     const generationBody = () => {
-        const provider = String(widget(node, "ai_provider")?.value || "deepseek");
+        const provider = String(widget(node, "ai_platform")?.value || "deepseek");
         const flag = name => !!widget(node, name)?.value;
         const duration = Number(durationWidget?.value ?? 5);
-        if (!Number.isFinite(duration) || duration < 2 || duration > 15) throw new Error(t("Generation supports 2–15 seconds"));
+        if (!Number.isFinite(duration) || duration < 2 || duration > 15) throw new Error(t("Drafting only supports clips of 2–15 s"));
         return {
             prompt: prompt.value,
             provider,
-            api_key: getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value),
-            endpoint: cleanPrompt(widget(node, "ai_endpoint")?.value),
-            model: cleanPrompt(widget(node, "ai_model")?.value),
-            timeout: Number(widget(node, "ai_timeout")?.value || 180),
+            api_key: getSharedKey(provider) || cleanPrompt(widget(node, "ai_key")?.value),
+            endpoint: cleanPrompt(widget(node, "ai_base_url")?.value),
+            model: cleanPrompt(widget(node, "ai_model_name")?.value),
+            timeout: Number(widget(node, "ai_deadline")?.value || 180),
             controls: {
                 mode: generationMode(),
-                lang: String(widget(node, "ai_language")?.value || "zh"),
+                lang: String(widget(node, "ai_locale")?.value || "zh"),
                 duration,
-                ratio: String(widget(node, "aspect")?.value || "16:9"),
+                ratio: String(widget(node, "frame_ratio")?.value || "16:9"),
                 model: provider,
-                enrich_do_enrich: flag("ai_enrich"),
-                enrich_soundscape: flag("ai_soundscape"),
-                enrich_music: flag("ai_music"),
-                auto_timestamps: flag("ai_auto_timestamps"),
-                fixed_camera: flag("ai_fixed_camera"),
-                visual_stability: flag("ai_visual_stability"),
-                no_subtitles: flag("ai_no_subtitles"),
-                anti_pop: flag("ai_anti_pop"),
+                enrich_do_enrich: flag("ai_expand"),
+                enrich_soundscape: flag("ai_ambience"),
+                enrich_music: flag("ai_score"),
+                auto_timestamps: flag("ai_timeline"),
+                fixed_camera: flag("ai_lock_camera"),
+                visual_stability: flag("ai_stabilize"),
+                no_subtitles: flag("ai_subtitle_free"),
+                anti_pop: flag("ai_audio_guard"),
             },
         };
     };
     const applyGenerationResult = (result, operation) => {
-        if (!promptOperationCurrent(operation)) throw new Error(t("Prompt changed; result was not applied"));
+        if (!promptOperationCurrent(operation)) throw new Error(t("The prompt or mode changed after the request, so nothing was overwritten"));
         const value = String(result?.prompt ?? "");
-        if (!value.trim()) throw new Error(t("Generation prompt failed"));
-        if (operation.strict && result.valid !== true) throw new Error(result.report || t("Generation prompt failed"));
+        if (!value.trim()) throw new Error(t("Drafting failed"));
+        if (operation.strict && result.valid !== true) throw new Error(result.report || t("Drafting failed"));
         const before = operation.before;
         // 先压栈再替换：Ctrl+Z 可回到生成前的编辑器内容。
         pushPromptUndo(promptSnapshot());
@@ -2504,15 +2613,15 @@ function nodeColorToCss(value) {
     };
     async function runGeneration(operation) {
         if (activePromptOperation || panelRemoved) return;
-        if (!prompt.value.trim()) { alert(t("Enter a prompt first")); return; }
+        if (!prompt.value.trim()) { alert(t("Type a prompt first")); return; }
         const pending = beginPromptOperation(operation);
         if (!pending) return;
-        pending.strict = widget(node, "ai_strict_validation")?.value !== false;
+        pending.strict = widget(node, "ai_strict_check")?.value !== false;
         let timeout;
         let timedOut = false;
         elapsedPrompt.classList.add("visible");
         const started = performance.now();
-        const refreshElapsed = () => { elapsedPrompt.textContent = `${t(operation === "ai" ? "Generating" : "Formatting")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
+        const refreshElapsed = () => { elapsedPrompt.textContent = `${t(operation === "ai" ? "Drafting" : "Tidying")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
         refreshElapsed();
         const elapsedTimer = setInterval(refreshElapsed, 1000);
         try {
@@ -2527,12 +2636,12 @@ function nodeColorToCss(value) {
             const text = await response.text();
             let data;
             try { data = text ? JSON.parse(text) : {}; }
-            catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Generation prompt failed")); }
-            if (!response.ok) throw new Error(data.error || t("Generation prompt failed"));
+            catch { throw new Error(/^\s*(?:<!doctype\s+html|<html)/i.test(text) ? "云端网关返回了网页而不是节点数据" : t("Drafting failed")); }
+            if (!response.ok) throw new Error(data.error || t("Drafting failed"));
             if (pending.controller.signal.aborted) return;
             applyGenerationResult(data, pending);
         } catch (error) {
-            if (!panelRemoved && (timedOut || !pending.controller.signal.aborted)) alert(timedOut ? t("Generation timed out") : error.message);
+            if (!panelRemoved && (timedOut || !pending.controller.signal.aborted)) alert(timedOut ? t("Drafting timed out") : error.message);
         } finally {
             clearTimeout(timeout);
             clearInterval(elapsedTimer);
@@ -2541,9 +2650,9 @@ function nodeColorToCss(value) {
         }
     }
     const ensureGenerationKey = () => {
-        const provider = String(widget(node, "ai_provider")?.value || "deepseek");
-        if (getSharedKey(provider) || cleanPrompt(widget(node, "ai_api_key")?.value)) return true;
-        if (confirm(t("Generation API key is missing. Open settings now?"))) openOptimizerSettings();
+        const provider = String(widget(node, "ai_platform")?.value || "deepseek");
+        if (getSharedKey(provider) || cleanPrompt(widget(node, "ai_key")?.value)) return true;
+        if (confirm(t("No drafting API key saved yet. Open the settings dialog now?"))) openOptimizerSettings();
         return false;
     };
     optimizerGear.onclick = openOptimizerSettings;
@@ -2601,7 +2710,7 @@ function nodeColorToCss(value) {
         const before = prompt.value;
         const task = resolvedTaskType();
         const duration = Number(durationWidget?.value || 5);
-        const audioMode = widget(node, "audio_mode")?.value || "native";
+        const audioMode = widget(node, "audio_source")?.value || "native";
         if (automatic && resemblesOfficialPrompt(before, task)) return false;
         const specs = optimizerMediaSpecs();
         const taskContext = optimizerTaskContext(specs, optimizationMode, audioMode);
@@ -2615,7 +2724,7 @@ function nodeColorToCss(value) {
             if (automatic && !optimizerSettings?.auto_optimize) return false;
             // 润色（✦ 子功能）沿用主区生成配置：平台/Key/模型/端点直接取生成 widget（真源见 polishProviderValue）。
             const polishProvider = polishProviderValue();
-            const polishApiKey = getSharedKey(polishProvider) || polishText(widget(node, "ai_api_key")?.value);
+            const polishApiKey = getSharedKey(polishProvider) || polishText(widget(node, "ai_key")?.value);
             const polishModel = polishModelValue();
             const polishEndpoint = polishEndpointValue();
             // custom 无预设：端点与模型都必须显式填写（缺端点时此前会静默打到 RunningHub）。
@@ -2652,7 +2761,7 @@ function nodeColorToCss(value) {
             if (optimizerCache?.contextSignature === contextSignature && optimizerCache?.result && (before === optimizerCache.originalPrompt || before === optimizerCache.result)) { pushPromptUndo(promptSnapshot()); applyOptimizedPrompt(optimizerCache.result, optimizerCache.originalPrompt, optimizationMode); return true; }
             elapsedPrompt.classList.add("visible");
             const started = performance.now();
-            const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Optimizing")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
+            const refreshElapsed = () => { elapsedPrompt.textContent = `${t("Rewriting")}：${Math.floor((performance.now() - started) / 1000)} s · ${t("Cancel")}`; };
             refreshElapsed(); optimizerTimer = setInterval(refreshElapsed, 1000);
             const mediaPayload = await optimizerMediaPayload(specs);
             if (!promptOperationCurrent(pending)) return false;
@@ -2690,7 +2799,7 @@ function nodeColorToCss(value) {
     const autoOptimizeBeforeQueue = () => runPromptOptimization({ automatic: true });
     autoOptimizerHandlers.add(autoOptimizeBeforeQueue);
     installAutoOptimizerQueueHook();
-    // ✦ 润色一键直出（2026-09-26 回归工具条）：润色中再点一次 = 取消；本地模型模式在
+    // ✦ 润色一键直出（2026-09-26 回归工具条）：改写中再点一次 = 取消；本地模型模式在
     // 工作流运行时由 updateWorkflowState 自动取消（refreshPromptConnection 已禁用按钮）。
     polishPrompt.onclick = async () => {
         if (optimizing) { await cancelOptimization(); return; }
@@ -2715,10 +2824,10 @@ function nodeColorToCss(value) {
         if (decodedAudioCache.has(name)) return decodedAudioCache.get(name);
         const pending = (async () => {
             const response = await fetch(fileUrl(name));
-            if (!response.ok) throw new Error(`${t("Audio decoding failed")}: ${response.status}`);
+            if (!response.ok) throw new Error(`${t("Could not decode the audio")}: ${response.status}`);
             const bytes = await response.arrayBuffer();
             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContextClass) throw new Error(t("Audio decoding failed"));
+            if (!AudioContextClass) throw new Error(t("Could not decode the audio"));
             const context = new AudioContextClass();
             try { return await context.decodeAudioData(bytes.slice(0)); }
             finally { await context.close().catch(() => {}); }
@@ -2731,24 +2840,24 @@ function nodeColorToCss(value) {
         closeActiveTrimEditor?.();
         stopActiveMedia();
         const sourceName = entry.originalName || entry.name;
-        const overlay = make("div"); overlay.className = "mxv-trim-overlay";
-        const dialog = make("div"); dialog.className = "mxv-trim-dialog";
-        dialog.appendChild(make("div", {}, t("Audio trim"))).className = "mxv-trim-title";
-        const waveWrap = make("div"); waveWrap.className = "mxv-trim-wave-wrap";
-        const wave = make("canvas"); wave.className = "mxv-trim-wave";
-        const loading = make("div", {}, "…"); loading.className = "mxv-trim-loading";
+        const overlay = make("div"); overlay.className = "h3k-trim-overlay";
+        const dialog = make("div"); dialog.className = "h3k-trim-dialog";
+        dialog.appendChild(make("div", {}, t("Cut audio"))).className = "h3k-trim-title";
+        const waveWrap = make("div"); waveWrap.className = "h3k-trim-wave-wrap";
+        const wave = make("canvas"); wave.className = "h3k-trim-wave";
+        const loading = make("div", {}, "…"); loading.className = "h3k-trim-loading";
         waveWrap.append(wave, loading); dialog.appendChild(waveWrap);
-        const times = make("div"); times.className = "mxv-trim-times";
-        const timeBox = label => { const box = make("div", {}, t(label)); box.className = "mxv-trim-time"; const value = make("strong", {}, "--"); box.appendChild(value); times.appendChild(box); return { box, value }; };
-        const startTime = timeBox("Start"), endTime = timeBox("End"), durationTime = timeBox("Selected duration");
+        const times = make("div"); times.className = "h3k-trim-times";
+        const timeBox = label => { const box = make("div", {}, t(label)); box.className = "h3k-trim-time"; const value = make("strong", {}, "--"); box.appendChild(value); times.appendChild(box); return { box, value }; };
+        const startTime = timeBox("Start"), endTime = timeBox("End"), durationTime = timeBox("Selected span");
         const startValue = startTime.value, endValue = endTime.value, durationValue = durationTime.value;
-        const syncDuration = make("button", {}, t("Sync target duration")); syncDuration.className = "mxv-trim-sync"; durationTime.box.appendChild(syncDuration);
+        const syncDuration = make("button", {}, t("Match clip length")); syncDuration.className = "h3k-trim-sync"; durationTime.box.appendChild(syncDuration);
         dialog.appendChild(times);
-        const controls = make("div"); controls.className = "mxv-trim-controls";
-        const preview = make("button"); preview.className = "mxv-trim-preview"; preview.disabled = true;
+        const controls = make("div"); controls.className = "h3k-trim-controls";
+        const preview = make("button"); preview.className = "h3k-trim-preview"; preview.disabled = true;
         controls.append(preview, make("span", {}, isChineseLocale() ? "滚轮缩放；中键拖动视图；点击选区播放/停止，选区内按住左键拖动选区位置" : "Wheel to zoom; middle-drag to pan; click selection to play/stop; hold left mouse inside selection to move it"));
-        controls.lastChild.className = "mxv-trim-hint"; dialog.appendChild(controls);
-        const actions = make("div"); actions.className = "mxv-trim-actions";
+        controls.lastChild.className = "h3k-trim-hint"; dialog.appendChild(controls);
+        const actions = make("div"); actions.className = "h3k-trim-actions";
         const cancel = make("button", {}, t("Cancel"));
         const save = make("button", {}, t("Save")); save.disabled = true;
         actions.append(cancel, save); dialog.appendChild(actions); overlay.appendChild(dialog); document.body.appendChild(overlay);
@@ -2771,8 +2880,8 @@ function nodeColorToCss(value) {
         let playheadFrame = 0;
         const minSelection = 0.05;
         const previewIcon = playing => playing
-            ? '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx=".6" fill="#e2e0db"/></svg>'
-            : '<svg viewBox="0 0 12 12"><path d="M2.5 1.5 10 6l-7.5 4.5Z" fill="#e2e0db"/></svg>';
+            ? '<svg viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx=".6" fill="#cfe0ec"/></svg>'
+            : '<svg viewBox="0 0 12 12"><path d="M2.5 1.5 10 6l-7.5 4.5Z" fill="#cfe0ec"/></svg>';
         preview.innerHTML = previewIcon(false);
         const stopPreview = (reset = true) => {
             if (!previewAudio) return;
@@ -2807,7 +2916,7 @@ function nodeColorToCss(value) {
             const { width, height, ratio } = resizeCanvas();
             const context = wave.getContext("2d");
             context.clearRect(0, 0, width, height);
-            context.fillStyle = "#14171b"; context.fillRect(0, 0, width, height);
+            context.fillStyle = "#0f1720"; context.fillRect(0, 0, width, height);
             const scaleHeight = 24 * ratio;
             const waveformHeight = Math.max(1, height - scaleHeight);
             const center = waveformHeight / 2;
@@ -2837,31 +2946,23 @@ function nodeColorToCss(value) {
             const clippedEndX = Math.max(0, Math.min(width, endX));
             context.fillStyle = "rgba(4,10,15,.62)"; context.fillRect(0, 0, clippedStartX, waveformHeight); context.fillRect(clippedEndX, 0, width - clippedEndX, waveformHeight);
             context.fillStyle = "rgba(10,164,214,.16)"; context.fillRect(clippedStartX, 0, Math.max(0, clippedEndX - clippedStartX), waveformHeight);
-            context.strokeStyle = "#e8a33d"; context.lineWidth = Math.max(2, 2 * ratio);
+            context.strokeStyle = "#38d3c6"; context.lineWidth = Math.max(2, 2 * ratio);
             for (const x of [startX, endX]) { if (x < 0 || x > width) continue; context.beginPath(); context.moveTo(x, 0); context.lineTo(x, waveformHeight); context.stroke(); }
-            context.fillStyle = "#e8a33d";
+            context.fillStyle = "#38d3c6";
             const handleWidth = 5 * ratio, handleHeight = 24 * ratio;
             if (startX >= 0 && startX <= width) context.fillRect(startX - handleWidth / 2, center - handleHeight / 2, handleWidth, handleHeight);
             if (endX >= 0 && endX <= width) context.fillRect(endX - handleWidth / 2, center - handleHeight / 2, handleWidth, handleHeight);
-            const targetTickSeconds = visibleDuration / 7;
-            const tickCandidates = [.01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
-            const tickStep = tickCandidates.find(value => value >= targetTickSeconds) || Math.ceil(targetTickSeconds / 3600) * 3600;
+            const tickStep = chooseTickStep(visibleDuration);
             const firstTick = Math.ceil(viewStart / tickStep) * tickStep;
-            const formatTick = seconds => {
-                if (tickStep < 1) return `${seconds.toFixed(tickStep < .1 ? 2 : 1)}s`;
-                if (seconds < 60) return `${Math.round(seconds)}s`;
-                const minutes = Math.floor(seconds / 60), remaining = Math.round(seconds % 60);
-                return remaining ? `${minutes}:${String(remaining).padStart(2, "0")}` : `${minutes}m`;
-            };
-            context.fillStyle = "#14171b"; context.fillRect(0, waveformHeight, width, scaleHeight);
-            context.strokeStyle = "#4a5058"; context.lineWidth = Math.max(1, ratio);
+            context.fillStyle = "#0f1720"; context.fillRect(0, waveformHeight, width, scaleHeight);
+            context.strokeStyle = "#3d5063"; context.lineWidth = Math.max(1, ratio);
             context.beginPath(); context.moveTo(0, waveformHeight + .5 * ratio); context.lineTo(width, waveformHeight + .5 * ratio); context.stroke();
-            context.fillStyle = "#8c8983"; context.font = `${9 * ratio}px Arial,sans-serif`; context.textBaseline = "top";
+            context.fillStyle = "#7b90a3"; context.font = `${9 * ratio}px "Segoe UI",system-ui,sans-serif`; context.textBaseline = "top";
             for (let seconds = firstTick; seconds <= viewEnd + tickStep * .001; seconds += tickStep) {
                 const x = timeToX(seconds);
                 if (x < 0 || x > width) continue;
-                context.strokeStyle = "#75726c"; context.beginPath(); context.moveTo(x, waveformHeight); context.lineTo(x, waveformHeight + 5 * ratio); context.stroke();
-                const label = formatTick(seconds);
+                context.strokeStyle = "#6d8194"; context.beginPath(); context.moveTo(x, waveformHeight); context.lineTo(x, waveformHeight + 5 * ratio); context.stroke();
+                const label = formatTickLabel(seconds, tickStep);
                 const labelWidth = context.measureText(label).width;
                 const labelX = Math.max(2 * ratio, Math.min(width - labelWidth - 2 * ratio, x - labelWidth / 2));
                 context.fillText(label, labelX, waveformHeight + 7 * ratio);
@@ -2890,14 +2991,18 @@ function nodeColorToCss(value) {
             try {
                 await previewAudio.play();
                 previewPlaying = true; preview.innerHTML = previewIcon(true);
+                // 播放头跑出当前视窗时把视窗跟着滑过去（留 8% 余量）。
+                const followPlayhead = () => {
+                    const span = viewEnd - viewStart;
+                    const now = previewAudio.currentTime;
+                    if (now >= viewStart && now <= viewEnd) return;
+                    viewStart = Math.max(0, Math.min(buffer.duration - span, now - span * .08));
+                    viewEnd = Math.min(buffer.duration, viewStart + span);
+                };
                 const animatePlayhead = () => {
                     if (!previewPlaying || !previewAudio) return;
                     if (previewAudio.currentTime >= end) { stopPreview(); return; }
-                    const span = viewEnd - viewStart;
-                    if (previewAudio.currentTime < viewStart || previewAudio.currentTime > viewEnd) {
-                        viewStart = Math.max(0, Math.min(buffer.duration - span, previewAudio.currentTime - span * .08));
-                        viewEnd = Math.min(buffer.duration, viewStart + span);
-                    }
+                    followPlayhead();
                     drawWaveform();
                     playheadFrame = requestAnimationFrame(animatePlayhead);
                 };
@@ -2905,18 +3010,22 @@ function nodeColorToCss(value) {
             } catch {}
         };
         const togglePreview = () => previewPlaying ? stopPreview() : startPreview();
-        waveWrap.onwheel = event => {
-            if (!buffer) return;
-            event.preventDefault(); event.stopPropagation();
+        // 以指针位置为锚点缩放时间轴（滚轮上滚放大）。
+        const zoomAtPointer = (clientX, deltaY) => {
             const rect = waveWrap.getBoundingClientRect();
-            const anchorRatio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+            const anchorRatio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
             const anchorTime = viewStart + anchorRatio * (viewEnd - viewStart);
-            const currentSpan = viewEnd - viewStart;
+            const span = viewEnd - viewStart;
             const minimumSpan = Math.min(buffer.duration, Math.max(.25, (end - start) / 20));
-            const nextSpan = Math.max(minimumSpan, Math.min(buffer.duration, currentSpan * (event.deltaY < 0 ? .8 : 1.25)));
+            const nextSpan = Math.max(minimumSpan, Math.min(buffer.duration, span * (deltaY < 0 ? .8 : 1.25)));
             viewStart = Math.max(0, Math.min(buffer.duration - nextSpan, anchorTime - nextSpan * anchorRatio));
             viewEnd = viewStart + nextSpan;
             drawWaveform();
+        };
+        waveWrap.onwheel = event => {
+            if (!buffer) return;
+            event.preventDefault(); event.stopPropagation();
+            zoomAtPointer(event.clientX, event.deltaY);
         };
         waveWrap.onpointerdown = event => {
             if (!buffer) return;
@@ -2925,7 +3034,7 @@ function nodeColorToCss(value) {
                 dragging = "view";
                 panOriginX = event.clientX;
                 panViewStart = viewStart;
-                waveWrap.classList.add("mxv-trim-panning");
+                waveWrap.classList.add("h3k-trim-panning");
                 waveWrap.setPointerCapture(event.pointerId);
                 return;
             }
@@ -2933,10 +3042,7 @@ function nodeColorToCss(value) {
             const wasPlaying = previewPlaying;
             const seconds = pointerSeconds(event);
             const hitSeconds = Math.max((viewEnd - viewStart) * 10 / Math.max(1, waveWrap.clientWidth), .03);
-            if (Math.abs(seconds - start) <= hitSeconds) dragging = "start";
-            else if (Math.abs(seconds - end) <= hitSeconds) dragging = "end";
-            else if (seconds > start && seconds < end) dragging = "selection";
-            else dragging = Math.abs(seconds - start) < Math.abs(seconds - end) ? "start" : "end";
+            dragging = pickTrimDrag(seconds, hitSeconds, start, end);
             dragOriginX = seconds; dragStart = start; dragEnd = end;
             pointerDownX = event.clientX; selectionMoved = false;
             waveWrap.dataset.wasPlaying = wasPlaying ? "1" : "0";
@@ -2969,7 +3075,7 @@ function nodeColorToCss(value) {
         const finishDrag = event => {
             if (dragging === "view") {
                 dragging = null;
-                waveWrap.classList.remove("mxv-trim-panning");
+                waveWrap.classList.remove("h3k-trim-panning");
                 try { waveWrap.releasePointerCapture(event.pointerId); } catch {}
                 return;
             }
@@ -2985,11 +3091,7 @@ function nodeColorToCss(value) {
             if (!buffer) return;
             stopPreview();
             const target = Math.max(0, Number(durationWidget?.value) || 5);
-            if (buffer.duration <= target) { start = 0; end = buffer.duration; }
-            else {
-                start = Math.max(0, Math.min(start, buffer.duration - target));
-                end = Math.min(buffer.duration, start + target);
-            }
+            [start, end] = fitSelectionToTarget(start, buffer.duration, target);
             updateTimes();
         };
         save.onclick = async () => {
@@ -3006,7 +3108,7 @@ function nodeColorToCss(value) {
                 render();
             } catch (error) {
                 console.error("[MiniMax H3 Integration]", error);
-                alert(`${t("Audio trim failed")}: ${error.message || error}`);
+                alert(`${t("Could not cut the audio")}: ${error.message || error}`);
                 save.disabled = false; cancel.disabled = false; preview.disabled = false; save.textContent = t("Save");
             }
         };
@@ -3025,7 +3127,7 @@ function nodeColorToCss(value) {
             viewStart = 0; viewEnd = buffer.duration;
             loading.remove(); preview.disabled = false; save.disabled = false; updateTimes();
         } catch (error) {
-            loading.textContent = `${t("Audio decoding failed")}: ${error.message || error}`;
+            loading.textContent = `${t("Could not decode the audio")}: ${error.message || error}`;
             console.error("[MiniMax H3 Integration]", error);
         }
     }
@@ -3036,116 +3138,131 @@ function nodeColorToCss(value) {
         const target = media.get(targetSlot);
         if (!source || !target) return false;
         if (state.mode === "text_keyframes") {
-            return [sourceSlot, targetSlot].every(item => item === "first_frame" || item === "last_frame")
+            return [sourceSlot, targetSlot].every(item => item === "keyframe_open" || item === "keyframe_close")
                 && source.kind === "image" && target.kind === "image";
         }
-        const reserved = new Set(["first_frame", "last_frame", "hybrid_audio"]);
+        const reserved = new Set(["keyframe_open", "keyframe_close", "keyframe_audio"]);
         return !reserved.has(sourceSlot) && !reserved.has(targetSlot) && source.kind === target.kind;
     }
+    /* 提示词里的 <picture N>/<video N>/<audio N> 序号 = 「当前可见素材的顺序」。
+       素材增删或拖拽排序后必须按同一套顺序重新编号，下面几个助手负责算顺序与序号映射。 */
+    const KEYFRAME_SLOTS = ["keyframe_open", "keyframe_close", "keyframe_audio"];
+    const isReferenceSlot = slot => !KEYFRAME_SLOTS.includes(slot);
+    const slotSorted = slots => [...slots].sort((a, b) => a.localeCompare(b));
+    const referenceSlotsOfKind = kind => slotSorted(
+        mediaSlots.filter(slot => isReferenceSlot(slot) && mediaEntryForOrder(slot)?.kind === kind)
+    );
+
     function promptMediaIdentityOrder() {
         if (state.mode === "text_keyframes") {
+            const keyframes = ["keyframe_open", "keyframe_close"].map(mediaEntryForOrder);
+            const keyframeAudio = mediaEntryForOrder("keyframe_audio");
             return {
-                picture: ["first_frame", "last_frame"].map(mediaEntryForOrder).filter(entry => entry?.kind === "image"),
+                picture: keyframes.filter(entry => entry?.kind === "image"),
                 video: [],
-                audio: mediaEntryForOrder("hybrid_audio") ? [mediaEntryForOrder("hybrid_audio")] : [],
+                audio: keyframeAudio ? [keyframeAudio] : [],
             };
         }
-        const ordered = kind => mediaSlots.map(slot => [slot, mediaEntryForOrder(slot)])
-            .filter(([slot, entry]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot) && entry?.kind === kind)
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([, entry]) => entry);
-        const orderedAudio = [
-            ...videoSlots.map(slot => mediaEntryForOrder(slot)).filter(entry => entry?.kind === "video" && !entry.muted),
-            ...audioSlots.slice(1).map(slot => mediaEntryForOrder(slot)).filter(entry => entry?.kind === "audio"),
-        ];
+        // 音轨顺序：先视频自带声（未静音的），再独立的音频参考槽。
+        const audibleFromVideo = videoSlots
+            .map(mediaEntryForOrder)
+            .filter(entry => entry?.kind === "video" && !entry.muted);
+        const explicitAudio = audioSlots.slice(1)
+            .map(mediaEntryForOrder)
+            .filter(entry => entry?.kind === "audio");
         return {
-            picture: ordered("image"),
-            video: ordered("video"),
-            audio: orderedAudio,
+            picture: referenceSlotsOfKind("image").map(mediaEntryForOrder),
+            video: referenceSlotsOfKind("video").map(mediaEntryForOrder),
+            audio: [...audibleFromVideo, ...explicitAudio],
         };
     }
+
+    /* 从右往左替换，保证前面 match.index 仍然有效。 */
     function applyPromptMediaMappings(mappings) {
-        if (!mappings.size) return;
-        let value = String(prompt.value || "");
-        const matches = promptMediaMatches(value);
-        for (let index = matches.length - 1; index >= 0; index--) {
-            const match = matches[index];
-            const key = `${match.type}:${match.ordinal}`;
-            if (!mappings.has(key)) continue;
-            const replacementOrdinal = mappings.get(key);
-            const replacement = replacementOrdinal == null ? "" : match.raw.replace(/\d+/, String(replacementOrdinal));
-            value = value.slice(0, match.index) + replacement + value.slice(match.index + match.raw.length);
+        if (mappings.size === 0) return;
+        const original = String(prompt.value || "");
+        let edited = original;
+        for (const match of promptMediaMatches(original).reverse()) {
+            const target = mappings.get(`${match.type}:${match.ordinal}`);
+            if (target === undefined) continue;
+            const text = target == null ? "" : match.raw.replace(/\d+/, String(target));
+            edited = edited.slice(0, match.index) + text + edited.slice(match.index + match.raw.length);
         }
-        if (value === prompt.value) return;
-        prompt.value = value;
-        promptByMode[state.mode] = value;
-        setPromptWidget(node, value);
+        if (edited === original) return;
+        prompt.value = edited;
+        promptByMode[state.mode] = edited;
+        setPromptWidget(node, edited);
     }
+
     function remapPromptAfterMediaChange(before, removeMissing = false) {
         const after = promptMediaIdentityOrder();
         const mappings = new Map();
         for (const type of ["picture", "video", "audio"]) {
-            before[type].forEach((entry, index) => {
-                const nextIndex = after[type].indexOf(entry);
-                if (nextIndex >= 0 && nextIndex !== index) mappings.set(`${type}:${index + 1}`, nextIndex + 1);
-                else if (nextIndex < 0 && removeMissing) mappings.set(`${type}:${index + 1}`, null);
+            const was = before[type] || [];
+            const now = after[type] || [];
+            was.forEach((entry, index) => {
+                const ordinal = `${type}:${index + 1}`;
+                const moved = now.indexOf(entry);
+                if (moved < 0) {
+                    if (removeMissing) mappings.set(ordinal, null);
+                    return;
+                }
+                if (moved !== index) mappings.set(ordinal, moved + 1);
             });
         }
         applyPromptMediaMappings(mappings);
     }
+
+    /* 该素材在提示词里是否已被显式引用（引用过则删除时不能静默重编号）。 */
     function mediaEntryIsReferenced(beforeOrder, entry) {
         if (!entry || !prompt.value) return false;
         const type = entry.kind === "image" ? "picture" : entry.kind;
-        const ordinal = beforeOrder[type]?.indexOf(entry);
-        if (ordinal == null || ordinal < 0) return false;
-        return promptMediaMatches(prompt.value).some(match => match.type === type && match.ordinal === ordinal + 1);
+        const index = (beforeOrder[type] || []).indexOf(entry);
+        if (index < 0) return false;
+        return promptMediaMatches(prompt.value).some(match => match.type === type && match.ordinal === index + 1);
     }
+
+    /* 排序后的槽位顺序：图像/视频按槽名升序，音轨先视频后独立音频。 */
+    function referenceSlotsFor(kind) {
+        if (state.mode === "all_reference") {
+            if (kind === "image") return imageSlots.slice(2);
+            if (kind === "video") return [...videoSlots];
+            return [];
+        }
+        // 关键帧模式下图像序位就是起止帧两个槽。
+        if (kind === "image") return ["keyframe_open", "keyframe_close"];
+        return referenceSlotsOfKind(kind);
+    }
+
+    function audioSlotsForOrder(getter) {
+        const videoSource = state.mode === "all_reference" ? videoSlots : [...media.keys()];
+        const videos = slotSorted(
+            videoSource.filter(slot => getter(slot)?.kind === "video" && !getter(slot).muted)
+        );
+        const audioSource = state.mode === "all_reference" ? audioSlots.slice(1) : [...media.keys()];
+        const audios = slotSorted(
+            audioSource.filter(slot => getter(slot)?.kind === "audio" && slot !== "keyframe_audio")
+        );
+        return [...videos, ...audios];
+    }
+
     function remapPromptForMediaOrder(assignments, kind) {
-        const entryAt = slot => assignments.has(slot) ? assignments.get(slot) : media.get(slot);
-        const orderedKindSlots = targetKind => {
-            if (targetKind === "image" && state.mode === "text_keyframes") {
-                return ["first_frame", "last_frame"];
-            }
-            if (state.mode === "all_reference") {
-                return targetKind === "image" ? imageSlots.slice(2)
-                    : targetKind === "video" ? videoSlots : [];
-            }
-            return [...media.keys()]
-                .filter(slot => !["first_frame", "last_frame", "hybrid_audio"].includes(slot))
-                .filter(slot => mediaEntryForOrder(slot)?.kind === targetKind)
-                .sort((a, b) => a.localeCompare(b));
-        };
-        const orderedAudioSlots = getter => {
-            const videos = (state.mode === "all_reference" ? videoSlots : [...media.keys()])
-                .filter(slot => getter(slot)?.kind === "video" && !getter(slot).muted)
-                .sort((a, b) => a.localeCompare(b));
-            const audios = (state.mode === "all_reference" ? audioSlots.slice(1) : [...media.keys()])
-                .filter(slot => getter(slot)?.kind === "audio" && slot !== "hybrid_audio")
-                .sort((a, b) => a.localeCompare(b));
-            return [...videos, ...audios];
-        };
+        const entryAt = slot => (assignments.has(slot) ? assignments.get(slot) : media.get(slot));
         const mappings = new Map();
-        const mapIdentityOrdinals = (type, beforeSlots, afterSlots, beforeGetter, afterGetter) => {
-            beforeSlots.forEach((slot, index) => {
-                const entry = beforeGetter(slot);
+        // 先按「当前位置」记录每个素材原来的序号，再看排序后它落到第几位。
+        const recordShift = (type, slots, getter) => {
+            slots.forEach((slot, index) => {
+                const entry = getter(slot);
                 if (!entry || entry.vacant) return;
-                const nextIndex = afterSlots.findIndex(candidate => afterGetter(candidate) === entry);
-                if (nextIndex >= 0 && nextIndex !== index) mappings.set(`${type}:${index + 1}`, nextIndex + 1);
+                const moved = slots.findIndex(candidate => getter(candidate) === entry);
+                if (moved >= 0 && moved !== index) mappings.set(`${type}:${index + 1}`, moved + 1);
             });
         };
         if (kind === "image" || kind === "video") {
-            const slots = orderedKindSlots(kind);
-            mapIdentityOrdinals(
-                kind === "image" ? "picture" : "video",
-                slots, slots, mediaEntryForOrder, entryAt,
-            );
+            recordShift(kind === "image" ? "picture" : "video", referenceSlotsFor(kind), mediaEntryForOrder);
         }
         if (kind === "video" || kind === "audio") {
-            const slots = orderedAudioSlots(mediaEntryForOrder);
-            mapIdentityOrdinals(
-                "audio",
-                slots, slots, mediaEntryForOrder, entryAt,
-            );
+            recordShift("audio", audioSlotsForOrder(mediaEntryForOrder), mediaEntryForOrder);
         }
         applyPromptMediaMappings(mappings);
     }
@@ -3159,7 +3276,7 @@ function nodeColorToCss(value) {
             assignments.set(targetSlot, source);
         } else {
             const slots = [...media.entries()]
-                .filter(([slot, entry]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot) && entry?.kind === source.kind)
+                .filter(([slot, entry]) => !["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot) && entry?.kind === source.kind)
                 .map(([slot]) => slot)
                 .sort((a, b) => a.localeCompare(b));
             const sourceIndex = slots.indexOf(sourceSlot);
@@ -3194,14 +3311,14 @@ function nodeColorToCss(value) {
                 if (!item.isConnected) return;
                 active = true;
                 suppressMediaClickUntil = Date.now() + 600;
-                item.classList.add("mxv-reorder-source");
+                item.classList.add("h3k-reorder-source");
                 try { item.setPointerCapture(event.pointerId); } catch {}
             }, 350);
             const setTarget = next => {
                 if (target === next) return;
-                target?.classList.remove("mxv-reorder-target");
+                target?.classList.remove("h3k-reorder-target");
                 target = next;
-                target?.classList.add("mxv-reorder-target");
+                target?.classList.add("h3k-reorder-target");
             };
             const move = moveEvent => {
                 if (!active) {
@@ -3213,8 +3330,8 @@ function nodeColorToCss(value) {
                 }
                 moveEvent.preventDefault();
                 moveEvent.stopPropagation();
-                const candidate = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest?.(".mxv-card");
-                const candidateSlot = candidate?.dataset?.mxvDropSlot;
+                const candidate = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest?.(".h3k-card");
+                const candidateSlot = candidate?.dataset?.h3kDropSlot;
                 setTarget(candidate && root.contains(candidate) && canReorderMedia(slot, candidateSlot) ? candidate : null);
             };
             const finish = finishEvent => {
@@ -3222,14 +3339,14 @@ function nodeColorToCss(value) {
                 window.removeEventListener("pointermove", move, true);
                 window.removeEventListener("pointerup", finish, true);
                 window.removeEventListener("pointercancel", finish, true);
-                item.classList.remove("mxv-reorder-source");
-                target?.classList.remove("mxv-reorder-target");
+                item.classList.remove("h3k-reorder-source");
+                target?.classList.remove("h3k-reorder-target");
                 try { item.releasePointerCapture(event.pointerId); } catch {}
                 if (!active) return;
                 finishEvent.preventDefault();
                 finishEvent.stopPropagation();
                 suppressMediaClickUntil = Date.now() + 600;
-                const targetSlot = target?.dataset?.mxvDropSlot;
+                const targetSlot = target?.dataset?.h3kDropSlot;
                 if (targetSlot) reorderMediaSlots(slot, targetSlot);
             };
             window.addEventListener("pointermove", move, true);
@@ -3238,17 +3355,17 @@ function nodeColorToCss(value) {
         };
     }
     function card(slot, entry, square = true) {
-        const item = make("div"); item.className = "mxv-card"; if (!square) item.style.aspectRatio = "16/9"; if (slot === "hybrid_audio") { item.classList.add("mxv-audio-card"); item.style.aspectRatio = "auto"; }
-        item.dataset.mxvDropSlot = slot;
-        const reorderIndicator = make("div", {}, "✥"); reorderIndicator.className = "mxv-reorder-indicator"; item.appendChild(reorderIndicator);
+        const item = make("div"); item.className = "h3k-card"; if (!square) item.style.aspectRatio = "16/9"; if (slot === "keyframe_audio") { item.classList.add("h3k-audio-card"); item.style.aspectRatio = "auto"; }
+        item.dataset.h3kDropSlot = slot;
+        const reorderIndicator = make("div", {}, "✥"); reorderIndicator.className = "h3k-reorder-indicator"; item.appendChild(reorderIndicator);
         if (entry.kind === "image") { const img = make("img"); img.src = fileUrl(entry.name); img.draggable = false; item.appendChild(img); }
-        else if (entry.kind === "video") { const video = make("video"); video.src = fileUrl(entry.name); video.muted = !!entry.muted; video.preload = "metadata"; video.draggable = false; item.appendChild(video); const play = make("button", {}, "▶"); play.className = "mxv-play"; play.onclick = e => { e.stopPropagation(); video.muted = !!entry.muted; video.paused ? video.play() : video.pause(); }; item.appendChild(play); }
+        else if (entry.kind === "video") { const video = make("video"); video.src = fileUrl(entry.name); video.muted = !!entry.muted; video.preload = "metadata"; video.draggable = false; item.appendChild(video); const play = make("button", {}, "▶"); play.className = "h3k-play"; play.onclick = e => { e.stopPropagation(); video.muted = !!entry.muted; video.paused ? video.play() : video.pause(); }; item.appendChild(play); }
         else {
             item.appendChild(make("div", { height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#a09d97", fontSize: "22px" }, "♫"));
             const audio = new Audio(fileUrl(entry.name));
-            const controls = make("div"); controls.className = "mxv-media-controls";
-            const toggle = make("button"); toggle.className = "mxv-media-toggle";
-            const time = make("span", {}, "00 s"); time.className = "mxv-media-time";
+            const controls = make("div"); controls.className = "h3k-media-controls";
+            const toggle = make("button"); toggle.className = "h3k-media-toggle";
+            const time = make("span", {}, "00 s"); time.className = "h3k-media-time";
             const selectionStart = Math.max(0, Number(entry.trimStart) || 0);
             const savedEnd = Number(entry.trimEnd);
             const selectionEnd = () => Number.isFinite(savedEnd) && savedEnd > selectionStart ? Math.min(audio.duration || savedEnd, savedEnd) : audio.duration;
@@ -3271,29 +3388,29 @@ function nodeColorToCss(value) {
             audio.addEventListener("timeupdate", () => { if (!audio.paused && audio.currentTime >= selectionEnd()) stopSelection(); else refresh(); });
             audio.addEventListener("ended", stopSelection);
             controls.append(toggle, time); item.appendChild(controls);
-            const trim = make("button", {}, "✂"); trim.className = "mxv-audio-trim-button"; trim.title = t("Trim audio");
+            const trim = make("button", {}, "✂"); trim.className = "h3k-audio-trim-button"; trim.title = t("Audio cut");
             trim.onclick = event => { event.stopPropagation(); openAudioTrimEditor(slot, entry); };
             item.appendChild(trim);
         }
         if (entry.kind === "video") {
             const sound = make("button", {}, entry.muted ? String.fromCodePoint(0x1F507) : String.fromCodePoint(0x1F50A));
-            sound.className = "mxv-sound";
+            sound.className = "h3k-sound";
             sound.title = t(entry.muted ? "Unmute video" : "Mute video");
             sound.onclick = e => {
                 e.stopPropagation();
                 const previousAudioCount = state.mode === "text_keyframes"
-                    ? (media.has("hybrid_audio") ? 1 : 0) : allReferenceAudioCount();
+                    ? (media.has("keyframe_audio") ? 1 : 0) : allReferenceAudioCount();
                 entry.muted = !entry.muted;
                 syncAudioModeAfterMediaChange(slot, previousAudioCount);
                 refreshPromptMediaPreviews(); persistState(); render();
             };
             item.appendChild(sound);
             const video = item.querySelector("video");
-            const oldPlay = item.querySelector(".mxv-play");
+            const oldPlay = item.querySelector(".h3k-play");
             if (oldPlay) oldPlay.style.display = "none";
-            const controls = make("div"); controls.className = "mxv-media-controls";
-            const toggle = make("button"); toggle.className = "mxv-media-toggle";
-            const time = make("span", {}, "00 s"); time.className = "mxv-media-time";
+            const controls = make("div"); controls.className = "h3k-media-controls";
+            const toggle = make("button"); toggle.className = "h3k-media-toggle";
+            const time = make("span", {}, "00 s"); time.className = "h3k-media-time";
             const setPlaying = playing => { toggle.innerHTML = mediaIcon(playing); };
             const refresh = () => { const remaining = video.paused ? video.duration : Math.max(0, video.duration - video.currentTime); time.textContent = `${formatMediaTime(remaining)} s`; };
             const start = () => { if (activeMedia && activeMedia.media !== video) stopActiveMedia(); activeMedia = { media: video, setPlaying }; video.muted = !!entry.muted; video.play().catch(() => {}); setPlaying(true); };
@@ -3302,12 +3419,12 @@ function nodeColorToCss(value) {
             video.addEventListener("loadedmetadata", refresh); video.addEventListener("timeupdate", refresh); video.addEventListener("ended", () => { refresh(); setPlaying(false); if (activeMedia?.media === video) activeMedia = null; });
             controls.append(toggle, time); item.appendChild(controls);
         }
-        item.appendChild(make("div", {}, `${labelFor(slot, entry.kind)}: ${entry.name}`)).className = "mxv-card-name";
-        const remove = make("button", {}, "×"); remove.className = "mxv-remove"; remove.onclick = e => {
+        item.appendChild(make("div", {}, `${labelFor(slot, entry.kind)}: ${entry.name}`)).className = "h3k-card-name";
+        const remove = make("button", {}, "×"); remove.className = "h3k-remove"; remove.onclick = e => {
             e.stopPropagation();
             const driveSelection = captureDriveAudioSelection();
             const previousAudioCount = state.mode === "text_keyframes"
-                ? (media.has("hybrid_audio") ? 1 : 0) : allReferenceAudioCount();
+                ? (media.has("keyframe_audio") ? 1 : 0) : allReferenceAudioCount();
             const beforeOrder = promptMediaIdentityOrder();
             const removed = media.get(slot);
             const hasPromptMediaTags = promptMediaMatches(prompt.value).length > 0;
@@ -3343,36 +3460,36 @@ function nodeColorToCss(value) {
         item.ondrop = e => { e.preventDefault(); e.stopPropagation(); accept(e.dataTransfer.files, slot); };
         return item;
     }
-    function choose(slot) { const input = document.createElement("input"); input.type = "file"; input.multiple = !slot; input.accept = slot === "first_frame" || slot === "last_frame" ? "image/*" : "image/*,video/*,audio/*"; input.onchange = () => accept(input.files, slot); input.click(); }
+    function choose(slot) { const input = document.createElement("input"); input.type = "file"; input.multiple = !slot; input.accept = slot === "keyframe_open" || slot === "keyframe_close" ? "image/*" : "image/*,video/*,audio/*"; input.onchange = () => accept(input.files, slot); input.click(); }
     function addDrop(slot = null, referenceEmpty = false) {
-        let title = t("+ Add media");
+        let title = t("＋ Attach asset");
         let subtitle = "";
         let icon = "📤︎";
-        if (slot === "first_frame") { title = t("First frame"); subtitle = t("First and last frames empty means text-to-video"); }
-        else if (slot === "last_frame") { title = t("Last frame"); subtitle = t("First and last frames empty means text-to-video"); }
-        else if (slot === "hybrid_audio") { title = t("Reference audio"); subtitle = t("Optional"); icon = "♫"; }
-        else if (referenceEmpty) { title = t("Reference media"); subtitle = t("Images x9 · Videos x3 (mp4/mov) · Audios x3 (mp3/wav/flac...)"); }
-        const d = make("div"); d.className = "mxv-drop"; if (slot === "hybrid_audio") d.classList.add("mxv-audio-drop"); if (referenceEmpty) d.classList.add("mxv-reference-empty");
-        d.dataset.mxvDropSlot = slot || "";
-        if (slot === "first_frame" || slot === "last_frame") {
-            const row = make("div"); row.className = "mxv-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
-            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "mxv-optional";
+        if (slot === "keyframe_open") { title = t("Opening frame"); subtitle = t("Leave both blank for text-driven generation"); }
+        else if (slot === "keyframe_close") { title = t("Closing frame"); subtitle = t("Leave both blank for text-driven generation"); }
+        else if (slot === "keyframe_audio") { title = t("Audio reference"); subtitle = t("Optional"); icon = "♫"; }
+        else if (referenceEmpty) { title = t("Media assets"); subtitle = t("Stills ×9 · Clips ×3 (mp4/mov) · Audio ×3 (mp3/wav/flac…)"); }
+        const d = make("div"); d.className = "h3k-drop"; if (slot === "keyframe_audio") d.classList.add("h3k-audio-drop"); if (referenceEmpty) d.classList.add("h3k-reference-empty");
+        d.dataset.h3kDropSlot = slot || "";
+        if (slot === "keyframe_open" || slot === "keyframe_close") {
+            const row = make("div"); row.className = "h3k-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "h3k-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "h3k-drop-title";
+            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "h3k-optional";
             d.appendChild(row);
-            d.appendChild(make("div", {}, subtitle)).className = "mxv-drop-subtitle";
-        } else if (slot === "hybrid_audio") {
-            const row = make("div"); row.className = "mxv-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
-            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "mxv-optional";
+            d.appendChild(make("div", {}, subtitle)).className = "h3k-drop-subtitle";
+        } else if (slot === "keyframe_audio") {
+            const row = make("div"); row.className = "h3k-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "h3k-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "h3k-drop-title";
+            row.appendChild(make("span", {}, `· ${t("Optional")}`)).className = "h3k-optional";
             d.appendChild(row);
         } else {
-            const row = make("div"); row.className = "mxv-drop-title-row";
-            row.appendChild(make("span", {}, icon)).className = "mxv-drop-icon";
-            row.appendChild(make("span", {}, title)).className = "mxv-drop-title";
+            const row = make("div"); row.className = "h3k-drop-title-row";
+            row.appendChild(make("span", {}, icon)).className = "h3k-drop-icon";
+            row.appendChild(make("span", {}, title)).className = "h3k-drop-title";
             d.appendChild(row);
-            if (subtitle) d.appendChild(make("div", {}, subtitle)).className = "mxv-drop-subtitle";
+            if (subtitle) d.appendChild(make("div", {}, subtitle)).className = "h3k-drop-subtitle";
         }
         d.onclick = () => choose(slot); d.onpointerenter = () => { hoverPasteSlot = slot; }; d.onpointerleave = () => { if (hoverPasteSlot === slot) hoverPasteSlot = undefined; }; d.ondragover = e => { e.preventDefault(); e.stopPropagation(); }; d.ondrop = e => { e.preventDefault(); e.stopPropagation(); accept(e.dataTransfer.files, slot); }; return d;
     }
@@ -3380,26 +3497,26 @@ function nodeColorToCss(value) {
     function render(preserveAdvancedSettings = false, preservePromptTags = false) {
         const signature = JSON.stringify([...media].map(([slot, entry]) => [slot, entry.name]));
         if (renderedMediaSignature !== null && signature !== renderedMediaSignature) {
-            setWidget(node, "ai_mode", "auto");
+            setWidget(node, "ai_task", "auto");
         }
         renderedMediaSignature = signature;
         if (!preservePromptTags) normalizePromptTagFormat();
         updateAdvancedVisibility(preserveAdvancedSettings);
-        root.querySelector(".mxv-dynamic")?.remove(); const box = make("div"); box.className = "mxv-box mxv-dynamic";
+        root.querySelector(".h3k-dynamic")?.remove(); const box = make("div"); box.className = "h3k-box h3k-dynamic";
         if (state.mode === "text_keyframes") {
-            const grid = make("div"); grid.className = "mxv-keygrid";
-            const selectedMode = String(widget(node, "ai_mode")?.value || "auto");
-            const slots = selectedMode === "t2va" ? [] : selectedMode === "i2va" ? ["first_frame"] : selectedMode === "l2va" ? ["last_frame"] : ["first_frame", "last_frame"];
-            for (const s of ["first_frame", "last_frame"]) {
+            const grid = make("div"); grid.className = "h3k-keygrid";
+            const selectedMode = String(widget(node, "ai_task")?.value || "auto");
+            const slots = selectedMode === "t2va" ? [] : selectedMode === "i2va" ? ["keyframe_open"] : selectedMode === "l2va" ? ["keyframe_close"] : ["keyframe_open", "keyframe_close"];
+            for (const s of ["keyframe_open", "keyframe_close"]) {
                 if (slots.includes(s) || media.has(s)) grid.appendChild(media.has(s) ? card(s, media.get(s), false) : addDrop(s));
             }
-            grid.appendChild(media.has("hybrid_audio") ? card("hybrid_audio", media.get("hybrid_audio"), false) : addDrop("hybrid_audio"));
+            grid.appendChild(media.has("keyframe_audio") ? card("keyframe_audio", media.get("keyframe_audio"), false) : addDrop("keyframe_audio"));
             box.appendChild(grid);
         } else {
-            const grid = make("div"); grid.className = "mxv-grid"; const entries = [...media.entries()].filter(([slot]) => !["first_frame", "last_frame", "hybrid_audio"].includes(slot)).sort((a,b) => typeOrder[a[1].kind] - typeOrder[b[1].kind] || a[0].localeCompare(b[0]));
+            const grid = make("div"); grid.className = "h3k-grid"; const entries = [...media.entries()].filter(([slot]) => !["keyframe_open", "keyframe_close", "keyframe_audio"].includes(slot)).sort((a,b) => typeOrder[a[1].kind] - typeOrder[b[1].kind] || a[0].localeCompare(b[0]));
             if (!entries.length) grid.appendChild(addDrop(null, true));
             else { entries.forEach(([s,e]) => grid.appendChild(card(s,e))); grid.appendChild(addDrop()); }
-            if (uploadNotice) grid.appendChild(make("div", {}, uploadNotice)).className = "mxv-limit";
+            if (uploadNotice) grid.appendChild(make("div", {}, uploadNotice)).className = "h3k-limit";
             box.appendChild(grid);
         }
     root.insertBefore(box, promptWrap);
@@ -3407,7 +3524,7 @@ function nodeColorToCss(value) {
     refreshTaskType(); refreshAdaptiveRatio(); syncLayout();
     }
     function limitText(kind) {
-        return kind === "image" ? t("Up to 9 images") : kind === "video" ? t("Up to 3 videos") : t("Up to 3 audios");
+        return kind === "image" ? t("Up to 9 stills") : kind === "video" ? t("Up to 3 clips") : t("Up to 3 audio tracks");
     }
     function filesFromPasteEvent(event) {
         const files = [];
@@ -3448,13 +3565,13 @@ function nodeColorToCss(value) {
             const kind = kindOf(file); if (!kind) continue;
             const slot = preferredSlot || nextSlot(kind);
             if (!slot) { uploadNotice = limitText(kind); continue; }
-            const expectedKind = slot === "hybrid_audio" || slot.startsWith("ref_audio_") ? "audio" : slot.startsWith("ref_video_") ? "video" : "image";
+            const expectedKind = slot === "keyframe_audio" || slot.startsWith("track_") ? "audio" : slot.startsWith("footage_") ? "video" : "image";
             if (kind !== expectedKind) { preferredSlot = null; continue; }
             const existing = media.get(slot);
             if (existing && existing.kind !== kind) continue;
             try {
                 const previousAudioCount = state.mode === "text_keyframes"
-                    ? (media.has("hybrid_audio") ? 1 : 0) : allReferenceAudioCount();
+                    ? (media.has("keyframe_audio") ? 1 : 0) : allReferenceAudioCount();
                 const name = await uploadFile(file);
                 const entry = kind === "audio" ? { name, kind, trimStart: 0, trimEnd: null } : { name, kind };
                 if (existing) changedEntries.push(existing);
@@ -3476,14 +3593,14 @@ function nodeColorToCss(value) {
     }
     const captureMaterialDrop = event => {
         const target = event.target instanceof Element ? event.target : null;
-        const materialArea = target?.closest?.(".mxv-card, .mxv-drop, .mxv-dynamic");
+        const materialArea = target?.closest?.(".h3k-card, .h3k-drop, .h3k-dynamic");
         if (!materialArea || !root.contains(materialArea)) return;
         if (!event.dataTransfer?.types?.includes?.("Files")) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         if (event.type !== "drop") return;
-        const slotElement = target.closest("[data-mxv-drop-slot]");
-        const preferredSlot = slotElement?.dataset?.mxvDropSlot || null;
+        const slotElement = target.closest("[data-h3k-drop-slot]");
+        const preferredSlot = slotElement?.dataset?.h3kDropSlot || null;
         accept(event.dataTransfer.files, preferredSlot);
     };
     window.addEventListener("dragenter", captureMaterialDrop, true);
@@ -3492,7 +3609,7 @@ function nodeColorToCss(value) {
     function switchMode(nextMode, fromAiMode = false) {
         promptRevision++;
         cancelPromptOperation();
-        if (!fromAiMode) { setWidget(node, "ai_mode", "auto"); }
+        if (!fromAiMode) { setWidget(node, "ai_task", "auto"); }
         promptByMode[state.mode] = prompt.value;
         state.mode = nextMode;
         optimizerBefore = optimizerBeforeByMode[state.mode] ?? null;
@@ -3500,7 +3617,7 @@ function nodeColorToCss(value) {
         renderPromptHighlights();
         setPromptWidget(node, prompt.value);
         resetPrompt.classList.toggle("visible", optimizerBefore != null);
-        setWidget(node, "main_mode", state.mode);
+        setWidget(node, "panel_mode", state.mode);
         persistState();
         modeText.classList.toggle("active", state.mode === "text_keyframes");
         modeRef.classList.toggle("active", state.mode === "all_reference");
@@ -3510,21 +3627,21 @@ function nodeColorToCss(value) {
     modeText.onclick = () => switchMode("text_keyframes");
     modeRef.onclick = () => switchMode("all_reference");
     function refreshSize() {
-        dimensions.textContent = canvas(aspectInternalValue(aspect?.value), mp?.value, adaptiveRatio);
+        dimensions.textContent = canvas(aspectInternalValue(frame_ratio?.value), mp?.value, adaptiveRatio);
         node.setDirtyCanvas(true, true);
     }
     normalizeAspectWidget(node);
     installAspectDisplay(node);
-    aspect && (aspect.callback = ((old) => function(v) {
+    frame_ratio && (frame_ratio.callback = ((old) => function(v) {
         const internalValue = ASPECT_INTERNAL_VALUES.includes(v) ? v : aspectInternalValue(v);
         old?.call(this, internalValue);
         this.value = internalValue;
-        this._mxvAspectInternal = internalValue;
+        this._h3kAspectInternal = internalValue;
         refreshSize();
         refreshAdaptiveRatio();
-    })(aspect.callback));
+    })(frame_ratio.callback));
     mp && (mp.callback = ((old) => function(v) { old?.call(this,v); refreshSize(); })(mp.callback));
-    setWidget(node, "main_mode", state.mode);
+    setWidget(node, "panel_mode", state.mode);
     modeText.classList.toggle("active", state.mode === "text_keyframes");
     modeRef.classList.toggle("active", state.mode === "all_reference");
     updateAdvancedVisibility();
@@ -3540,29 +3657,29 @@ function nodeColorToCss(value) {
             // A4（2026-09-26）：位移曾把尾部组合值冲成空串；空采样器无法出图。恢复配置后
             // 回填 schema 默认（两个组合的默认都在选项首位，与服务端 execute 兑底一致）。
             if (hook === "onConfigure") {
-                for (const name of ["sampler_name", "scheduler"]) {
+                for (const name of ["sampler_id", "scheduler_id"]) {
                     const combo = widget(node, name);
                     if (combo && !combo.value && Array.isArray(combo.options?.values) && combo.options.values.length) combo.value = combo.options.values[0];
                 }
-                const timeoutWidget = widget(node, "ai_timeout");
+                const timeoutWidget = widget(node, "ai_deadline");
                 if (timeoutWidget && (timeoutWidget.value === "" || timeoutWidget.value == null)) timeoutWidget.value = 180;
             }
             for (const n of [
-                "main_mode", "prompt", "task_type", ...mediaSlots,
-                "audio_mode", "audio_denoise_strength",
-                "drive_audio_ordinal", "ref_image_size", "strict_prompt_tags",
-                "gh_state_json", "no_subtitle", "soundscape", "music",
+                "panel_mode", "prompt", "task_hint", ...mediaSlots,
+                "audio_source", "audio_cleanup",
+                "driving_track", "asset_scale", "tag_guard",
+                "panel_state", "subtitle_free", "soundscape", "music",
             ]) hideWidget(widget(node,n));
-            normalizeIntWidget(node, "drive_audio_ordinal", 1, 0, 6);
+            normalizeIntWidget(node, "driving_track", 1, 0, 6);
             if (hook !== "onAdded") {
                 restoringState = true;
                 const currentRestoreEpoch = ++restoreEpoch;
                 requestAnimationFrame(() => {
                 let restored = {};
-                try { restored = JSON.parse(configuredState || widget(node, "gh_state_json")?.value || node.properties?.[stateKey] || "{}"); } catch {}
+                try { restored = JSON.parse(configuredState || widget(node, "panel_state")?.value || node.properties?.[stateKey] || "{}"); } catch {}
                 generationOptionsVersion = Number(restored.generationOptionsVersion) || 0;
                 migrateGenerationOptions();
-                const restoredMode = restored.mode || widget(node, "main_mode")?.value || "text_keyframes";
+                const restoredMode = restored.mode || widget(node, "panel_mode")?.value || "text_keyframes";
                 state.mode = restoredMode;
                 const restoredLegacyPrompt = cleanPrompt(restored.prompt) || cleanPrompt(widget(node, "prompt")?.value);
                 const restoredPrompts = restored.prompts && typeof restored.prompts === "object" ? restored.prompts : null;
@@ -3597,7 +3714,7 @@ function nodeColorToCss(value) {
                 optimizerBeforeByMode.all_reference = restoredBeforeByMode.all_reference ?? null;
                 optimizerBefore = optimizerBeforeByMode[state.mode] ?? null;
                 resetPrompt.classList.toggle("visible", optimizerBefore != null);
-                setWidget(node, "main_mode", state.mode);
+                setWidget(node, "panel_mode", state.mode);
                 media.clear();
                 for (const [slot, entry] of restored.media || []) media.set(slot, entry);
                 // 媒体条目文件名白名单校验：工作流 JSON 可被人为构造，拒绝路径
@@ -3640,9 +3757,9 @@ function nodeColorToCss(value) {
                             // Hidden widgets are restored by LiteGraph after the panel was
                 // built; resync toggle visuals so they never contradict the
                 // values that actually get submitted. 无字幕/音景/配乐已移入
-                // ✨ 生成弹窗（开关直接写 widget），此处只回读严格提示词标签。
-                const strictTagsBox = advancedRows.get("strict_prompt_tags")?.querySelector("input[type=checkbox]");
-                if (strictTagsBox) strictTagsBox.checked = !!widget(node, "strict_prompt_tags")?.value;
+                // ✨ 生成弹窗（开关直接写 widget），此处只回读标签格式强校验。
+                const strictTagsBox = advancedRows.get("tag_guard")?.querySelector("input[type=checkbox]");
+                if (strictTagsBox) strictTagsBox.checked = !!widget(node, "tag_guard")?.value;
                 updateAdvancedVisibility();
                 render();
                 syncLayout(userHeight, true);
@@ -3750,7 +3867,7 @@ app.registerExtension({
     const previous = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function() {
         const result = previous?.apply(this, arguments);
-        if (!this._mxvPanelReady && createPanel(this)) this._mxvPanelReady = true;
+        if (!this._h3kPanelReady && createPanel(this)) this._h3kPanelReady = true;
         return result;
     };
     },

@@ -36,7 +36,7 @@ class ExampleConsistencyTests(unittest.TestCase):
     def test_canvas_examples_carry_every_widget_and_no_credentials(self):
         order = generator.AIO_WIDGET_ORDER
         self.assertEqual(len(order), len(set(order)), "AIO_WIDGET_ORDER 不得有重复项")
-        self.assertEqual(order[-1], "prompt_override",
+        self.assertEqual(order[-1], "upstream_prompt",
                          "forceInput 幻影槽位必须固定在末位（A4）：否则具名 widget 加载/保存不对称")
         for mode in MODES:
             with self.subTest(mode=mode):
@@ -45,12 +45,12 @@ class ExampleConsistencyTests(unittest.TestCase):
                 unet = next(n for n in data["nodes"] if n["type"] == "UNETLoader")
                 values = node["widgets_values"]
                 self.assertEqual(len(values), len(order), "画布示例的 widgets_values 长度必须等于节点 widget 数")
-                mapped = dict(zip(order, values))
-                self.assertEqual(mapped["prompt_source"], "panel")
-                self.assertEqual(mapped["ai_api_key"], "")
-                self.assertEqual(mapped["prompt_override"], "",
+                tagged = dict(zip(order, values))
+                self.assertEqual(tagged["prompt_origin"], "panel")
+                self.assertEqual(tagged["ai_key"], "")
+                self.assertEqual(tagged["upstream_prompt"], "",
                                  "forceInput 幻影槽位固定在末位并保留空值（A4）")
-                self.assertTrue(mapped["prompt"], "画布示例必须把完整提示词写进编辑器")
+                self.assertTrue(tagged["prompt"], "画布示例必须把完整提示词写进编辑器")
                 self.assertFalse([v for v in values if v is None], "画布示例不得有 null 参数")
                 self.assertEqual(unet["widgets_values"],
                                  ["SELECT_YOUR_H3_DIFFUSION_MODEL.safetensors", "default"])
@@ -59,26 +59,26 @@ class ExampleConsistencyTests(unittest.TestCase):
     def test_media_placeholders_match_the_documented_wiring(self):
         expected = {
             "t2va": {},
-            "i2va": {"first_frame": "SELECT_YOUR_FIRST_FRAME.png"},
-            "fl2va": {"first_frame": "SELECT_YOUR_FIRST_FRAME.png",
-                      "last_frame": "SELECT_YOUR_LAST_FRAME.png"},
-            "l2va": {"last_frame": "SELECT_YOUR_LAST_FRAME.png"},
-            "ref2va": {"ref_image_1": "SELECT_YOUR_REFERENCE_IMAGE_1.png",
-                       "ref_video_1": "SELECT_YOUR_REFERENCE_VIDEO_1.mp4",
-                       "ref_audio_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"},
+            "i2va": {"keyframe_open": "SELECT_YOUR_FIRST_FRAME.png"},
+            "fl2va": {"keyframe_open": "SELECT_YOUR_FIRST_FRAME.png",
+                      "keyframe_close": "SELECT_YOUR_LAST_FRAME.png"},
+            "l2va": {"keyframe_close": "SELECT_YOUR_LAST_FRAME.png"},
+            "ref2va": {"still_1": "SELECT_YOUR_REFERENCE_IMAGE_1.png",
+                       "footage_1": "SELECT_YOUR_REFERENCE_VIDEO_1.mp4",
+                       "track_1": "SELECT_YOUR_REFERENCE_AUDIO_1.wav"},
         }
         order = generator.AIO_WIDGET_ORDER
-        slots = (["first_frame", "last_frame", "hybrid_audio"]
-                 + [f"ref_image_{i}" for i in range(1, 10)]
-                 + [f"ref_video_{i}" for i in range(1, 4)]
-                 + [f"ref_audio_{i}" for i in range(1, 4)])
+        slots = (["keyframe_open", "keyframe_close", "keyframe_audio"]
+                 + [f"still_{i}" for i in range(1, 10)]
+                 + [f"footage_{i}" for i in range(1, 4)]
+                 + [f"track_{i}" for i in range(1, 4)])
         self.assertFalse([slot for slot in slots if slot not in order], "素材槽必须都是节点 widget")
         for mode, wanted in expected.items():
             with self.subTest(mode=mode):
                 data = json.loads((ROOT / f"examples/{mode}.workflow.json").read_text(encoding="utf-8"))
                 node = next(n for n in data["nodes"] if n["type"] == "MiniMaxH3IntegrationRH")
-                mapped = dict(zip(order, node["widgets_values"]))
-                self.assertEqual({slot: mapped[slot] for slot in slots if mapped[slot]}, wanted)
+                tagged = dict(zip(order, node["widgets_values"]))
+                self.assertEqual({slot: tagged[slot] for slot in slots if tagged[slot]}, wanted)
 
     def test_api_examples_keep_the_engine_sources(self):
         for mode in MODES:
@@ -86,9 +86,9 @@ class ExampleConsistencyTests(unittest.TestCase):
                 data = json.loads((ROOT / f"examples/{mode}.api.json").read_text(encoding="utf-8"))
                 node = next(v for v in data.values() if v.get("class_type") == "MiniMaxH3IntegrationRH")
                 inputs = node["inputs"]
-                self.assertEqual(inputs["prompt_source"], "format" if mode == "ref2va" else "offline")
-                self.assertTrue(inputs["ai_text"], "API 示例必须带创意/待整理文本")
-                self.assertEqual(inputs["ai_api_key"], "")
+                self.assertEqual(inputs["prompt_origin"], "format" if mode == "ref2va" else "offline")
+                self.assertTrue(inputs["ai_idea"], "API 示例必须带创意/待整理文本")
+                self.assertEqual(inputs["ai_key"], "")
 
     def test_generator_rejects_unknown_widgets(self):
         values = dict(generator.AIO_BASE)
@@ -96,7 +96,7 @@ class ExampleConsistencyTests(unittest.TestCase):
             values.setdefault(name, generator.AIO_WIDGET_DEFAULTS.get(name))
         self.assertEqual(len(generator.aio_widget_values(values)), len(generator.AIO_WIDGET_ORDER))
         with self.assertRaises(RuntimeError):
-            generator.aio_widget_values({"main_mode": "text_keyframes"})
+            generator.aio_widget_values({"panel_mode": "text_keyframes"})
 
 
 if __name__ == "__main__":

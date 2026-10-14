@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from prompt_runtime import generate_prompt
-from llm_client import make_client
+from h3kit.rules import generate_prompt
+from h3kit.llm import make_client
 
 
 def controls(language="zh", mode="t2va", **options):
@@ -110,20 +110,20 @@ class PromptTests(unittest.TestCase):
         graph = json.loads((ROOT / "examples/t2va.api.json").read_text(encoding="utf-8"))
         settings = graph["2"]["inputs"]
         opts = controls("en")
-        opts["no_subtitles"] = settings["ai_no_subtitles"]
-        self.assertTrue(generate_prompt(settings["ai_text"], settings["prompt_source"], opts)["valid"])
+        opts["no_subtitles"] = settings["ai_subtitle_free"]
+        self.assertTrue(generate_prompt(settings["ai_idea"], settings["prompt_origin"], opts)["valid"])
 
     def test_examples_all_modes_valid(self):
         """examples/ 的五种模式提示词输入必须在引擎内通过严格校验（2026-09-24 单节点示例）。"""
         for path in sorted((ROOT / "examples").glob("*.api.json")):
             gen = json.loads(path.read_text(encoding="utf-8"))["2"]["inputs"]
-            opts = controls(gen["ai_language"], gen["ai_mode"])
-            opts.update(enrich_do_enrich=gen["ai_enrich"], enrich_soundscape=gen["ai_soundscape"],
-                        enrich_music=gen["ai_music"], auto_timestamps=gen["ai_auto_timestamps"],
-                        fixed_camera=gen["ai_fixed_camera"], visual_stability=gen["ai_visual_stability"],
-                        no_subtitles=gen["ai_no_subtitles"], anti_pop=gen["ai_anti_pop"])
+            opts = controls(gen["ai_locale"], gen["ai_task"])
+            opts.update(enrich_do_enrich=gen["ai_expand"], enrich_soundscape=gen["ai_ambience"],
+                        enrich_music=gen["ai_score"], auto_timestamps=gen["ai_timeline"],
+                        fixed_camera=gen["ai_lock_camera"], visual_stability=gen["ai_stabilize"],
+                        no_subtitles=gen["ai_subtitle_free"], anti_pop=gen["ai_audio_guard"])
             with self.subTest(example=path.name):
-                result = generate_prompt(gen["ai_text"], gen["prompt_source"], opts)
+                result = generate_prompt(gen["ai_idea"], gen["prompt_origin"], opts)
                 self.assertTrue(result["valid"], f"{path.name}: {result['report']}")
 
     def test_zh_offline_connectors_localized(self):
@@ -175,25 +175,25 @@ class Response:
 class TransportTests(unittest.TestCase):
     def test_stream(self):
         lines = ['data: ' + json.dumps({"choices": [{"delta": {"content": "结果"}, "finish_reason": None}]}), 'data: [DONE]']
-        with patch("llm_client.requests.post", return_value=Response(lines)) as post:
+        with patch("h3kit.llm.requests.post", return_value=Response(lines)) as post:
             result = make_client("custom", "test-secret", "https://example.test/chat/completions", "test")("system", "user")
             self.assertEqual(result, "结果")
             self.assertFalse(post.call_args.kwargs["allow_redirects"])
 
     def test_truncated_or_http_error(self):
         for response in (Response([]), Response(['data: {"choices":[{"delta":{},"finish_reason":"length"}]}'])):
-            with patch("llm_client.requests.post", return_value=response), self.assertRaises(RuntimeError):
+            with patch("h3kit.llm.requests.post", return_value=response), self.assertRaises(RuntimeError):
                 make_client("deepseek", "test-secret")("s", "u")
         response = Response([])
         response.status_code = 401
-        with patch("llm_client.requests.post", return_value=response), self.assertRaisesRegex(RuntimeError, "401"):
+        with patch("h3kit.llm.requests.post", return_value=response), self.assertRaisesRegex(RuntimeError, "401"):
             make_client("deepseek", "test-secret")("s", "u")
 
     def test_provider_presets_complete(self):
         """参照 GHX 扩充的服务商预设：每个 provider 必须有端点、默认模型与环境变量名（用户自填 Key 的兜底）。"""
-        from llm_client import PROVIDERS
-        self.assertGreaterEqual(len(PROVIDERS), 7)
-        for name, (endpoint, model, env, extra) in PROVIDERS.items():
+        from h3kit.llm import SERVICE_ENDPOINTS
+        self.assertGreaterEqual(len(SERVICE_ENDPOINTS), 7)
+        for name, (endpoint, model, env, extra) in SERVICE_ENDPOINTS.items():
             with self.subTest(provider=name):
                 self.assertTrue(endpoint.startswith("https://") if name != "custom" else True, (name, endpoint))
                 if name != "custom":
@@ -205,13 +205,13 @@ class TransportTests(unittest.TestCase):
     def test_provider_preset_used_in_request(self):
         """选预设 provider 后，未覆盖端点/模型时使用预设值发请求（用户只需填 Key）。"""
         lines = ['data: ' + json.dumps({"choices": [{"delta": {"content": "ok"}, "finish_reason": None}]}), 'data: [DONE]']
-        with patch("llm_client.requests.post", return_value=Response(lines)) as post:
+        with patch("h3kit.llm.requests.post", return_value=Response(lines)) as post:
             make_client("openrouter", "test-secret")("s", "u")
         self.assertEqual(post.call_args.args[0], "https://openrouter.ai/api/v1/chat/completions")
         self.assertEqual(post.call_args.kwargs["json"]["model"], "google/gemini-2.5-flash")
         self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer test-secret")
         # 用户覆盖模型名后以覆盖值为准
-        with patch("llm_client.requests.post", return_value=Response(lines)) as post2:
+        with patch("h3kit.llm.requests.post", return_value=Response(lines)) as post2:
             make_client("siliconflow", "test-secret", model="deepseek-ai/DeepSeek-V3")("s", "u")
         self.assertEqual(post2.call_args.kwargs["json"]["model"], "deepseek-ai/DeepSeek-V3")
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-ASSETS = Path(__file__).resolve().parent / "prompt_engine"
+ASSETS = Path(__file__).resolve().parents[1] / "prompt_engine"
 
 
 def generate_prompt(text, operation, controls, llm=None, check_interrupt=lambda: None):

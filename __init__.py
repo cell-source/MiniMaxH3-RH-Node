@@ -9,8 +9,8 @@ WEB_DIRECTORY = "./web"
 
 
 def comfy_entrypoint():
-    from . import prompt_optimizer
-    from .video_nodes import MiniMaxH3IntegrationExtension
+    from .h3kit import optimizer
+    from .h3kit.node import AllInOneExtension
 
-    prompt_optimizer.register_prompt_optimizer_routes()
-    return MiniMaxH3IntegrationExtension()
+    optimizer.register_fanout_routes()
+    return AllInOneExtension()

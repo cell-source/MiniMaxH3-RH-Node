@@ -1,5 +1,9 @@
 """Allowlist-only distribution: never ship the original HTML or local API keys.
 
+发布包只包含运行期真正需要的文件：顶层入口 + ``h3kit`` 子包 + 静态资源。
+``optional/``（二段放大与分块采样，未注册）与 ``tests``/``scripts``/``experiment``
+明确不入包，避免把未启用的实现一并分发。
+
 prompt_engine 以仓库内容为真源（2026-09-26）：打包**不再重建**它，并在打包后校验 zip
 内的产物与仓库文件逐字节一致——之前每次打包都会用参考 HTML 覆盖 rules.js，把已修的
 引擎缺陷静默放回发布包。
@@ -9,12 +13,9 @@ from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = ["__init__.py", "prompt_runtime.py", "llm_client.py", "video_nodes.py",
-         "core.py", "conditioning.py", "audio_ops.py", "sampling.py", "tiled_sampler.py", "latent_upscaler.py",
-         "latent_upscaler_core.py", "prompt_optimizer.py", "prompt_tags.py", "requirements.txt", "LICENSE",
-         "README.md", "NOTICE.md"]
+FILES = ["__init__.py", "requirements.txt", "LICENSE", "README.md", "NOTICE.md"]
 DOC_FILES = ["docs/RELEASE-TO-RUNNINGHUB.md"]
-FOLDERS = ["prompt_engine", "web", "locales", "examples"]
+FOLDERS = ["h3kit", "prompt_engine", "web", "locales", "examples"]
 
 
 def _verify_engine_matches_repo(output: Path) -> None:
