@@ -4,7 +4,9 @@
 `MiniMaxH3IntegrationRH`（All-in-One）内置提示词生成（AI / 离线包装 / 整理已有）、条件构建、
 双时钟采样与音视频解码。支持 T2VA、I2VA、FL2VA、L2VA、Ref2VA；中文、英文、英文正文加原文对白；
 受限扩写、自动时间轴、固定镜头、画面稳定、无字幕、音景、配乐和抗残音开关。
-分块采样器与潜空间放大器的实现保留在仓库 `optional/` 目录（暂未注册为节点，供后续扩展），**不随发布包分发**。
+所有交互集中在节点的**面板**上（模式切换、素材上传、提示词编辑器、更多设置），节点本体只保留
+模型/提示词连接口与输出口。分块采样器与潜空间放大器的实现保留在仓库 `optional/` 目录
+（暂未注册为节点，供后续扩展），**不随发布包分发**。
 工具使用手册与维护文档见 `docs/使用说明.md`、`docs/技术文档.md`；发布流程见 `docs/RELEASE-TO-RUNNINGHUB.md`。
 
 ## 安装
@@ -28,16 +30,16 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 工作流调用接口的请求体）。
 
 画布示例（`.workflow.json`）已补齐 4 个节点的参数：主节点的提示词直接写进**编辑器**（面板恒以编辑器
-内容为准，`prompt_source` 写作 `panel`，文本由引擎整理并校验通过），素材与扩散模型为 `SELECT_YOUR_*`
+内容为准，`prompt_origin` 写作 `panel`，文本由引擎整理并校验通过），素材与扩散模型为 `SELECT_YOUR_*`
 占位；API 示例（`.api.json`）保留 `offline`/`format` 来源（API 路径不经面板，后端仍支持这三种来源）。
 
 | 示例 | API 示例来源 / 模式 | 节点上需要上传的素材 |
 | --- | --- | --- |
 | `t2va.*` | offline / t2va | 无 |
-| `i2va.*` | offline / i2va | 首帧（first_frame） |
-| `fl2va.*` | offline / fl2va | 首帧 + 尾帧 |
-| `l2va.*` | offline / l2va | 尾帧（last_frame） |
-| `ref2va.*` | format / ref2va | 参考图、参考视频、参考音频（按需） |
+| `i2va.*` | offline / i2va | 首帧（keyframe_open） |
+| `fl2va.*` | offline / fl2va | 首帧 + 尾帧（keyframe_open / keyframe_close） |
+| `l2va.*` | offline / l2va | 尾帧（keyframe_close） |
+| `ref2va.*` | format / ref2va | 参考图（still_1…9）、参考视频（footage_1…3）、参考音频（track_1…3，按需） |
 
 `ref2va` 的 API 示例用 `format` 来源整理一份完整的六 section 提示词（画布示例的编辑器里就是同一份文本）；
 离线包装不生成六 section，Ref2VA 建议用 AI 生成或对完整六 section 输入选择 format。示例中的
@@ -45,7 +47,7 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 
 1. 在 UNETLoader 选择实际 H3 扩散模型（占位 `SELECT_YOUR_H3_DIFFUSION_MODEL.safetensors`），接入节点 `model`。
 2. 在节点上选择已安装的 H3 文本编码器、视频 VAE、音频 VAE；按模式上传素材。
-3. 提示词直接写在**编辑器**里（面板固定以编辑器内容为准，`prompt_source` 写入 `panel`）；画布示例已填好
+3. 提示词直接写在**编辑器**里（面板固定以编辑器内容为准，`prompt_origin` 写入 `panel`）；画布示例已填好
    各模式的完整提示词，可直接改用。`ai` / `offline` / `format` 三种来源仅对 API 调用与直接编辑工作流
    JSON 的用户有效（见 `examples/*.api.json`）。
 4. 节点内部完成条件构建 → 双时钟采样 → 音视频解码，输出 `frames` / `audio` → CreateVideo → SaveVideo。
@@ -59,31 +61,31 @@ RunningHub 需要平台侧安装本包及依赖；本仓库提供审核/部署�
 
 ## 提示词生成（节点内置）
 
-提示词生成已内置于 All-in-One 节点：API 调用把 `prompt_source` 设为 `ai` / `offline` / `format` 时生效；
+提示词生成已内置于 All-in-One 节点：API 调用把 `prompt_origin` 设为 `ai` / `offline` / `format` 时生效；
 面板界面不再提供来源选择（恒为 `panel`，即编辑器内容）。
 
 | 参数 | 用途 |
 | --- | --- |
-| prompt_source | 面板恒写入 `panel`（用编辑器内容）；API 调用可选 `ai` 在线生成 / `offline` 原文包装 / `format` 整理已有完整 H3 提示词 |
-| ai_text | 创意输入或待整理提示词 |
-| ai_language | `zh` 正文和对白中文；`en` 全英文；`mixed` 英文正文、对白保留原文 |
-| ai_mode | `auto` 随主模式；或固定 t2va/i2va/fl2va/l2va/ref2va |
-| ai_strict_validation | 默认开启；不合规结果中止执行。关闭后继续输出文本，报告写明原因 |
-| ai_anti_pop | 开启时使用实验性的内联对白；关闭时使用官方 `<d>` 包装 |
-| ai_provider | 大模型服务预设：DeepSeek / GLM 智谱 / OpenAI / OpenRouter / 通义千问（DashScope）/ 硅基流动（SiliconFlow）/ 自定义；选定后自动使用预设端点与默认模型 |
-| ai_api_key | **由用户自行填写**的大模型 API Key；留空时读取对应服务商的环境变量 |
-| ai_endpoint / ai_model | 可覆盖预设端点与模型；选「自定义」时两者必填 |
+| prompt_origin | 面板恒写入 `panel`（用编辑器内容）；API 调用可选 `ai` 在线生成 / `offline` 原文包装 / `format` 整理已有完整 H3 提示词 |
+| ai_idea | 创意输入或待整理提示词 |
+| ai_locale | `zh` 正文和对白中文；`en` 全英文；`mixed` 英文正文、对白保留原文 |
+| ai_task | `auto` 随主模式；或固定 t2va/i2va/fl2va/l2va/ref2va |
+| ai_strict_check | 默认开启；不合规结果中止执行。关闭后继续输出文本，报告写明原因 |
+| ai_audio_guard | 开启时使用实验性的内联对白；关闭时使用官方 `<d>` 包装 |
+| ai_platform | 大模型服务预设：DeepSeek / GLM 智谱 / OpenAI / OpenRouter / 通义千问（DashScope）/ 硅基流动（SiliconFlow）/ 自定义；选定后自动使用预设端点与默认模型 |
+| ai_key | **由用户自行填写**的大模型 API Key；留空时读取对应服务商的环境变量 |
+| ai_base_url / ai_model_name | 可覆盖预设端点与模型；选「自定义」时两者必填 |
 
 AI 生成保留原工具的语言和 FL2VA 时间轴纠正，每类最多两次。所有调用共享 ai_timeout 总预算；
 等待网络时中断响应受单次读超时限制（最长约 30 秒）。请求失败不回退为离线结果。
-提示词引擎按 duration_seconds 生成时间轴，仅支持 2–15 秒；更长时长请直接在编辑器撰写（panel）。
+提示词引擎按 clip_seconds 生成时间轴，仅支持 2–15 秒；更长时长请直接在编辑器撰写（panel）。
 离线模式不翻译，不补全 Ref2VA 主体/保留关系；Ref2VA 建议用 AI 或输入完整六 section 后选择 format。
 
 接入方式：**大模型信息由用户自行填写**——选一个服务商预设、填入自己的
-API Key 即可；预设只提供端点与默认模型，可随时用 ai_endpoint / ai_model 覆盖为任意
+API Key 即可；预设只提供端点与默认模型，可随时用 ai_base_url / ai_model_name 覆盖为任意
 OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 
-| ai_provider | 兑底环境变量 | 预设默认模型 |
+| ai_platform | 兑底环境变量 | 预设默认模型 |
 | --- | --- | --- |
 | deepseek | `DEEPSEEK_API_KEY` | deepseek-flash |
 | glm | `GLM_API_KEY` | glm-5.3-flash |
@@ -91,9 +93,9 @@ OpenAI 兼容服务。Key 按服务商对应的环境变量名为兑底：
 | openrouter | `OPENROUTER_API_KEY` | google/gemini-2.5-flash |
 | dashscope | `DASHSCOPE_API_KEY` | qwen-plus |
 | siliconflow | `SILICONFLOW_API_KEY` | Qwen/Qwen2.5-72B-Instruct |
-| custom | `H3_LLM_API_KEY` | （必填 ai_endpoint 与 ai_model） |
+| custom | `H3_LLM_API_KEY` | （必填 ai_base_url 与 ai_model_name） |
 
-也可填写节点 ai_api_key，但该字段会保存到工作流中，分享前应清空。
+也可填写节点 ai_key，但该字段会保存到工作流中，分享前应清空。
 节点不使用生成器 HTML 里的内置 Key，分发 ZIP 也不包含任何 HTML 文件。
 
 ## 模型与能力边界
